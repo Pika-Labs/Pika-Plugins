@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "pika": {
+      "type": "http",
+      "url": "https://mcp.pika.me/api/mcp"
+    }
+  }
+}

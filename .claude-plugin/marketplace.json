@@ -1,0 +1,25 @@
+{
+  "name": "pika-plugins",
+  "metadata": {
+    "description": "Pika Claude Code plugin marketplace — distributes /pika:podcast (any URL or topic → 1-minute two-host video), /pika:explainer (any URL → 60–80s walkthrough video), and /pika:ugc-ads (product URL → 15s creator-style multi-cut UGC ad)."
+  },
+  "owner": {
+    "name": "Pika Labs",
+    "email": "support@pika.art"
+  },
+  "plugins": [
+    {
+      "name": "pika",
+      "description": "Pika-fy your Claude — give Claude a face, name, voice, and personality, plus a full creative stack of image, video, audio, and editing tools. 3 curated /pika:* slash commands backed by 42 atomic media tools at mcp.pika.me.",
+      "source": "./",
+      "category": "creative",
+      "version": "1.0.0",
+      "author": {
+        "name": "Pika Labs",
+        "email": "support@pika.art"
+      },
+      "homepage": "https://pika.me",
+      "tags": ["pika", "video", "podcast", "explainer", "ads", "ugc", "lipsync", "creative", "mcp", "claude-code", "agent"]
+    }
+  ]
+}
