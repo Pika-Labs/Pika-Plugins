@@ -32,6 +32,7 @@ The prompt must contain:
 
 - **Frame type** (verbatim opener): `A screenshot from a live MLB game TV broadcast on ESPN.` Then describe broadcast color grading, slight compression artifacts, interlacing grain, telephoto broadcast camera feel — like a real TV screenshot, not a clean photo.
 - **Framing (verbatim)**: `The camera cuts to the audience` — to find our reference image person in the crowd. (This crowd-cutaway framing primitive is load-bearing; without it gpt-image-2 sometimes composes a player-action shot.)
+- **Camera position (verbatim, load-bearing)**: `Camera is positioned in the foul-ground photographers' pit just past home plate, low angle, shooting BACK at the premium seats — the baseball field is BEHIND the camera and NOT visible anywhere in the frame.` Only the subject, surrounding fans (also facing camera, because they're facing the field which is where the camera is), and the seat / dugout-wall / backstop-netting backdrop should appear. **If grass or infield dirt shows up behind the subject, the camera angle is inverted (camera ended up in the upper deck looking toward the field instead of in the pit looking at the crowd) — re-roll Step 1.**
 - **Subject position**: premium field-level seats **behind home plate** at **Fenway Park**, smiling naturally, unaware they're on camera.
 - **Matchup** (verbatim names): **New York Yankees vs Boston Red Sox**, **MLB American League Championship Series (ALCS), Game 3**, Boston home stadium (Fenway Park), Yankees lead 2-0 in the ALCS so far.
 - **Broadcast overlay** — frame this block with imperative emphasis (verbatim header): `CRITICAL — broadcast graphics that MUST be visible in this image:` All three must look like real burned-in broadcast UI, not Photoshop overlays:
@@ -114,6 +115,7 @@ End with a one-line summary: *"Behind-home-plate cutaway for {username} — 15s,
 
 - `A screenshot from a live MLB game TV broadcast on ESPN.` (Step 1 frame-type opener)
 - `The camera cuts to the audience` (Step 1 framing primitive — crowd-cutaway anchor)
+- `Camera is positioned in the foul-ground photographers' pit just past home plate, low angle, shooting BACK at the premium seats — the baseball field is BEHIND the camera and NOT visible anywhere in the frame.` (Step 1 camera-position lock — without it, gpt-image-2 sometimes places the camera in the upper deck shooting toward the field, producing a wrong-direction shot)
 - `CRITICAL — broadcast graphics that MUST be visible in this image:` (Step 1 overlay-block imperative header)
 - `Hardlock: Do not alter their facial structure and maintain their likeness` and `The subject must match the reference person` (Step 1 prompt)
 - `First frame is the provided reference image. The ESPN scorebug AND the "${username}" lower-third chyron are ALREADY on screen at frame 0 — keep them visible, unchanged, pixel-locked across all 15 seconds. Do NOT animate them, do NOT change their text.` (Step 2 opener)
@@ -146,6 +148,7 @@ The output-side gate is unavoidable for this trend regardless of subject, so See
 | Step 2 fails | Re-run kling — don't switch engines. If the still is the issue, re-run Step 1 with a different photo |
 | Kling `task_status: failed` with `task_status_msg: "Failure to pass the risk control system"` | Reference photo is a recognizable celebrity / public figure. Ask for a non-celebrity reference — Kling correctly blocks celebrity-face + fake-event-chyron impersonation patterns |
 | Step 2 times out with no task_id | Re-run from scratch — client-side timeouts orphan the upstream task |
+| Generated still shows baseball field / grass / infield dirt behind the subject | Camera angle inverted — camera ended up in the upper deck looking toward the field instead of in the photographers' pit looking back at the crowd. Re-roll Step 1; verify the verbatim camera-position phrase (`Camera is positioned in the foul-ground photographers' pit … the baseball field is BEHIND the camera and NOT visible`) is present in the composed prompt |
 | Chyron pops in mid-clip (~4–5s flash) | Chyron not baked into the still. Re-run Step 1; verify chyron is visible in the still URL before Step 2 |
 | Scorebug or chyron animates / morphs mid-clip | Missing `prompt_adherence: strict` or trimmed `negative_prompt`. Restore both |
 | Identity drifts after ~10s | Re-run Step 2 first (often resolves on a fresh roll). If drift persists, re-run Step 1 with a tighter face crop on the still — more facial pixels = stronger lock |
