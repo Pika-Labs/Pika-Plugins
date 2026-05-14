@@ -3,6 +3,12 @@
 All notable changes to the Pika Claude Code plugin are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.2.3] — 2026-05-14
+
+### Added
+
+- **`/pika:kiss-cam`** — Viral fake "in-arena Kiss Cam moment" of any two subjects. Takes two reference photos (any visual style — photoreal human, 3D toy, illustrated avatar — the recipe preserves whichever style each reference uses), generates a spectator-POV phone shot of the Madison Square Garden Jumbotron with the retro red kiss cam graphic + adjacent Knicks vs Bulls scoreboard baked into frame 0 (`gpt-image-2`), then locks that as Kling's first frame for a 15s `kling-v3-omni` clip with the entire decorative UI pixel-static across all 15s — only the two subjects inside the kiss cam panel animate. Native off-screen PA-announcer commentary + packed-arena crowd reaction, no names, no chyron. Kling-only (Seedance's two-stage face-moderation gate rejects every in-arena reaction shot because of the crowd faces). README and plugin manifest updated to **5 curated `/pika:*` slash commands** (was 4).
+
 ## [1.2.2] — 2026-05-14
 
 ### Fixed

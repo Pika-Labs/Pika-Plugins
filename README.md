@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <a href="./CHANGELOG.md"><img src="https://img.shields.io/badge/plugin-v1.2.2-blue" alt="Plugin version"></a>
+  <a href="./CHANGELOG.md"><img src="https://img.shields.io/badge/plugin-v1.2.3-blue" alt="Plugin version"></a>
   <a href="https://mcp.pika.me/api/mcp"><img src="https://img.shields.io/badge/MCP-mcp.pika.me-green" alt="MCP server"></a>
   <a href="./tools-manifest.json"><img src="https://img.shields.io/badge/tools-42_atomic_primitives-purple" alt="Tools"></a>
   <a href="./LICENSE"><img src="https://img.shields.io/badge/license-Apache_2.0-blue" alt="License"></a>
@@ -31,7 +31,7 @@ Pika has three layers — your **Agent** (persona), the **MCP server** (protocol
 |---|---|---|
 | **Pika Agent** | Your persona — name, face, voice, and persistent memory — applied to every tool call | [pika.me](https://pika.me/) · [iOS app](https://apps.apple.com/us/app/pika-ai-agent/id6758411447) |
 | **Pika MCP** | Open-protocol server exposing 42 atomic creative tools (image, video, voice, music, edit) | `https://mcp.pika.me/api/mcp` |
-| **Pika Plugin** | 4 curated `/pika:*` slash commands that orchestrate multi-step pipelines on top of the MCP | This repo |
+| **Pika Plugin** | 5 curated `/pika:*` slash commands that orchestrate multi-step pipelines on top of the MCP | This repo |
 
 Same backend, same auth, same output. [MCP (Model Context Protocol)](https://modelcontextprotocol.io/) is Anthropic's open standard for connecting agents to external tools — Pika MCP works with any MCP-compatible client; see [Other Claude surfaces & MCP clients](#other-claude-surfaces--mcp-clients) for non-Claude-Code setups.
 
@@ -99,7 +99,7 @@ The agent reads your prompt and runs the matching skill (or falls back to atomic
 
 ```bash
 claude plugin list
-# pika@pika-plugins    Version: 1.2.2    Status: enabled
+# pika@pika-plugins    Version: 1.2.3    Status: enabled
 claude mcp list
 # pika: https://mcp.pika.me/api/mcp (HTTP) - Connected
 ```
@@ -119,7 +119,7 @@ On non-Claude-Code surfaces you get the **42 atomic tools** (image, video, voice
 
 ## Launch-spotlight skills
 
-Curated skills designed to take you from a single prompt to a finished, shareable video. Four ship today (Podcast/Interview, Explainer, UGC Ads, Baseball-Trend). All generation skills consume Pika credits (paid via your Pika account).
+Curated skills designed to take you from a single prompt to a finished, shareable video. Five ship today (Podcast/Interview, Explainer, UGC Ads, Baseball-Trend, Kiss Cam). All generation skills consume Pika credits (paid via your Pika account).
 
 > [!TIP]
 > **Skills activate from natural language — the slash command is optional.** Saying _"make me a podcast about https://pika.art"_ or _"walk me through this repo: github.com/foo/bar"_ triggers the matching skill automatically. The `/pika:*` form is just an explicit shortcut.
@@ -187,6 +187,20 @@ Triggers from natural language — _"make me a behind-home-plate cutaway"_, _"fa
 
 Engine is Kling-only — Seedance's output-side moderation rejects every broadcast cutaway because of the crowd faces. Recognizable celebrities are also gated (the trend illusion only works with a non-public-figure reference where the chyron name + face are coherent).
 
+### Kiss Cam (in-arena Jumbotron moment) — `/pika:kiss-cam`
+
+Hand it **two reference photos** — get back a **15s viral "Kiss Cam at MSG" moment**: a fan-filmed spectator-POV phone shot of the Madison Square Garden Jumbotron with the retro red kiss cam graphic (sparkly hearts, cursive script) + adjacent Knicks vs Bulls scoreboard, then 15 seconds of the two subjects sharing a sweet, natural kiss while an off-screen PA announcer and packed-arena crowd react. Spectator-POV still (`gpt-image-2`) with the entire kiss cam UI baked into frame 0, then `kling-v3-omni` locks that as the first frame so the scoreboard, hearts, and "Kiss Cam" script stay pixel-static across all 15s — only the two subjects inside the kiss cam panel animate. Any subject style works (photoreal humans, 3D toys, illustrated avatars) — the recipe preserves whatever style each reference uses. No names anywhere; no chyron. ~4–6 min wall-clock. **Costs Pika credits.**
+
+Triggers from natural language — _"make me a kiss cam moment"_, _"kiss cam version of these two"_, _"Jumbotron kiss cam trend"_, _"fake NBA kiss cam"_ — or use the slash command:
+
+```
+/pika:kiss-cam https://cdn/photo-a.png https://cdn/photo-b.png
+/pika:kiss-cam /path/to/photo-a.jpg /path/to/photo-b.jpg
+/pika:kiss-cam                                       # ← no args = ask for both photos
+```
+
+Engine is gpt-image-2 + Kling-only, same reason as baseball-trend's Kling lock — Seedance's two-stage face-moderation gate rejects every in-arena reaction shot because of the crowd faces.
+
 ## Authentication
 
 You need an authenticated MCP session before any Pika tool call works. The recommended path is one-time `/mcp` connect:
@@ -234,7 +248,7 @@ Tokens come in two flavors — a **developer key** (`dk_*` prefix, long-lived; g
 
 ## What you can do with Pika
 
-The plugin ships 4 curated slash commands; underneath, **42 atomic MCP tools** are at your agent's disposal. You describe the outcome in plain English — Pika picks the right tool.
+The plugin ships 5 curated slash commands; underneath, **42 atomic MCP tools** are at your agent's disposal. You describe the outcome in plain English — Pika picks the right tool.
 
 ### Generate video
 
