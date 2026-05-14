@@ -26,20 +26,22 @@ Confirm back in one line ("Generating behind-home-plate cutaway for **{username}
 
 ## Step 1 — Broadcast still (`generate_image`, gpt-image-2)
 
-Compose a prompt that frames the output as a live ESPN MLB broadcast frame of a fan in premium seats behind home plate. The chyron + scorebug get baked into the still at frame 0 — load-bearing, so Kling treats them as pixel-locked burned-in UI in Step 2 instead of animating them mid-clip.
+The chyron + scorebug get baked into the still at frame 0 — load-bearing, so Kling treats them as pixel-locked burned-in UI in Step 2 instead of animating them mid-clip. **Send the prompt below verbatim** (substitute `${username}` with the user's name for the chyron text). The calibrated paragraph form is what empirically produces the correct broadcast-camera composition; bullet-scaffold paraphrases drift toward the wrong camera angle (upper deck looking toward the field instead of foul-ground looking back at the crowd).
 
-The prompt must contain:
+**`prompt`** (verbatim, `${username}` substituted):
 
-- **Frame type** (verbatim opener): `A screenshot from a live MLB game TV broadcast on ESPN.` Then describe broadcast color grading, slight compression artifacts, interlacing grain, telephoto broadcast camera feel — like a real TV screenshot, not a clean photo.
-- **Framing (verbatim)**: `The camera cuts to the audience` — to find our reference image person in the crowd. (This crowd-cutaway framing primitive is load-bearing; without it gpt-image-2 sometimes composes a player-action shot.)
-- **Camera position (verbatim, load-bearing)**: `Camera is positioned in the foul-ground photographers' pit just past home plate, low angle, shooting BACK at the premium seats — the baseball field is BEHIND the camera and NOT visible anywhere in the frame.` Only the subject, surrounding fans (also facing camera, because they're facing the field which is where the camera is), and the seat / dugout-wall / backstop-netting backdrop should appear. **If grass or infield dirt shows up behind the subject, the camera angle is inverted (camera ended up in the upper deck looking toward the field instead of in the pit looking at the crowd) — re-roll Step 1.**
-- **Subject position**: premium field-level seats **behind home plate** at **Fenway Park**, smiling naturally, unaware they're on camera.
-- **Matchup** (verbatim names): **New York Yankees vs Boston Red Sox**, **MLB American League Championship Series (ALCS), Game 3**, Boston home stadium (Fenway Park), Yankees lead 2-0 in the ALCS so far.
-- **Broadcast overlay** — frame this block with imperative emphasis (verbatim header): `CRITICAL — broadcast graphics that MUST be visible in this image:` All three must look like real burned-in broadcast UI, not Photoshop overlays:
-  1. ESPN-style bottom scorebug — Yankees vs Red Sox with team logos, inning, outs, balls/strikes count, score, small runners-on-base diamond.
-  2. Lower-third chyron in the **lower-left area, directly above the scorebug**, reading exactly `${username}` (the username **alone** — no suffix like "- AI Creator"; the trend illusion depends on it reading like a real broadcast identifier). Set in a **classic ESPN sans-serif**, in the **network's color treatment**, like a real broadcast identifier for the on-camera guest.
-  3. ESPN network logo watermark in a corner.
-- **Identity hardlock** (verbatim phrases): `Hardlock: Do not alter their facial structure and maintain their likeness` and `The subject must match the reference person`.
+```
+A screenshot from a live MLB game TV broadcast on ESPN. The camera cuts to the audience — our reference image person, sitting smiling in premium field-level seats behind home plate at Fenway Park, smiling naturally and unaware they're on camera. Hardlock: Do not alter their facial structure and maintain their likeness. The subject must match the reference person.
+
+The image looks exactly like a real TV screenshot — broadcast color grading, slight compression artifacts, interlacing grain, telephoto broadcast camera feel. It's the New York Yankees vs Boston Red Sox, MLB American League Championship Series (ALCS), Game 3, Boston home stadium (Fenway Park). Yankees lead 2-0 in the ALCS so far.
+
+CRITICAL — broadcast graphics that MUST be visible in this image:
+1. A real ESPN-style bottom scorebug for MLB, showing Yankees vs Red Sox with team logos, inning, outs, balls/strikes count, and score (with a small runners-on-base diamond), looking like a real live broadcast scorebug.
+2. Directly above the scorebug, a clean broadcast-style lower-third name graphic / chyron that reads exactly: "${username}" — set in a classic ESPN sans-serif, in the network's color treatment. The chyron sits in the lower-left area, above the scorebug, like a real broadcast identifier for the on-camera guest.
+3. The ESPN network logo watermark in a corner.
+
+All three graphics must look like real burned-in broadcast UI — not Photoshop overlays. 16:9 aspect ratio.
+```
 
 **Call params:**
 
@@ -113,11 +115,7 @@ End with a one-line summary: *"Behind-home-plate cutaway for {username} — 15s,
 
 ## Load-bearing phrases (keep verbatim)
 
-- `A screenshot from a live MLB game TV broadcast on ESPN.` (Step 1 frame-type opener)
-- `The camera cuts to the audience` (Step 1 framing primitive — crowd-cutaway anchor)
-- `Camera is positioned in the foul-ground photographers' pit just past home plate, low angle, shooting BACK at the premium seats — the baseball field is BEHIND the camera and NOT visible anywhere in the frame.` (Step 1 camera-position lock — without it, gpt-image-2 sometimes places the camera in the upper deck shooting toward the field, producing a wrong-direction shot)
-- `CRITICAL — broadcast graphics that MUST be visible in this image:` (Step 1 overlay-block imperative header)
-- `Hardlock: Do not alter their facial structure and maintain their likeness` and `The subject must match the reference person` (Step 1 prompt)
+- **Step 1 `prompt` is verbatim** — send the calibrated paragraph (see Step 1 above) exactly as written, only substituting `${username}` in the chyron line. Do NOT paraphrase, summarize into bullets, or rephrase. The calibrated narrative form is what produces the correct broadcast-camera composition (camera in foul ground shooting back at the crowd, field out of frame). Bullet-scaffold paraphrases drift toward the inverted camera angle.
 - `First frame is the provided reference image. The ESPN scorebug AND the "${username}" lower-third chyron are ALREADY on screen at frame 0 — keep them visible, unchanged, pixel-locked across all 15 seconds. Do NOT animate them, do NOT change their text.` (Step 2 opener)
 - `Preserve identity strongly. Keep him seated behind home plate throughout. Genuine MLB TV broadcast crowd cutaway feel.` (Step 2 closer)
 - `On-screen graphics (LOCKED — do NOT animate):` (Step 2 graphics block label)
@@ -148,7 +146,7 @@ The output-side gate is unavoidable for this trend regardless of subject, so See
 | Step 2 fails | Re-run kling — don't switch engines. If the still is the issue, re-run Step 1 with a different photo |
 | Kling `task_status: failed` with `task_status_msg: "Failure to pass the risk control system"` | Reference photo is a recognizable celebrity / public figure. Ask for a non-celebrity reference — Kling correctly blocks celebrity-face + fake-event-chyron impersonation patterns |
 | Step 2 times out with no task_id | Re-run from scratch — client-side timeouts orphan the upstream task |
-| Generated still shows baseball field / grass / infield dirt behind the subject | Camera angle inverted — camera ended up in the upper deck looking toward the field instead of in the photographers' pit looking back at the crowd. Re-roll Step 1; verify the verbatim camera-position phrase (`Camera is positioned in the foul-ground photographers' pit … the baseball field is BEHIND the camera and NOT visible`) is present in the composed prompt |
+| Generated still shows baseball field / grass / infield dirt behind the subject | Camera angle inverted — Step 1 was sent a paraphrased prompt instead of the verbatim calibrated paragraph. Re-roll Step 1; verify the prompt was sent **exactly** as the code block in Step 1 above (only `${username}` substituted), not as a bullet-scaffold summary |
 | Chyron pops in mid-clip (~4–5s flash) | Chyron not baked into the still. Re-run Step 1; verify chyron is visible in the still URL before Step 2 |
 | Scorebug or chyron animates / morphs mid-clip | Missing `prompt_adherence: strict` or trimmed `negative_prompt`. Restore both |
 | Identity drifts after ~10s | Re-run Step 2 first (often resolves on a fresh roll). If drift persists, re-run Step 1 with a tighter face crop on the still — more facial pixels = stronger lock |
