@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <a href="./CHANGELOG.md"><img src="https://img.shields.io/badge/plugin-v1.0.0-blue" alt="Plugin version"></a>
+  <a href="./CHANGELOG.md"><img src="https://img.shields.io/badge/plugin-v1.2.0-blue" alt="Plugin version"></a>
   <a href="https://mcp.pika.me/api/mcp"><img src="https://img.shields.io/badge/MCP-mcp.pika.me-green" alt="MCP server"></a>
   <a href="./tools-manifest.json"><img src="https://img.shields.io/badge/tools-42_atomic_primitives-purple" alt="Tools"></a>
   <a href="./LICENSE"><img src="https://img.shields.io/badge/license-Apache_2.0-blue" alt="License"></a>
@@ -31,7 +31,7 @@ Pika has three layers — your **Agent** (persona), the **MCP server** (protocol
 |---|---|---|
 | **Pika Agent** | Your persona — name, face, voice, and persistent memory — applied to every tool call | [pika.me](https://pika.me/) · [iOS app](https://apps.apple.com/us/app/pika-ai-agent/id6758411447) |
 | **Pika MCP** | Open-protocol server exposing 42 atomic creative tools (image, video, voice, music, edit) | `https://mcp.pika.me/api/mcp` |
-| **Pika Plugin** | 3 curated `/pika:*` slash commands that orchestrate multi-step pipelines on top of the MCP | This repo |
+| **Pika Plugin** | 4 curated `/pika:*` slash commands that orchestrate multi-step pipelines on top of the MCP | This repo |
 
 Same backend, same auth, same output. [MCP (Model Context Protocol)](https://modelcontextprotocol.io/) is Anthropic's open standard for connecting agents to external tools — Pika MCP works with any MCP-compatible client; see [Other Claude surfaces & MCP clients](#other-claude-surfaces--mcp-clients) for non-Claude-Code setups.
 
@@ -99,7 +99,7 @@ The agent reads your prompt and runs the matching skill (or falls back to atomic
 
 ```bash
 claude plugin list
-# pika@pika-plugins    Version: 1.0.0    Status: enabled
+# pika@pika-plugins    Version: 1.2.0    Status: enabled
 claude mcp list
 # pika: https://mcp.pika.me/api/mcp (HTTP) - Connected
 ```
@@ -119,7 +119,7 @@ On non-Claude-Code surfaces you get the **42 atomic tools** (image, video, voice
 
 ## Launch-spotlight skills
 
-Curated skills designed to take you from a single prompt to a finished, shareable video. Three ship today (Podcast/Interview, Explainer, UGC Ads). All generation skills consume Pika credits (paid via your Pika account).
+Curated skills designed to take you from a single prompt to a finished, shareable video. Four ship today (Podcast/Interview, Explainer, UGC Ads, Baseball-Trend). All generation skills consume Pika credits (paid via your Pika account).
 
 > [!TIP]
 > **Skills activate from natural language — the slash command is optional.** Saying _"make me a podcast about https://pika.art"_ or _"walk me through this repo: github.com/foo/bar"_ triggers the matching skill automatically. The `/pika:*` form is just an explicit shortcut.
@@ -173,6 +173,20 @@ Triggers from natural language — _"make a UGC ad for [URL]"_, _"jump-cut produ
 /pika:ugc-ads                                       # ← no args = print URL menu
 ```
 
+### Baseball-Trend (ESPN behind-home-plate cutaway) — `/pika:baseball-trend`
+
+Hand it your **name + one reference photo** — get back a **15s ESPN-style broadcast cutaway** of you sitting behind home plate at a fake Yankees vs Red Sox ALCS Game 3 at Fenway Park, with two live MLB announcers naming you on air. Broadcast still (`gpt-image-2`) with a real ESPN-style scorebug + chyron baked into frame 0, then a 15s `kling-v3-omni` clip locked to that frame for pixel-static graphics across the full shot. Native two-announcer commentary, realistic telephoto broadcast feel, no scene cuts. ~3–5 min wall-clock. **Costs Pika credits.**
+
+Triggers from natural language — _"make me a behind-home-plate cutaway"_, _"fake MLB broadcast of me"_, _"AI ESPN baseball crowd shot"_, _"viral MLB broadcast trend with me"_ — or use the slash command:
+
+```
+/pika:baseball-trend "Jane Doe" https://cdn/face.png
+/pika:baseball-trend "Jane Doe" /path/to/portrait.jpg
+/pika:baseball-trend                                # ← no args = ask for name + photo
+```
+
+Engine is Kling-only — Seedance's output-side moderation rejects every broadcast cutaway because of the crowd faces. Recognizable celebrities are also gated (the trend illusion only works with a non-public-figure reference where the chyron name + face are coherent).
+
 ## Authentication
 
 You need an authenticated MCP session before any Pika tool call works. The recommended path is one-time `/mcp` connect:
@@ -220,7 +234,7 @@ Tokens come in two flavors — a **developer key** (`dk_*` prefix, long-lived; g
 
 ## What you can do with Pika
 
-The plugin ships 3 curated slash commands; underneath, **42 atomic MCP tools** are at your agent's disposal. You describe the outcome in plain English — Pika picks the right tool.
+The plugin ships 4 curated slash commands; underneath, **42 atomic MCP tools** are at your agent's disposal. You describe the outcome in plain English — Pika picks the right tool.
 
 ### Generate video
 

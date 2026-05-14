@@ -3,6 +3,16 @@
 All notable changes to the Pika Claude Code plugin are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.2.0] — 2026-05-14
+
+### Added
+
+- **`/pika:baseball-trend`** — Viral ESPN-style 15s behind-home-plate broadcast cutaway. Takes a username + one reference photo, generates a broadcast still (`gpt-image-2`) with a real-looking scorebug + chyron baked into frame 0, then locks that as Kling's first frame for a `kling-v3-omni` 15s clip with native two-announcer commentary that names the user on air. Fixed-recipe trend (Yankees vs Red Sox ALCS Game 3, Fenway Park). Kling-only — Seedance's output-side face-moderation rejects every broadcast cutaway, and Kling correctly gates celebrity references.
+
+### Changed
+
+- README and plugin manifest updated to reflect **4 curated `/pika:*` slash commands** (was 3).
+
 ## [1.0.0] — 2026-05-01
 
 Initial public release of the Pika Claude Code plugin at [`Pika-Labs/Pika-Plugins`](https://github.com/Pika-Labs/Pika-Plugins).
