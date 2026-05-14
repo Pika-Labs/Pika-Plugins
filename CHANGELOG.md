@@ -3,6 +3,12 @@
 All notable changes to the Pika Claude Code plugin are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.3.0] — 2026-05-14
+
+### Fixed
+
+- **`/pika:baseball-trend`** — Lock camera position in Step 1 to prevent inverted shots. The prior recipe didn't specify the broadcast camera's physical position, so `gpt-image-2` sometimes placed the camera in the upper deck looking toward the field (with the subject turned around to face it) instead of in the foul-ground photographers' pit looking back at the premium seats (the correct trend composition). Added a verbatim camera-position anchor (`Camera is positioned in the foul-ground photographers' pit just past home plate, low angle, shooting BACK at the premium seats — the baseball field is BEHIND the camera and NOT visible anywhere in the frame.`), registered it in the Load-bearing phrases section, and added a fail-fast self-check + dedicated failure-cheat-sheet row for the "field visible behind subject" symptom.
+
 ## [1.2.0] — 2026-05-14
 
 ### Added
