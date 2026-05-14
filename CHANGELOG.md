@@ -3,11 +3,11 @@
 All notable changes to the Pika Claude Code plugin are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [1.3.0] — 2026-05-14
+## [1.2.2] — 2026-05-14
 
 ### Fixed
 
-- **`/pika:baseball-trend`** — Lock camera position in Step 1 to prevent inverted shots. The prior recipe didn't specify the broadcast camera's physical position, so `gpt-image-2` sometimes placed the camera in the upper deck looking toward the field (with the subject turned around to face it) instead of in the foul-ground photographers' pit looking back at the premium seats (the correct trend composition). Added a verbatim camera-position anchor (`Camera is positioned in the foul-ground photographers' pit just past home plate, low angle, shooting BACK at the premium seats — the baseball field is BEHIND the camera and NOT visible anywhere in the frame.`), registered it in the Load-bearing phrases section, and added a fail-fast self-check + dedicated failure-cheat-sheet row for the "field visible behind subject" symptom.
+- **`/pika:baseball-trend`** — Fix inverted camera angle on the Step 1 broadcast still. The 1.2.0 release used a bullet-scaffold prompt for Step 1; `gpt-image-2` rendered the camera in the upper deck looking toward the field (with the subject turned around to face it) instead of in the foul-ground photographers' pit looking back at the premium seats. Two iterations tried explicit camera-position anchors in the scaffold without success — the model's "fan at MLB game" training prior kept overriding them. Final fix: revert Step 1 to the pre-refactor **verbatim calibrated prompt block**. The same constraints, expressed as a narrative paragraph instead of a bullet checklist, are weighted differently by `gpt-image-2` and reliably produce the correct broadcast-camera composition. Step 2 scaffold, call params, fallback, engine choice, and failure cheat sheet unchanged.
 
 ## [1.2.0] — 2026-05-14
 

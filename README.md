@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <a href="./CHANGELOG.md"><img src="https://img.shields.io/badge/plugin-v1.3.0-blue" alt="Plugin version"></a>
+  <a href="./CHANGELOG.md"><img src="https://img.shields.io/badge/plugin-v1.2.2-blue" alt="Plugin version"></a>
   <a href="https://mcp.pika.me/api/mcp"><img src="https://img.shields.io/badge/MCP-mcp.pika.me-green" alt="MCP server"></a>
   <a href="./tools-manifest.json"><img src="https://img.shields.io/badge/tools-42_atomic_primitives-purple" alt="Tools"></a>
   <a href="./LICENSE"><img src="https://img.shields.io/badge/license-Apache_2.0-blue" alt="License"></a>
@@ -99,7 +99,7 @@ The agent reads your prompt and runs the matching skill (or falls back to atomic
 
 ```bash
 claude plugin list
-# pika@pika-plugins    Version: 1.3.0    Status: enabled
+# pika@pika-plugins    Version: 1.2.2    Status: enabled
 claude mcp list
 # pika: https://mcp.pika.me/api/mcp (HTTP) - Connected
 ```

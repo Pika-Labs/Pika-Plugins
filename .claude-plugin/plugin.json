@@ -1,7 +1,7 @@
 {
   "name": "pika",
   "description": "Pika-fy your Claude — give Claude a face, name, voice, and personality, plus a full creative stack of image, video, audio, and editing tools. 4 curated /pika:* slash commands backed by 42 atomic media tools at mcp.pika.me.",
-  "version": "1.3.0",
+  "version": "1.2.2",
   "author": { "name": "Pika Labs", "email": "support@pika.art" },
   "homepage": "https://pika.me",
   "repository": "https://github.com/Pika-Labs/Pika-Plugins",
