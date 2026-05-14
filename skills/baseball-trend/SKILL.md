@@ -12,143 +12,116 @@ argument-hint: <username> <photo-url-or-path>
 
 # baseball-trend
 
-15-second ESPN-style broadcast cutaway of a user, sitting behind home plate at a fake Yankees vs Red Sox ALCS Game 3 game at Fenway Park, with two announcers naming them on air.
+A two-call pika pipeline: ESPN broadcast still (`gpt-image-2`) → 15-second behind-home-plate cutaway with two-announcer commentary (`kling-v3-omni`, first-frame-locked to the still). The trend look is calibrated — substitute the user's name and keep everything else as written. Step 1 and Step 2 prompts are scaffolds: required elements + verbatim anchor phrases; write the connective prose yourself.
 
-Fixed-recipe skill — the prompts below are calibrated. Substitute the username; do not rephrase.
+## Prerequisites
+
+pika MCP available in the host. Tool name prefix varies by mount point — use whatever the host exposes. Tools needed: `upload_asset`, `generate_image`, `generate_reference_video`, `task_status`.
 
 ## Stage 0 — Intake
 
-Two questions, one at a time. Don't bundle.
+Ask the user for two things, both required: their **name** (will appear in the lower-third chyron and announcer dialogue) and a **reference photo** (front-facing 3/4 portrait, good lighting, one face; local file or https URL). For a local file, use the MCP upload tool to get a public URL. On Claude Desktop, pasted inline images don't reach MCP — ask for a URL or a `.zip` attachment instead.
 
-**1. Username** *(required)* — used both in the broadcast chyron and in the announcers' commentary, e.g. `"Jane Doe"`. Save as `state.username`. This replaces every literal `${username}` in the prompts below.
+Confirm back in one line ("Generating behind-home-plate cutaway for **{username}**…") and start. **No further yes/no gates after this point** — the pipeline runs end-to-end.
 
-**2. Reference image** *(required)* — one front-facing 3/4 portrait, good lighting, one face. Resolve to a CDN URL and save as `state.reference_image_url`:
+## Step 1 — Broadcast still (`generate_image`, gpt-image-2)
 
-- **`https://…` URL** → use as-is.
-- **Local path** → call `mcp__pika__upload_asset({ filename, mime_type, size_bytes })`, then PUT the bytes to the returned `presigned_url`, then use the returned `public_url`. (Required args without it: schema rejects with 400.)
-- **Claude Desktop, photo pasted inline** → inline pastes don't reach MCP tools yet (Anthropic limitation). Reply with:
+Compose a prompt that frames the output as a live ESPN MLB broadcast frame of a fan in premium seats behind home plate. The chyron + scorebug get baked into the still at frame 0 — load-bearing, so Kling treats them as pixel-locked burned-in UI in Step 2 instead of animating them mid-clip.
 
-  > Heads up — pasted images don't reach MCP tools on Claude Desktop yet. Two options:
-  > - **Paste a URL** if it's already hosted somewhere — fastest.
-  > - **Zip it and attach the `.zip`** — right-click → Compress (macOS) / Send to → Compressed folder (Windows) / `zip pic.zip pic.png` (Linux). I'll unzip + upload.
+The prompt must contain:
 
-  When a `.zip` arrives: unzip via Bash, call `upload_asset` as above, use `public_url`.
+- **Frame type** (verbatim opener): `A screenshot from a live MLB game TV broadcast on ESPN.` Then describe broadcast color grading, slight compression artifacts, interlacing grain, telephoto broadcast camera feel — like a real TV screenshot, not a clean photo.
+- **Framing (verbatim)**: `The camera cuts to the audience` — to find our reference image person in the crowd. (This crowd-cutaway framing primitive is load-bearing; without it gpt-image-2 sometimes composes a player-action shot.)
+- **Subject position**: premium field-level seats **behind home plate** at **Fenway Park**, smiling naturally, unaware they're on camera.
+- **Matchup** (verbatim names): **New York Yankees vs Boston Red Sox**, **MLB American League Championship Series (ALCS), Game 3**, Boston home stadium (Fenway Park), Yankees lead 2-0 in the ALCS so far.
+- **Broadcast overlay** — frame this block with imperative emphasis (verbatim header): `CRITICAL — broadcast graphics that MUST be visible in this image:` All three must look like real burned-in broadcast UI, not Photoshop overlays:
+  1. ESPN-style bottom scorebug — Yankees vs Red Sox with team logos, inning, outs, balls/strikes count, score, small runners-on-base diamond.
+  2. Lower-third chyron in the **lower-left area, directly above the scorebug**, reading exactly `${username}` (the username **alone** — no suffix like "- AI Creator"; the trend illusion depends on it reading like a real broadcast identifier). Set in a **classic ESPN sans-serif**, in the **network's color treatment**, like a real broadcast identifier for the on-camera guest.
+  3. ESPN network logo watermark in a corner.
+- **Identity hardlock** (verbatim phrases): `Hardlock: Do not alter their facial structure and maintain their likeness` and `The subject must match the reference person`.
 
-After both answers are in, echo one short confirmation ("Generating behind-home-plate cutaway for **{username}**…") and start the pipeline. **No further yes/no gates after this point** — the pipeline runs end-to-end.
-
-## Pipeline
-
-Two Pika MCP calls, sequential. Engines are locked: `gpt-image-2` for the still, `kling-v3-omni` for the video.
-
-### Step 1 — Broadcast still (`generate_image`)
-
-The chyron + scorebug get baked into the still at frame 0 (load-bearing — when Kling is asked to "pop in" the chyron mid-clip it appears at second 4–5 with a visible flash and breaks the trend; baking it into the first frame makes Kling treat it as pixel-locked burned-in UI).
-
-Call `mcp__pika__generate_image` with:
+**Call params:**
 
 - `provider`: `gpt-image-2`
-- `reference_images`: `[state.reference_image_url]`
+- `reference_images`: `[<user's photo URL>]`
 - `aspect_ratio`: `16:9`
-- `quality`: `medium` (don't pass `high` — exceeds the proxy 180s timeout)
+- `quality`: `medium` *(don't pass `high` — exceeds the proxy 180s timeout and returns 502)*
 - `output_format`: `png`
-- `prompt` (verbatim, `${username}` substituted):
 
-```
-A screenshot from a live MLB game TV broadcast on ESPN. The camera cuts to the audience — our reference image person, sitting smiling in premium field-level seats behind home plate at Fenway Park, smiling naturally and unaware they're on camera. Hardlock: Do not alter their facial structure and maintain their likeness. The subject must match the reference person.
-
-The image looks exactly like a real TV screenshot — broadcast color grading, slight compression artifacts, interlacing grain, telephoto broadcast camera feel. It's the New York Yankees vs Boston Red Sox, MLB American League Championship Series (ALCS), Game 3, Boston home stadium (Fenway Park). Yankees lead 2-0 in the ALCS so far.
-
-CRITICAL — broadcast graphics that MUST be visible in this image:
-1. A real ESPN-style bottom scorebug for MLB, showing Yankees vs Red Sox with team logos, inning, outs, balls/strikes count, and score (with a small runners-on-base diamond), looking like a real live broadcast scorebug.
-2. Directly above the scorebug, a clean broadcast-style lower-third name graphic / chyron that reads exactly: "${username}" — set in a classic ESPN sans-serif, in the network's color treatment. The chyron sits in the lower-left area, above the scorebug, like a real broadcast identifier for the on-camera guest.
-3. The ESPN network logo watermark in a corner.
-
-All three graphics must look like real burned-in broadcast UI — not Photoshop overlays. 16:9 aspect ratio.
-```
-
-Save the returned URL as `state.broadcast_still_url`.
+Save the returned URL — it's the first frame for Step 2.
 
 **Agent-side self-check before Step 2**: the chyron must spell the username correctly and the scorebug must look like real broadcast UI. If either looks wrong, re-roll Step 1 (everything downstream pixel-locks to this frame). This is the agent's own check — do not ask the user.
 
-### Step 2 — 15s broadcast video (`generate_reference_video`)
+**On failure** (any reason — content policy, billing, etc.): fall back once to `provider: nano-banana-pro` with the same prompt, references, and `aspect_ratio` (drop `quality` and `output_format`). Tell the user you switched and why — don't degrade silently.
 
-`image_types: ["first_frame"]` is a parallel-array param that locks `state.broadcast_still_url` as Kling's literal frame 0, keeping the chyron + scorebug pixel-static for the full 15s.
+## Step 2 — Behind-home-plate cutaway (`generate_reference_video`, kling-v3-omni)
 
-Call `mcp__pika__generate_reference_video` with:
+Compose the prompt around the scaffold below. Keep it under 2500 characters (kling's cap) including the substituted name.
+
+**Call params:**
 
 - `provider`: `kling`
 - `kling_model`: `kling-v3-omni`
 - `duration`: `15`
 - `aspect_ratio`: `16:9`
-- `quality_mode`: `pro`
-- `reference_images`: `[state.broadcast_still_url]`
-- `image_types`: `["first_frame"]`
+- `quality_mode`: `pro` — 1080p (the broadcast UI grading + chyron text legibility benefit from the extra resolution; std muddies the scorebug)
+- `reference_images`: `[<Step 1 still URL>]`
+- `image_types`: `["first_frame"]` — locks the still as the opening frame
 - `sound`: `true`
-- `prompt_adherence`: `strict` *(load-bearing — without it the scorebug animates and identity drifts late in the clip)*
-- `negative_prompt` *(verbatim, load-bearing — without these entries Kling occasionally morphs the scorebug or fades the chyron)*:
+- `prompt_adherence`: `strict`
+- `negative_prompt`: `"scene cuts, camera angle changes, scorebug animation, chyron pop-in, chyron fade-in, chyron text changes, graphics animating, exaggerated acting, direct address to camera, blurry face, identity drift, distorted anatomy"`
 
-```
-scene cuts, camera angle changes, scorebug animation, chyron pop-in, chyron fade-in, chyron text changes, graphics animating, exaggerated acting, direct address to camera, blurry face, identity drift, distorted anatomy
-```
+`prompt_adherence: strict` paired with the full `negative_prompt` anchor list are load-bearing — without both, kling animates the scorebug late in the clip and the face drifts.
 
-- `prompt` (verbatim, `${username}` substituted everywhere; pre-trimmed to fit Kling's 2500-char cap; chyron-on-frame-0 lock at top):
+**Prompt scaffold** (seven required elements):
 
-```
-First frame is the provided reference image. The ESPN scorebug AND the "${username}" lower-third chyron are ALREADY on screen at frame 0 — keep them visible, unchanged, pixel-locked across all 15 seconds. Do NOT animate them, do NOT change their text.
+1. **First-frame anchor (verbatim opener)**: `First frame is the provided reference image. The ESPN scorebug AND the "${username}" lower-third chyron are ALREADY on screen at frame 0 — keep them visible, unchanged, pixel-locked across all 15 seconds. Do NOT animate them, do NOT change their text.`
 
-Realistic live MLB broadcast shot of the subject sitting in premium field-level seats behind home plate at Yankees vs Red Sox ALCS Game 3 in Boston, Fenway Park. The shot feels like a real TV cutaway when the broadcast camera finds a notable guest in the crowd between innings.
+2. **Cinematic setup**: one continuous take, no cuts, no angle changes; telephoto broadcast camera lands on a notable guest in the crowd between innings; setting is premium field-level seats behind home plate at Yankees vs Red Sox ALCS Game 3 in Boston, Fenway Park; subject stays seated behind home plate the full shot; movement subtle, believable, human; brief glances between the field and camera, no eye-contact lock, no talking to camera, no exaggerated gestures.
 
-The subject is seated in his field-level seat, smiling naturally and not over-performing. Not locked into eye contact with the lens. Occasionally glances toward the field, then toward camera, then back to the field — like a real in-game crowd reaction. One continuous take. No cuts. No angle changes.
+3. **Broadcast look**: real live sports broadcast look, telephoto broadcast camera feel, natural ballpark lighting, slight broadcast compression, slight interlacing / TV grain, authentic crowd movement in the background, realistic field-level framing.
 
-Action timeline:
-0-4s: smiling casually in his seat as the camera lands on him; looks around naturally, not paying attention to camera.
-4-7s: relaxed natural wave toward the camera (crowd cheers when he waves the first time); glances up at the Jumbotron above him then back to camera.
-7-11s: cheers briefly with visible excitement, reacting to the playoff atmosphere; turns to his friend on the left, exchanges words, laughs (we don't hear him speak).
-11-15s: claps naturally while smiling.
+4. **Locked graphics block** — use the literal label `On-screen graphics (LOCKED — do NOT animate):` so kling treats them as static:
+   - Bottom Yankees vs Red Sox ALCS scorebug, unchanged for the full 15s.
+   - Lower-third chyron above the scorebug reading `${username}` (username alone, no suffix), matching the ESPN broadcast UI theme.
 
-Keep all movement subtle, believable, human. No exaggerated acting. No direct talking to camera.
+5. **Audio spec**: natural live sports-broadcast commentary from two male MLB broadcast announcers talking about him being at the game tonight. Casual, warm, authentic — like real MLB commentators noticing a known guest. Let kling assign voices freely across the 15s — no per-beat speaker prescription. Three sample lines (include all three; `${username}`, `Fenway`, and `Game 3` land verbatim):
 
-Broadcast styling: real live sports broadcast look, telephoto broadcast camera feel, natural ballpark lighting, slight broadcast compression, slight interlacing / TV grain, authentic crowd movement in the background, realistic field-level framing. Subject remains seated behind home plate the full shot.
+   - `"${username} is here tonight at Fenway, taking in this massive playoff matchup."`
+   - `"You can see he's enjoying himself here behind home plate for Game 3."`
+   - `"Great atmosphere in the building, and ${username} getting a lot of love from the crowd."`
 
-Audio: Natural live sports-broadcast commentary from two male announcers talking about him being at the game tonight. Casual, warm, authentic — like real MLB commentators noticing a known guest. Sample lines:
-"${username} is here tonight at Fenway, taking in this massive playoff matchup."
-"You can see he's enjoying himself here behind home plate for Game 3."
-"Great atmosphere in the building, and ${username} getting a lot of love from the crowd."
+6. **Four synchronized visual beats** (announcers speak over the whole shot — beats describe what the camera sees, not who's talking). Each beat is a labeled block: `BEAT N (X–Ys) — <short label>. Visual: <one sentence>.` Per-beat visuals:
 
-Constraints: Preserve identity strongly. Keep him seated behind home plate throughout. No constant eye contact with camera. No talking to camera. No exaggerated gestures. No scene cuts. Scorebug + chyron do not change at any point. Genuine MLB TV broadcast crowd cutaway feel.
-```
+   - **BEAT 1 (0–4s) — camera finds him.** Visual: subject smiling casually in his seat as the camera lands on him; looks around naturally, not paying attention to camera.
+   - **BEAT 2 (4–7s) — relaxed natural wave + glance at Jumbotron.** Visual: relaxed natural wave toward the camera (crowd cheers on the first wave); glances up at the Jumbotron above him, then back to camera.
+   - **BEAT 3 (7–11s) — brief cheer + exchange with friend on the left.** Visual: subject **cheers briefly with visible excitement, reacting to the playoff atmosphere**, then turns to his friend on the left, exchanges words, laughs. Subject's voice is not audible; announcers speak over the shot.
+   - **BEAT 4 (11–15s) — natural clap.** Visual: claps naturally while smiling.
 
-Save the returned video URL as `state.broadcast_video_url`. If the call returns a `task_id`, poll `mcp__pika__task_status(task_id)` per MCP server instructions.
+7. **Closing identity reinforcement (verbatim)**: `Preserve identity strongly. Keep him seated behind home plate throughout. Genuine MLB TV broadcast crowd cutaway feel.`
 
-### Step 3 — Deliver
+**On failure**: re-run kling — don't switch video engines. Kling is the only model that handles real-person photos for this recipe (Seedance fails on output-side face moderation — see "Engine choice" below). If the rejection points at the still itself, re-run Step 1 with a different photo.
 
-Per project convention (`feedback_media_display_workflow`): download both URLs locally, then emit `[[image:]]` / `[[video:]]` markers with **absolute paths** (relative `./tmp/` is ambiguous depending on cwd):
+Long calls may return `{ task_id, status }` — poll `task_status` to completion. Client-layer timeouts leave the upstream task orphaned with no recovery handle; re-run from scratch.
 
-```bash
-DEST="$(pwd)/tmp"
-mkdir -p "$DEST"
-curl -fsSL "$STILL_URL" -o "$DEST/behind-home-plate-still.png"
-curl -fsSL "$VIDEO_URL" -o "$DEST/behind-home-plate-cutaway.mp4"
-test -s "$DEST/behind-home-plate-still.png" && test -s "$DEST/behind-home-plate-cutaway.mp4"
-```
+## Step 3 — Deliver
 
-Then emit (with absolute paths) AND echo the CDN URLs as plaintext fallback:
+Report progress as you go — which step is running, when each call returns. When both calls complete, echo the CDN URLs (still + video) in plaintext; the host environment handles rendering / downloading / opening.
 
-```
-[[image:/absolute/path/to/tmp/behind-home-plate-still.png]]
-[[video:/absolute/path/to/tmp/behind-home-plate-cutaway.mp4]]
-```
+End with a one-line summary: *"Behind-home-plate cutaway for {username} — 15s, 16:9, 1080p, kling-v3-omni, native two-announcer commentary."*
 
-One-line summary: *"Behind-home-plate cutaway for {username} — 15s, 16:9, 1080p, Kling v3-omni, native two-announcer commentary."*
+## Load-bearing phrases (keep verbatim)
 
-## Load-bearing phrases (don't strip these)
-
-These are empirical behavior dependencies, not writing style — removing them breaks the recipe:
-
-- In the **still prompt**: `Hardlock: Do not alter their facial structure and maintain their likeness` + `The subject must match the reference person` (without these, identity drifts on the first frame, and everything downstream inherits the drift).
-- In the **video prompt**: `Preserve identity strongly` + `The ESPN scorebug AND the "${username}" lower-third chyron are ALREADY on screen at frame 0 — keep them visible, unchanged, pixel-locked` (without these, Kling re-animates the chyron mid-clip).
-- The full **negative_prompt** list — every entry there came from a specific failure mode in prior runs.
-- `prompt_adherence: "strict"` and `image_types: ["first_frame"]` — see inline notes above.
+- `A screenshot from a live MLB game TV broadcast on ESPN.` (Step 1 frame-type opener)
+- `The camera cuts to the audience` (Step 1 framing primitive — crowd-cutaway anchor)
+- `CRITICAL — broadcast graphics that MUST be visible in this image:` (Step 1 overlay-block imperative header)
+- `Hardlock: Do not alter their facial structure and maintain their likeness` and `The subject must match the reference person` (Step 1 prompt)
+- `First frame is the provided reference image. The ESPN scorebug AND the "${username}" lower-third chyron are ALREADY on screen at frame 0 — keep them visible, unchanged, pixel-locked across all 15 seconds. Do NOT animate them, do NOT change their text.` (Step 2 opener)
+- `Preserve identity strongly. Keep him seated behind home plate throughout. Genuine MLB TV broadcast crowd cutaway feel.` (Step 2 closer)
+- `On-screen graphics (LOCKED — do NOT animate):` (Step 2 graphics block label)
+- The full `negative_prompt` anchor list, comma-separated
+- `BEAT N (X–Ys) —` block labels with timestamps
+- `prompt_adherence: "strict"` and `image_types: ["first_frame"]` call params
 
 ## Engine choice: Kling-only (with one caveat)
 
@@ -161,23 +134,28 @@ The output-side gate is unavoidable for this trend regardless of subject, so See
 
 **Kling caveat — recognizable celebrities are blocked too.** Kling has its own content-moderation gate that fires on celebrity references (validated 2026-05-13: a Michael Jordan reference + "Ke Wang" chyron returned `task_status: failed, task_status_msg: "Failure to pass the risk control system"` at submit-time). This is correct behavior — the trend illusion only works with a non-public-figure reference where the chyron name + face are coherent. If a user supplies a celebrity photo, surface the gate to them and ask for a non-celebrity reference instead.
 
-**Kling trade-offs**: 2500-char `prompt` cap (recipe above is pre-trimmed), no `seed` param (re-rolls are non-reproducible — to re-roll just call again).
+**Kling trade-offs**: 2500-char `prompt` cap (scaffold above fits comfortably under cap), no `seed` param (re-rolls are non-reproducible — to re-roll just call again).
 
-## Failure modes
+## Failure cheat sheet
 
-| Symptom | Cause | Fix |
-|---|---|---|
-| Chyron pops in mid-clip (~4–5s flash) | Chyron not baked into the still | Re-run Step 1; verify chyron is visible in `state.broadcast_still_url` before Step 2 |
-| Scorebug animates / morphs mid-clip | `prompt_adherence` not `strict`, or `negative_prompt` was trimmed | Restore strict adherence and the full negative_prompt |
-| Identity drift late in the clip (face changes after ~10s) | Reference image too small / Kling losing the face | Re-run Step 2; if drift persists, re-run Step 1 with a tighter face crop on the still (more facial pixels = stronger lock) |
-| Username mispronounced by announcers | Native audio is one take | Re-run Step 2 |
-| Seedance `partner_validation_failed` 422 | Tried Seedance instead of Kling | Use Kling only — see engine-choice section above |
-| Kling `task_status: failed` with `task_status_msg: "Failure to pass the risk control system"` | Reference photo is a recognizable celebrity / public figure | Ask the user for a non-celebrity reference. Kling correctly blocks impersonation patterns (celebrity face + fake-event chyron) |
-| `generate_image` 400 `invalid_image_file` from `openai v1/images/edits` | Reference is an iPhone HEIC-derived JPEG with heavy EXIF and/or extreme aspect ratio (e.g. 2316×3088) | Re-encode the reference before upload: `convert in.jpg -strip -auto-orient -resize 1536x1536\> out.png`, then upload the cleaned PNG |
-| `generate_image` 502 / proxy timeout | Quality was set to `high` (>180s) | Pass `quality: "medium"` |
+| Symptom | Fix |
+|---|---|
+| Step 1 fails (any reason — content policy, billing, etc.) | Fall back once to `nano-banana-pro` with the same prompt + references + aspect_ratio; tell the user you switched and why |
+| Step 1 returns `400 invalid_image_file` from `openai v1/images/edits` | Reference is a HEIC-derived JPEG with heavy EXIF and/or extreme aspect ratio (e.g. 2316×3088). Re-encode before upload: `convert in.jpg -strip -auto-orient -resize 1536x1536\> out.png`, then upload the cleaned PNG |
+| Step 1 returns 502 / proxy timeout | `quality` was set to `high` (>180s). Pass `quality: "medium"` |
+| Step 2 fails | Re-run kling — don't switch engines. If the still is the issue, re-run Step 1 with a different photo |
+| Kling `task_status: failed` with `task_status_msg: "Failure to pass the risk control system"` | Reference photo is a recognizable celebrity / public figure. Ask for a non-celebrity reference — Kling correctly blocks celebrity-face + fake-event-chyron impersonation patterns |
+| Step 2 times out with no task_id | Re-run from scratch — client-side timeouts orphan the upstream task |
+| Chyron pops in mid-clip (~4–5s flash) | Chyron not baked into the still. Re-run Step 1; verify chyron is visible in the still URL before Step 2 |
+| Scorebug or chyron animates / morphs mid-clip | Missing `prompt_adherence: strict` or trimmed `negative_prompt`. Restore both |
+| Identity drifts after ~10s | Re-run Step 2 first (often resolves on a fresh roll). If drift persists, re-run Step 1 with a tighter face crop on the still — more facial pixels = stronger lock |
+| Seedance `partner_validation_failed` 422 | Tried Seedance instead of Kling. Use Kling only — Seedance's output-side face-moderation gate is unavoidable for this trend (see "Engine choice") |
+| Announcer mispronounces the name | Re-run Step 2 only — burned-in audio is single-take; don't try to fix in post |
+| Kling `400 prompt: size must be between 0 and 2500` | Tighten connective prose; the seven scaffold elements fit comfortably under cap |
 
-## What NOT to do
+## What not to do
 
-- Don't sport-swap. NBA / NFL / soccer variants → fork this skill; don't parameterize this one.
-- Don't add suffixes to the chyron (e.g. " - AI Creator"). Chyron is the username alone — the trend illusion depends on it reading like a real broadcast identifier.
-- Don't add post-edits — no `add_captions`, `generate_music`, `edit_*`. Kling burns the scorebug + chyron + native commentary directly; anything added afterward breaks the broadcast illusion.
+- **Don't sport-swap.** NBA / NFL / soccer variants → fork this skill; don't parameterize this one. Yankees vs Red Sox ALCS Game 3 Fenway is the trend.
+- **Don't add suffixes to the chyron** (e.g. " - AI Creator"). Chyron is the username alone — the trend illusion depends on it reading like a real broadcast identifier.
+- **Don't run a post-processing layer** (`add_captions`, `generate_music`, `edit_concat`, `edit_text_overlay`, `edit_pip`, any `edit_*`). Kling burns the scorebug + chyron + native commentary directly; anything added afterward breaks the broadcast illusion.
+- **Don't expand audio beyond the four beats** — more dialogue forces kling to compress speech.
