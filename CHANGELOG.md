@@ -3,6 +3,40 @@
 All notable changes to the Pika Claude Code plugin are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.3.0] — 2026-05-20
+
+### Repositioned
+
+- **Pika Creative Suite** — README rewritten from "Pikafy your Claude" (Claude-Code-centric) to "Pika Creative Suite — Give any AI agent a face, a voice, and a full creative studio." Reflects the actual product surface: the same MCP, skills, and plugin work natively across Claude Code, Cursor, Codex, and any of 50+ skill-aware agents. The previous hero overstated Claude exclusivity and undersold the cross-agent reality.
+
+### Added — cross-agent distribution
+
+- **`.cursor-plugin/plugin.json`** — native Cursor plugin manifest mirroring the first-party shape used in [`cursor/plugins`](https://github.com/cursor/plugins) (`category`, `tags`, `skills: "./skills/"`). Lets Cursor pick up Pika via its own plugin format.
+- **`.codex-plugin/plugin.json`** — native Codex plugin manifest with documented `interface` block (`displayName`, `defaultPrompt` ≤3, `capabilities`, `brandColor`, etc.). Lets Codex CLI pick up Pika via its own plugin format.
+- **`marketplace.json` `skills:` array** — explicit `["./skills/<name>", ...]` registry so cross-agent installers (`vercel-labs/skills`, etc.) don't have to walk the filesystem. Canonical string-array form matching [`anthropics/skills`](https://github.com/anthropics/skills/blob/main/.claude-plugin/marketplace.json) and the documented `plugin-manifest.ts` schema.
+
+### Changed
+
+- **MCP tool surface: 42 → 58 atomic primitives + 9 back-compat deprecation aliases** (compounded across pika-mcp-server back-end releases). Net 16 new canonical primitives — most prominently the Sora generative-edit suite collapsed into a single `sora_edit` tool with a `mode` discriminator; the Pika tool family renamed to `pika_scene` / `pika_addition` / `pika_swap` / `pika_effect`; `edit_audio_isolate` → `edit_audio_denoise`; `extract_audio` → `extract_audio_from_video`; Composio integration via `connect_auth` / `connect_discover` / `connect_call`; wave-2 atomics (`analyze_clip_highlights`, `scrape_social`, `scrape_ads`, `web_publish`); and `html_to_pdf`. All old names remain as deprecation aliases — non-breaking for existing skills and prompts.
+- **`generate_image`** new fields — `reference_images: string[]` (multi-ref), `mask` (gpt-image-2 inpainting), `watermark` (seedream), `n: 1–10` (batch). Output now includes `urls: string[]`; the singular `reference_image` field remains as a deprecated alias.
+- **`generate_video`** new per-provider knobs — kling: `quality_mode` / `image_tail` / `voice_ids` / `kling_model`; pika: `negative_prompt` / `seed` / `pika_model`; veo3: `resolution` / `veo3_model` / `negative_prompt` / `seed`; sora: `sora_model` / `size` / `character_id`; minimax: `minimax_model` / `last_frame_image` / `resolution` / `prompt_optimizer`.
+- **Plugin/marketplace descriptions** retired the legacy "Pika-fy your Claude" tagline in favor of "Pika Creative Suite — give any AI agent a face, a voice, and a full creative studio" matching the README hero.
+- **Capabilities surface** in the README documented as 11 tool families summing to 58 canonical primitives, with the prefix convention (`mcp__plugin_pika_pika__*` inside Claude Code, agent-defined elsewhere) called out so cross-agent users can name what they see.
+
+### Install paths (new section in README)
+
+Three independent surfaces, equal weight:
+
+1. **MCP** — drop `https://mcp.pika.me/api/mcp` into any MCP-aware client (per-client config shape documented for Claude Code, Cursor, Codex, Claude.ai connectors).
+2. **Skills** — `npx skills add Pika-Labs/Pika-Plugins` writes the 5 curated `SKILL.md` files to whichever agent the [`vercel-labs/skills` CLI](https://github.com/vercel-labs/skills) detects on your machine.
+3. **Claude plugin** — `claude plugin marketplace add Pika-Labs/Pika-Plugins` + `/plugin install pika@pika-plugins` for the Claude-native install with bundled MCP wiring.
+
+### Fixed
+
+- **README Cursor `mcp.json` snippet** previously included an unverified `"transport": "http"` field. Cursor's [official docs](https://cursor.com/docs/context/mcp) show the bare `url` form; removed the unverified transport hint.
+- **README `npx skills` framing** previously implied multi-agent fan-out by default. Corrected to describe actual flag behavior — default writes to detected agents; `--agent <name>` targets one; `--all` or `--agent '*'` installs to every detected one.
+- **License footer** previously said "Built on Anthropic Claude Code"; now says "Speaks the open Model Context Protocol; finishing pipeline built on ffmpeg and Playwright" — reflects that Pika works with any MCP-aware agent, not Claude Code exclusively.
+
 ## [1.2.3] — 2026-05-14
 
 ### Added

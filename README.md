@@ -1,13 +1,14 @@
-<h1 align="center">Pika-fy your Claude</h1>
+<h1 align="center">Pika Creative Suite</h1>
 
 <p align="center">
-  <b>Give your Claude a face, name, voice, and personality</b> — plus a full creative stack of image, video, audio, and editing tools. All in your terminal.
+  <b>Give any AI agent a face, a voice, and a full creative studio.</b><br/>
+  Image, video, music, editing — one identity, one auth, one bill, across every agent you use.
 </p>
 
 <p align="center">
-  <a href="./CHANGELOG.md"><img src="https://img.shields.io/badge/plugin-v1.2.3-blue" alt="Plugin version"></a>
+  <a href="./CHANGELOG.md"><img src="https://img.shields.io/badge/version-v1.3.0-blue" alt="Version"></a>
   <a href="https://mcp.pika.me/api/mcp"><img src="https://img.shields.io/badge/MCP-mcp.pika.me-green" alt="MCP server"></a>
-  <a href="./tools-manifest.json"><img src="https://img.shields.io/badge/tools-42_atomic_primitives-purple" alt="Tools"></a>
+  <a href="./tools-manifest.json"><img src="https://img.shields.io/badge/tools-58_atomic_primitives-purple" alt="Tools"></a>
   <a href="./LICENSE"><img src="https://img.shields.io/badge/license-Apache_2.0-blue" alt="License"></a>
 </p>
 
@@ -16,371 +17,186 @@
   scraping page (capture_website)...
   writing 4-act script (Host A · Host B)...
   rendering 4 video acts × ~15s (native multi-shot)...
-  concatenating final clip...
   done.
-View video: https://cdn.pika.art/agent/<task-id>/podcast-final.mp4
+View video: https://cdn.pika.art/agent/.../podcast-final.mp4
 ```
 
-Until now, every Claude was just *Claude*. With the **Pika MCP + Plugin** it can be a person you design — a 3D avatar, a cloned voice, a long-term memory of who you are — driving Pika's complete creative stack: video, image, voice cloning, music generation, deterministic HTML→video rendering, automatic captions, and ffmpeg-based finishing. **AI-native by design — not a GUI wrapped in an API.**
+## Three independent ways to install
 
-## How Pika fits together
+Pika ships as **three independent surfaces**. Pick one, mix two, or use all three — same Pika Agent identity, same auth, same credit pool across every install.
 
-Pika has three layers — your **Agent** (persona), the **MCP server** (protocol), and the **Claude Code plugin** (curated skills). The plugin auto-registers the MCP via its bundled `.mcp.json` — you don't have to wire anything by hand.
+| Surface | What it gives you | Install mechanism | Works with |
+|---|---|---|---|
+| **MCP** | 58 atomic creative tools over HTTP MCP with OAuth | Add `https://mcp.pika.me/api/mcp` to any MCP-aware client | Claude Code, Cursor, Codex, Claude Desktop, Claude.ai connectors, any custom MCP agent |
+| **Skills** | 5 curated `/pika:*` workflows + MCP wiring | `npx skills add Pika-Labs/Pika-Plugins` | Any skill-aware agent — Claude Code, Cursor, Codex, OpenCode, Cline, plus 50+ more auto-detected by [`vercel-labs/skills`](https://github.com/vercel-labs/skills) |
+| **Claude plugin** | Same 5 skills bundled as a Claude Code-native plugin | `claude plugin marketplace add Pika-Labs/Pika-Plugins` | Claude Code only (marketplace + `/plugin` commands) |
 
-| Layer | What it is | Where it lives |
-|---|---|---|
-| **Pika Agent** | Your persona — name, face, voice, and persistent memory — applied to every tool call | [pika.me](https://pika.me/) · [iOS app](https://apps.apple.com/us/app/pika-ai-agent/id6758411447) |
-| **Pika MCP** | Open-protocol server exposing 42 atomic creative tools (image, video, voice, music, edit) | `https://mcp.pika.me/api/mcp` |
-| **Pika Plugin** | 5 curated `/pika:*` slash commands that orchestrate multi-step pipelines on top of the MCP | This repo |
+These aren't tiers — they're orthogonal mechanisms. A Claude Code user can pick the plugin, the skills, or just the raw MCP. A Cursor user picks skills + MCP. A custom agent picks just MCP.
 
-Same backend, same auth, same output. [MCP (Model Context Protocol)](https://modelcontextprotocol.io/) is Anthropic's open standard for connecting agents to external tools — Pika MCP works with any MCP-compatible client; see [Other Claude surfaces & MCP clients](#other-claude-surfaces--mcp-clients) for non-Claude-Code setups.
+## Install
 
-> Tool names are shown unprefixed throughout this README (e.g. `generate_video`, `clone_voice`). Inside Claude Code the actual MCP tool prefix is `mcp__plugin_pika_pika__*` — both the curated skills and the tool catalog work without you ever needing to type the prefix.
+### 1. MCP — just the 58 atomic tools
 
-## Quickstart
+The lightest install. No skill files written to disk. OAuth handles auth automatically on first tool call. Each client expects a slightly different shape — pick the one for your tool:
 
-Requires Claude Code ≥ v2.0.12 (when the `/plugin` marketplace commands first shipped).
+**Claude Code / Claude Desktop** — `.mcp.json`:
 
-### 1. Create your Pika Agent
+```json
+{ "mcpServers": { "pika": { "type": "http", "url": "https://mcp.pika.me/api/mcp" } } }
+```
 
-If you don't already have one, create your Pika Agent at **[pika.me](https://pika.me/)** or via the **[iOS app](https://apps.apple.com/us/app/pika-ai-agent/id6758411447)**. Your Pika Agent carries your persona, voice, avatar, and persistent memory across every Pika tool call — without it, the plugin has no identity to drive.
+CLI equivalent: `claude mcp add --transport http pika https://mcp.pika.me/api/mcp`.
 
-### 2. Install the plugin
+**Cursor** — `~/.cursor/mcp.json` (global) or `.cursor/mcp.json` (project). Cursor uses bare `url`, no `type` field:
 
-Pick the surface you use:
+```json
+{ "mcpServers": { "pika": { "url": "https://mcp.pika.me/api/mcp" } } }
+```
 
-#### Claude Code CLI (terminal)
+Then `cursor-agent mcp login pika`.
+
+**Codex CLI**:
+
+```bash
+codex mcp add pika --url https://mcp.pika.me/api/mcp
+```
+
+**Claude.ai connectors** — add the endpoint URL in Settings → Connectors. **Any other MCP client** — follow your client's docs for the config shape; the endpoint is always `https://mcp.pika.me/api/mcp`.
+
+### 2. Skills — 5 curated workflows + MCP wiring
+
+[`vercel-labs/skills`](https://github.com/vercel-labs/skills) detects your installed agents and writes each skill to the right path. Pass `--agent <name>` to target one agent, `--all` to install to every detected one.
+
+```bash
+npx skills add Pika-Labs/Pika-Plugins
+```
+
+Then add the MCP block from §1 to your agent. The skills assume the MCP server is registered as `pika`.
+
+### 3. Claude plugin — marketplace install
 
 ```bash
 claude plugin marketplace add Pika-Labs/Pika-Plugins
 claude plugin install pika@pika-plugins
 ```
 
-#### Claude Code Desktop (macOS / Windows app)
-
-UI-driven, with one slash-command line for the one-time marketplace registration. In the **Code** tab:
-
-1. In the prompt box, type `/plugin marketplace add Pika-Labs/Pika-Plugins` and hit Enter.
-2. Click the **+** button next to the prompt box → **Plugins** → **Add plugin** → find **pika** → **Install**.
-
-Step 1 goes away once Pika lands in Anthropic's [official marketplace](https://claude.ai/settings/plugins/submit) — until then, the Desktop UI's plugin browser only surfaces plugins from already-configured marketplaces ([tracked in claude-code#52147](https://github.com/anthropics/claude-code/issues/52147)).
-
-### 3. Restart Claude Code
-
-Full quit and reopen — `.mcp.json` only loads at startup, and `/reload-plugins` alone isn't enough.
-
-### 4. Authenticate
-
-Inside Claude Code:
-
-```
-> /mcp
-```
-
-Find `pika`, hit **Authenticate** — your browser opens to the Pika sign-in page, sign in with the same account as your Pika Agent, the token is cached locally, and Claude Code reconnects automatically. Done. (See [Authentication](#authentication) for headless / CI options.)
-
-### 5. Use it
-
-You don't need to type slash commands — Pika skills auto-fire on natural-language intent. Both forms below do the same thing:
-
-```
-> /pika:podcast https://pika.art
-> make me a podcast about https://pika.art
-
-> /pika:explainer https://github.com/anthropics/claude-code
-> walk me through this repo: https://github.com/anthropics/claude-code
-
-> generate a 5-second video of a red panda dancing in the rain
-```
-
-The agent reads your prompt and runs the matching skill (or falls back to atomic MCP tools). Spending is bounded by your Pika account credit balance — no separate per-call confirmation step.
-
-### Verify
-
-```bash
-claude plugin list
-# pika@pika-plugins    Version: 1.2.3    Status: enabled
-claude mcp list
-# pika: https://mcp.pika.me/api/mcp (HTTP) - Connected
-```
-
-## Other Claude surfaces & MCP clients
-
-The Pika MCP server is a standard MCP endpoint — it works with any MCP-compatible client. The Claude Code plugin (covered above) is the curated experience; below is everything else.
-
-| Client | How to add Pika |
-|---|---|
-| **Claude Code** (CLI / Desktop) | See [Quickstart Step 2](#2-install-the-plugin) above — full plugin with curated `/pika:*` skills |
-| **Claude.ai chat** (regular web app) | Open [claude.ai/settings/connectors](https://claude.ai/settings/connectors) → **Add custom connector** → enter `https://mcp.pika.me/api/mcp` as the MCP server URL → complete the OAuth sign-in. Then enable the connector via the **+** button in any chat. |
-| **Claude Desktop chat** (the Chat tab, not the Code tab) | Edit `claude_desktop_config.json` and add Pika as a remote MCP server pointing at `https://mcp.pika.me/api/mcp`. Restart Claude Desktop. |
-| **Cursor / Codex / any MCP client** | Add `https://mcp.pika.me/api/mcp` as an HTTP MCP server in your client's MCP config; sign in with the same account as your Pika Agent. |
-
-On non-Claude-Code surfaces you get the **42 atomic tools** (image, video, voice, music, edit, identity) but **not** the curated `/pika:*` slash commands — those are Claude Code-specific. Same backend, same Pika Agent, same auth.
-
-## Launch-spotlight skills
-
-Curated skills designed to take you from a single prompt to a finished, shareable video. Five ship today (Podcast/Interview, Explainer, UGC Ads, Baseball-Trend, Kiss Cam). All generation skills consume Pika credits (paid via your Pika account).
-
-> [!TIP]
-> **Skills activate from natural language — the slash command is optional.** Saying _"make me a podcast about https://pika.art"_ or _"walk me through this repo: github.com/foo/bar"_ triggers the matching skill automatically. The `/pika:*` form is just an explicit shortcut.
-
-### Podcast / Interview Video — `/pika:podcast`
-
-Hand it a URL **or a free-form topic** — get back a finished **1-minute two-host conversational video**. 4 acts × ~15s each, native multi-shot dialogue, with the Matan-authenticity rules baked in: specific jokes tied to concrete details, "wait, actually..." pivots, mid-sentence interruptions, real reactions over generic praise. Optional voice cloning for Host A via `use_avatar`. ~25–30 min wall-clock. **Costs Pika credits.**
-
-**URL mode** — scrape and review a product page, GitHub repo, or blog post:
-
-```
-/pika:podcast https://pika.art
-/pika:podcast https://github.com/anthropics/claude-code use_avatar
-/pika:podcast                                       # ← no args = print input menu
-```
-
-**Topic mode** — free-form brief; the skill writes the script from your prose:
-
-```
-/pika:podcast Two AI researchers debate whether AGI arrives before 2030
-/pika:podcast I and a Mars-obsessed tech CEO talk about colonization timelines
-/pika:podcast interview with a seed-stage VC about what kills most startups
-```
-
-Triggers from natural language — _"make a podcast about [url-or-topic]"_, _"interview-style clip about X"_, _"two-host take on Y"_, _"I and [persona] talk about Z"_ — or call the slash command directly. Named real people get archetype portraits by default (no auto-deepfake); pass `host_b_img=<url>` to override with a likeness you have rights to.
-
-### Explainer Video — `/pika:explainer`
-
-Hand it **any URL** — a GitHub repo, product page, docs site, blog post, launch announcement — get back a ~60–80s explainer at 1280×800. Drives a real browser through the URL along an element-targeted timeline, generates an avatar lipsync of the narration, and composites it all in a macOS Sonoma frame with a 246-pixel bottom-left circle avatar. **GitHub URLs** activate a repo-aware mode (README scan + live-demo detection); other URLs use a generic page-walkthrough flow. ~5–7 min wall-clock with default `pika` lipsync; ~10–25 min if you opt into `--lipsync-provider kling` for polished-presenter mode. **Costs Pika credits.**
-
-Triggers from natural language too — _"explain this URL"_, _"walk me through [url]"_, _"make a demo video of [product page]"_, _"explainer for [github/product/docs link]"_, _"Loom-style walkthrough of [url]"_ — or use the slash command:
-
-```
-/pika:explainer https://github.com/anthropics/claude-code
-/pika:explainer https://github.com/<owner>/<repo> --focus "architecture, demo"
-/pika:explainer https://github.com/<owner>/<repo> --avatar https://cdn.pika.art/<...>.png
-/pika:explainer                                       # ← no args = print URL menu
-```
-
-### UGC Ads — `/pika:ugc-ads`
-
-Hand it a product URL — get back a **15s creator-style multi-cut UGC ad** in 9:16 vertical: HOOK + 3 JUMP CUTs + OUTRO, POV first-person talking-head selfie, native lip-synced dialogue on every beat with a 5-act narrative arc (set → name → reveal → twist → punchline). The dialogue is the through-line; the screen close-up + finger-point lands on whichever JUMP CUT the *reveal* line falls on. Six category essences (HAUL / APP / FOOD / BEAUTY / FITNESS / TECH) auto-picked from the URL guide dialogue character per category. Built-in fallback Pixar-style avatar when no `avatar_url` supplied; auto-cartoonize-on-rejection via seedream when fal-queue moderation flags a photorealistic portrait; uses your Pika avatar + cloned voice silently when available. ~6–12 min wall-clock. **Costs Pika credits.**
-
-Triggers from natural language — _"make a UGC ad for [URL]"_, _"jump-cut product ad about [URL]"_, _"creator-style ad for X"_, _"talking-head TikTok ad about Y"_, _"haul-style ad"_, _"unboxing video about [URL]"_ — or use the slash command:
-
-```
-/pika:ugc-ads https://pika.art
-/pika:ugc-ads https://maisonbrune.com avatar_url=https://cdn/face.png aspect_ratio=3:4
-/pika:ugc-ads https://oatly.com category=FOOD
-/pika:ugc-ads https://glossier.com avatar_url=https://cdn/face.png provider=kling
-/pika:ugc-ads                                       # ← no args = print URL menu
-```
-
-### Baseball-Trend (ESPN behind-home-plate cutaway) — `/pika:baseball-trend`
-
-Hand it your **name + one reference photo** — get back a **15s ESPN-style broadcast cutaway** of you sitting behind home plate at a fake Yankees vs Red Sox ALCS Game 3 at Fenway Park, with two live MLB announcers naming you on air. Broadcast still (`gpt-image-2`) with a real ESPN-style scorebug + chyron baked into frame 0, then a 15s `kling-v3-omni` clip locked to that frame for pixel-static graphics across the full shot. Native two-announcer commentary, realistic telephoto broadcast feel, no scene cuts. ~3–5 min wall-clock. **Costs Pika credits.**
-
-Triggers from natural language — _"make me a behind-home-plate cutaway"_, _"fake MLB broadcast of me"_, _"AI ESPN baseball crowd shot"_, _"viral MLB broadcast trend with me"_ — or use the slash command:
-
-```
-/pika:baseball-trend "Jane Doe" https://cdn/face.png
-/pika:baseball-trend "Jane Doe" /path/to/portrait.jpg
-/pika:baseball-trend                                # ← no args = ask for name + photo
-```
-
-Engine is Kling-only — Seedance's output-side moderation rejects every broadcast cutaway because of the crowd faces. Recognizable celebrities are also gated (the trend illusion only works with a non-public-figure reference where the chyron name + face are coherent).
-
-### Kiss Cam (in-arena Jumbotron moment) — `/pika:kiss-cam`
-
-Hand it **two reference photos** — get back a **15s viral "Kiss Cam at MSG" moment**: a fan-filmed spectator-POV phone shot of the Madison Square Garden Jumbotron with the retro red kiss cam graphic (sparkly hearts, cursive script) + adjacent Knicks vs Bulls scoreboard, then 15 seconds of the two subjects sharing a sweet, natural kiss while an off-screen PA announcer and packed-arena crowd react. Spectator-POV still (`gpt-image-2`) with the entire kiss cam UI baked into frame 0, then `kling-v3-omni` locks that as the first frame so the scoreboard, hearts, and "Kiss Cam" script stay pixel-static across all 15s — only the two subjects inside the kiss cam panel animate. Any subject style works (photoreal humans, 3D toys, illustrated avatars) — the recipe preserves whatever style each reference uses. No names anywhere; no chyron. ~4–6 min wall-clock. **Costs Pika credits.**
-
-Triggers from natural language — _"make me a kiss cam moment"_, _"kiss cam version of these two"_, _"Jumbotron kiss cam trend"_, _"fake NBA kiss cam"_ — or use the slash command:
-
-```
-/pika:kiss-cam https://cdn/photo-a.png https://cdn/photo-b.png
-/pika:kiss-cam /path/to/photo-a.jpg /path/to/photo-b.jpg
-/pika:kiss-cam                                       # ← no args = ask for both photos
-```
-
-Engine is gpt-image-2 + Kling-only, same reason as baseball-trend's Kling lock — Seedance's two-stage face-moderation gate rejects every in-arena reaction shot because of the crowd faces.
-
-## Authentication
-
-You need an authenticated MCP session before any Pika tool call works. The recommended path is one-time `/mcp` connect:
-
-```
-> /mcp
-```
-
-This opens the MCP manager UI. Find `pika`, hit **Authenticate** — your browser opens to the Pika sign-in page, sign in with the same account as your Pika Agent, the token is cached locally, and Claude Code reconnects automatically. After this, every Pika tool call works without re-prompting.
+Full quit + reopen Claude Code, then run `/mcp` and authenticate `pika`. The plugin bundles the same 5 skills as §2 plus the MCP wiring — no separate `claude mcp add`.
 
 <details>
-<summary><b>Other auth flows: auto-OAuth on first call · static token (headless / CI) · troubleshooting</b></summary>
+<summary>Claude Code on the web (claude.ai/code)</summary>
 
-### Auto-OAuth on first call
+Add this to your repo's `.claude/settings.json`, commit, and push — cloud sessions auto-install at startup:
 
-Skip `/mcp` and just call any Pika tool. The first call returns `401`, Claude Code auto-discovers the OAuth metadata, opens your browser, you sign in, and the original call retries automatically.
-
-```
-> /pika:podcast https://pika.art
-[browser opens for OAuth]
-[returns to terminal, call retries, video URL appears]
-```
-
-### Static token (headless / CI / no browser)
-
-If you can't do an interactive browser flow, set a Pika token in your shell **before launching `claude`**:
-
-```bash
-export MCP_AUTH_TOKEN="<your-pika-token>"
-claude
+```json
+{
+  "extraKnownMarketplaces": {
+    "pika-plugins": {
+      "source": { "source": "github", "repo": "Pika-Labs/Pika-Plugins" }
+    }
+  },
+  "enabledPlugins": {
+    "pika@pika-plugins": true
+  }
+}
 ```
 
-Tokens come in two flavors — a **developer key** (`dk_*` prefix, long-lived; get one at [pika.me/dev](https://www.pika.me/dev/)) or an **agent key** (service-to-service for trusted automation). Don't hard-code `${MCP_AUTH_TOKEN}` into `.mcp.json` or any file you commit — keep it in your shell env.
-
-### Troubleshooting
-
-| Symptom | Fix |
-|---|---|
-| `401 Unauthorized` on every call | Token expired. `claude mcp remove pika` then re-run `/mcp` to re-auth. |
-| Want to switch accounts | `claude mcp remove pika` → re-run `/mcp` and sign in with the other account. |
-| Browser doesn't open during OAuth | Allow Claude Code to open default browser, or fall back to a static token. |
-| `claude mcp list` shows `Disconnected` | Restart Claude Code (full quit). `.mcp.json` is only loaded at startup. |
+`mcp.pika.me` isn't in the default Trusted allowlist — switch the environment's network access to **Full**, or use **Custom** with `mcp.pika.me` added. ([Anthropic network access docs](https://code.claude.com/docs/en/claude-code-on-the-web#network-access))
 
 </details>
 
-## What you can do with Pika
+## Authenticate
 
-The plugin ships 5 curated slash commands; underneath, **42 atomic MCP tools** are at your agent's disposal. You describe the outcome in plain English — Pika picks the right tool.
+One time per install. Inside your agent, run `/mcp`, find `pika`, hit **Authenticate**. Your browser opens to the Pika sign-in page, the token caches locally, the MCP reconnects.
 
-### Generate video
+<details>
+<summary>Headless / CI / no browser</summary>
 
-Text-to-video, image-to-video, multi-reference video, keyframe transitions, lipsync, and motion transfer — all under one schema. Pika auto-routes to the best model for each request; override via the `provider` field if you have a preference.
+Get a developer key (`dk_*`) at [pika.me/dev](https://www.pika.me/dev/) and export it before launching your agent:
 
-```
-> make a 5-second video of a red panda dancing in the rain
-> animate this image
-> take these 3 reference images and this audio, build me a 10-second clip
-> sync this audio to this face
-> apply the motion from this reference video onto this character image
+```bash
+export MCP_AUTH_TOKEN="dk_..."
+claude   # or cursor, codex, etc.
 ```
 
-`generate_video` · `generate_reference_video` · `generate_keyframes_video` · `generate_lipsync` · `generate_motion_control_video`
+Don't hard-code the token into `.mcp.json` or any committed file — keep it in shell env or your secret store. Tokens also come in an agent-key flavor for service-to-service automation; same env var.
 
-### Generate images
+</details>
 
-Text-to-image, image editing, 4K resolution, ultra-fast iteration. Same auto-routing logic as video.
+<details>
+<summary>Troubleshooting</summary>
 
-```
-> generate a product photo of a coffee cup on white
-> make a 4K vertical wallpaper based on this brief
-> edit this image — add a sunset behind it
-```
+| Symptom | Fix |
+|---|---|
+| `401 Unauthorized` on every call | Token expired. Re-run `/mcp` and re-authenticate, or refresh `MCP_AUTH_TOKEN`. |
+| Want to switch accounts | Remove `pika` from your client's MCP list (`claude mcp remove pika`, edit `~/.cursor/mcp.json`, `codex mcp remove pika`, …) → re-add and re-authenticate. |
+| Browser doesn't open during OAuth | Allow your agent to open default browser, or fall back to the headless token flow above. |
+| `mcp list` shows `Disconnected` | Full quit and restart your agent — `.mcp.json` is only loaded at startup. |
 
-`generate_image`
+</details>
 
-### Generate + clone voices
+## Featured workflows
 
-Text-to-speech in 100+ languages, voice cloning from a 30-second sample. Cloned `voice_id`s are reusable across `generate_speech` and any video tool that takes voice IDs.
+Curated `/pika:*` skills (Surfaces §2 and §3) — one prompt to a finished, shareable video. All consume Pika credits.
 
-```
-> read this script in a calm female voice
-> clone my voice from this 30-second sample
-> make a podcast where two AI hosts debate Bitcoin
-```
+| Skill | Input | Output | Invoke |
+|---|---|---|---|
+| **[Podcast](./skills/podcast/SKILL.md)** | URL or free-form topic | 1-minute two-host conversational video, 4 acts × ~15s | `/pika:podcast` |
+| **[Explainer](./skills/explainer/SKILL.md)** | Any URL (GitHub, product, docs) | 60–80s browser walkthrough with avatar lipsync | `/pika:explainer` |
+| **[UGC Ads](./skills/ugc-ads/SKILL.md)** | Product URL | 15s creator-style multi-cut UGC ad, 9:16 | `/pika:ugc-ads` |
+| **[Baseball-Trend](./skills/baseball-trend/SKILL.md)** | Name + photo | 15s ESPN behind-home-plate broadcast cutaway | `/pika:baseball-trend` |
+| **[Kiss Cam](./skills/kiss-cam/SKILL.md)** | Two photos | 15s MSG Jumbotron Kiss Cam moment | `/pika:kiss-cam` |
 
-`generate_speech` · `clone_voice`
+Skills activate from natural language too — saying *"make a podcast about https://pika.art"* fires `/pika:podcast` automatically.
 
-### Generate music
+## Capabilities — 58 atomic tools
 
-Original music generation, licensed-catalog search, and beat-synced video cuts.
+Behind every curated skill is a flat tool surface (Surface §1) you can drive directly. Inside Claude Code the MCP tool prefix is `mcp__plugin_pika_pika__*`; other agents follow their own prefix convention. Counts are canonical primitives only — 9 deprecation aliases ship for back-compat but aren't counted.
 
-```
-> compose a 60-second uplifting electronic track
-> find royalty-free music about [topic]
-> cut this video on the beat at 128 bpm
-```
+| Family | What it covers | Count |
+|---|---|---|
+| **Generation** | Image, video, lipsync, music, speech, slide animation, motion-control, keyframes, reference video | 9 |
+| **Generative video edit** | One multi-mode tool — cut, extend, and remix existing video | 1 |
+| **Scene composition** | Multi-character / multi-object scene compose, generative video inpainting, region replace by mask or text, viral still-image effects | 4 |
+| **Editing** | Concat, mix, trim, captions, PiP, animate-zoom, browser-frame, beat-sync, audio denoise, text overlay, add captions | 11 |
+| **Capture** | Website screenshot / recording, frame extraction, audio extraction | 3 |
+| **Analysis** | Media, brief, transcription, clip highlights | 4 |
+| **Identity** | Avatar, voice, persona, memory append / search, sample | 10 |
+| **Persistent refs** | Reusable character refs, element refs, cloned voices | 3 |
+| **Connect** | Third-party app integrations via auth / discover / call (broad ecosystem) | 3 |
+| **Scrape** | Ads, social | 2 |
+| **Publish / search / async / utility** | Web publish, music search, skill search, task status/cancel, upload, HTML render, HTML→PDF | 8 |
+| **Total** |  | **58** |
 
-`generate_music` · `search_music` · `edit_beat_sync`
+Full schema → [`tools-manifest.json`](./tools-manifest.json).
 
-### Edit + finish
+## Requirements
 
-Pure-ffmpeg deterministic ops, ~30s each, stitched together by the agent. Concat, audio mix/trim, captions in 4 styles (`tiktok` · `hormozi` · `classic` · `karaoke`, 100+ languages), text overlays, picture-in-picture (rect or circular), animated zoom, macOS-frame wrap for screen recordings, frame extraction.
-
-`edit_concat` · `edit_audio_mix` · `edit_audio_trim` · `edit_text_overlay` · `edit_pip` · `edit_trim` · `edit_animate_zoom` · `edit_browser_frame` · `add_captions` · `extract_frame`
-
-### Render HTML → video (HyperFrames)
-
-Claude writes HTML, HyperFrames renders deterministically — same input produces byte-identical output. Outputs MP4, WebM, or MOV with transparency.
-
-```
-> make me a 30-second animated slide deck about my product launch
-> render this HTML composition as a video
-```
-
-`generate_slide_animation` · `render_html_animation`
-
-### Analyze + transcribe
-
-Describe media, extract structured briefs from mixed sources, transcribe audio or video, and capture live websites with timed scroll/click actions.
-
-```
-> describe this video
-> extract a structured product brief from these 3 sources
-> transcribe this audio
-> screencap this URL with timed scrolling
-```
-
-`analyze_media` · `analyze_brief` · `transcribe_audio` · `capture_website`
-
-### Identity + memory
-
-Your Pika Agent's persona, voice, avatar, and a persistent memory store — auto-injected as defaults on every Pika tool call so you never have to repeat yourself.
-
-`identity_whoami` · `identity_persona_read` · `identity_avatar_url` · `identity_voice_id` · `identity_voice_info` · `identity_set_avatar` · `identity_set_voice` · `identity_memory_search` · `identity_memory_append`
-
-### Full schema
-
-→ [`tools-manifest.json`](./tools-manifest.json) — all 42 tools with complete input/output schemas, ready for raw-MCP / OpenAPI consumers.
+- A Pika account ([sign up at pika.me](https://pika.me)) — carries your persona, voice, avatar, and memory
+- One of: an MCP-compatible client (any agent), a skill-aware agent ([50+ supported](https://github.com/vercel-labs/skills)), or Claude Code ≥ v2.0.12 (for the plugin path)
 
 ## FAQ
 
 **How does pricing work?**
-All generation skills consume **Pika credits** from your Pika account. Free credits ship with every account; top up at [pika.me](https://pika.me/). Atomic-tool calls (e.g. `generate_video`) and curated skills (`/pika:podcast`, `/pika:explainer`, `/pika:ugc-ads`) both draw from the same balance.
-
-**Can I use Pika MCP without Claude Code?**
-Yes — the MCP server at `https://mcp.pika.me/api/mcp` is a standard HTTP MCP endpoint and works with Claude Desktop, Cursor, Codex, or any MCP-compatible client. The curated `/pika:*` slash commands are Claude Code-specific, but the 42 atomic tools are universal. See [Other Claude surfaces & MCP clients](#other-claude-surfaces--mcp-clients).
+All generation consumes **Pika credits** from your Pika account. Free credits ship with every account; top up at [pika.me](https://pika.me). Atomic-tool calls and curated `/pika:*` skills draw from the same balance.
 
 **Is my voice clone, avatar, and memory private?**
-Yes. Your Pika Agent's persona, cloned voice, avatar, and memory are scoped to your Pika account and only accessible to your authenticated MCP sessions. They are not used to train shared models. Manage or delete them at [pika.me](https://pika.me/).
+Yes. Persona, cloned voice, avatar, and memory are scoped to your Pika account and accessible only to your authenticated MCP sessions. They are not used to train shared models. Manage or delete at [pika.me](https://pika.me).
 
-**Can I bring my own model API keys?**
-No — Pika manages provider routing internally so you don't have to juggle API keys, rate limits, or billing across multiple model vendors. One Pika account, one billing surface, every model.
+**Can I bring my own provider API keys?**
+No — Pika manages provider routing internally so you don't juggle API keys, rate limits, or billing across vendors. One Pika account, one billing surface, every model.
 
-**What's the difference between this and the Pika web app?**
-The web app is a hosted creative environment with a UI. The MCP + Plugin is **AI-native** — designed to be driven by an agent in plain English, with no UI. Same backend, same Pika Agent, same output. Use the web app for hands-on direction; use the MCP + Plugin to let an agent compose multi-tool pipelines for you.
+**Issues / questions →** [`Pika-Labs/Pika-Plugins/issues`](https://github.com/Pika-Labs/Pika-Plugins/issues)
 
-## Related projects
+## Links
 
-| Repo | What it is | Use when |
-|---|---|---|
-| **[Pika-Labs/Pika-Skills](https://github.com/Pika-Labs/Pika-Skills)** | Open-source `SKILL.md` modules powered by the Pika Developer API. No MCP, no plugin — drop a folder into your agent workspace, set `PIKA_DEV_KEY`, and go. | You want a single-purpose skill (e.g. video meeting agent) without installing the full plugin, or you're on an agent harness without MCP support. |
-| **This repo** ([`Pika-Labs/Pika-Plugins`](https://github.com/Pika-Labs/Pika-Plugins)) | Full Claude Code plugin + remote MCP server with 42 atomic tools and curated `/pika:*` slash commands. | You want the complete creative stack inside Claude Code with one install. |
-
-## Manage your install
-
-```bash
-claude plugin update pika
-claude plugin disable pika
-claude plugin uninstall pika
-claude plugin marketplace remove pika-plugins
-```
-
-## Acknowledgments
-
-Built on [Anthropic Claude Code](https://www.anthropic.com/) and the open [Model Context Protocol](https://modelcontextprotocol.io/), with [ffmpeg](https://ffmpeg.org/) and [Playwright](https://playwright.dev/) for finishing and capture.
-
-## Contributing
-
-Issues + PRs welcome at [`Pika-Labs/Pika-Plugins`](https://github.com/Pika-Labs/Pika-Plugins/issues).
+- [Changelog](./CHANGELOG.md) — release history
+- [Tool schema](./tools-manifest.json) — all 58 atomic tools with full param surfaces
+- [Pika MCP endpoint](https://mcp.pika.me/api/mcp) — raw HTTP MCP
+- [Pika Developer Portal](https://www.pika.me/dev/) — keys and SDK references
+- [Security policy](./SECURITY.md)
+- Open-source skill modules → [`Pika-Labs/Pika-Skills`](https://github.com/Pika-Labs/Pika-Skills)
+- Pika consumer products — [pika.me](https://pika.me), [iOS app](https://apps.apple.com/us/app/pika-ai-agent/id6758411447)
 
 ## License
 
-See [LICENSE](./LICENSE).
+Apache 2.0 — see [LICENSE](./LICENSE). Speaks the open [Model Context Protocol](https://modelcontextprotocol.io/); finishing pipeline built on [ffmpeg](https://ffmpeg.org/) and [Playwright](https://playwright.dev/).
