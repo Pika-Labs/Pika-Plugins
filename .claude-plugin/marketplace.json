@@ -20,6 +20,7 @@
         "email": "support@pika.art"
       },
       "homepage": "https://pika.me",
+      "repository": "https://github.com/Pika-Labs/Pika-Plugins",
       "skills": [
         "./skills/podcast",
         "./skills/explainer",
