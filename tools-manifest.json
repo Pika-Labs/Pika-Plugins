@@ -1,7 +1,7 @@
 [
   {
     "name": "add_captions",
-    "description": "Auto-transcribe a video's audio (Whisper → Deepgram → Gemini waterfall, word-level timings) and burn styled captions onto the video. Four styles: `tiktok` (word-by-word purple highlight, Bebas Neue, all caps), `hormozi` (bold centered 1-3 words, yellow highlight), `classic` (bottom subtitle bar, semi-transparent), `karaoke` (word-by-word progressive color fill). CJK languages (zh/ja/ko) auto-detected and rendered with Noto CJK fonts bundled in the worker image.\n\nReturns the result inline when complete (typically 30s–5min). Progress updates are sent as notifications during execution. If the server budget expires before completion, falls back to `{ task_id, status }` — then call `task_status(task_id)` in a tight loop (no Bash, no sleep) until done.",
+    "description": "Auto-transcribe a video's audio (Whisper → Deepgram → Gemini waterfall, word-level timings) OR burn caller-provided captions in one pass. Manual mode accepts either plain `subtitle_text` or timestamped `subtitles[]` and skips transcription. Four styles: `tiktok` (word-by-word purple highlight, Bebas Neue, all caps), `hormozi` (bold centered 1-3 words, yellow highlight), `classic` (bottom subtitle bar, semi-transparent), `karaoke` (word-by-word progressive color fill). CJK languages (zh/ja/ko) auto-detected and rendered with Noto CJK fonts bundled in the worker image. Return `transcript` is the provider transcript in auto mode; in manual mode it is normalized visible text with control characters stripped, whitespace collapsed, and segment texts joined by spaces.\n\nReturns the result inline when complete (typically 30s–5min). Progress updates are sent as notifications during execution. If the server budget expires before completion, falls back to `{ task_id, status }` — then call `task_status(task_id)` in a tight loop (no Bash, no sleep) until done.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -9,39 +9,207 @@
           "type": "string",
           "format": "uri",
           "pattern": "^https:\\/\\/.*",
-          "description": "Source video URL (must be https://). Audio extracted server-side."
+          "description": "Source video URL (must be https://). Audio extracted server-side in auto mode."
         },
         "style": {
           "default": "classic",
-          "description": "Caption visual style. tiktok / hormozi / karaoke = word-level highlight; classic = bottom subtitle bar.",
+          "description": "Caption preset name. Built-ins: tiktok, hormozi, classic, karaoke (+ neon-pop demonstrator). Each declares default position, font, colors, animation. Designer-extendable via YAMLs in skills-worker/src/pika_mcp_skills/add_captions/presets/. Default: classic.",
+          "type": "string"
+        },
+        "position": {
+          "description": "Caption vertical position; overrides preset default.",
           "type": "string",
           "enum": [
-            "tiktok",
-            "hormozi",
-            "classic",
-            "karaoke"
+            "top",
+            "middle",
+            "bottom"
+          ]
+        },
+        "font": {
+          "description": "Bundled font. CJK content always uses noto-cjk regardless.",
+          "type": "string",
+          "enum": [
+            "bebas-neue",
+            "inter",
+            "noto-cjk"
+          ]
+        },
+        "font_color": {
+          "description": "Main text color. Hex (#RRGGBB) or named: white|black|gray|red|orange|yellow|green|cyan|blue|purple|pink|magenta.",
+          "type": "string"
+        },
+        "highlight_color": {
+          "description": "Word-highlight color (word-swap / karaoke styles only). Hex or named.",
+          "type": "string"
+        },
+        "outline_color": {
+          "description": "Text outline color. Hex or named.",
+          "type": "string"
+        },
+        "font_size": {
+          "description": "Explicit pixel font size. Mutually exclusive with font_scale.",
+          "type": "integer",
+          "minimum": 12,
+          "maximum": 200
+        },
+        "font_scale": {
+          "description": "Font size multiplier of preset auto-base. S=0.75x, M=1.0x, L=1.25x, XL=1.5x. Mutually exclusive with font_size.",
+          "type": "string",
+          "enum": [
+            "S",
+            "M",
+            "L",
+            "XL"
           ]
         },
         "language": {
           "description": "Optional BCP-47 language hint (e.g. 'en', 'zh'). Auto-detect if omitted.",
           "type": "string"
         },
-        "font_size": {
-          "description": "Optional font size override. Style-specific default applied if omitted.",
-          "type": "integer",
-          "minimum": 12,
-          "maximum": 200
+        "caption_mode": {
+          "description": "Caption source. Omit for automatic behavior: auto when no manual input is provided, manual when subtitle_text or subtitles is provided. auto transcribes audio; manual skips transcription and burns caller-provided text.",
+          "type": "string",
+          "enum": [
+            "auto",
+            "manual"
+          ]
+        },
+        "subtitle_text": {
+          "description": "Plain script text for manual mode. The worker splits it into caption groups and spreads timing across the detected video duration; very dense text may be rejected after media probing.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 20000
+        },
+        "subtitles": {
+          "description": "Timestamped manual subtitles. Segments must be sorted, non-overlapping, and worker-validated against the video duration plus 0.25s tolerance after media probing.",
+          "minItems": 1,
+          "maxItems": 500,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "start_s": {
+                "description": "Subtitle start time in seconds.",
+                "type": "number",
+                "minimum": 0
+              },
+              "end_s": {
+                "description": "Subtitle end time in seconds; must be greater than start_s.",
+                "type": "number",
+                "minimum": 0
+              },
+              "text": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 500,
+                "description": "Subtitle text for this time range."
+              }
+            },
+            "required": [
+              "start_s",
+              "end_s",
+              "text"
+            ]
+          }
         }
       },
       "required": [
         "video_url"
       ],
-      "$schema": "http://json-schema.org/draft-07/schema#"
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "allOf": [
+        {
+          "not": {
+            "allOf": [
+              {
+                "required": [
+                  "subtitle_text"
+                ]
+              },
+              {
+                "required": [
+                  "subtitles"
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "not": {
+            "allOf": [
+              {
+                "required": [
+                  "font_size"
+                ]
+              },
+              {
+                "required": [
+                  "font_scale"
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "caption_mode": {
+                "const": "auto"
+              }
+            },
+            "required": [
+              "caption_mode"
+            ]
+          },
+          "then": {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "subtitle_text"
+                  ]
+                },
+                {
+                  "required": [
+                    "subtitles"
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "caption_mode": {
+                "const": "manual"
+              }
+            },
+            "required": [
+              "caption_mode"
+            ]
+          },
+          "then": {
+            "anyOf": [
+              {
+                "required": [
+                  "subtitle_text"
+                ]
+              },
+              {
+                "required": [
+                  "subtitles"
+                ]
+              }
+            ]
+          }
+        }
+      ]
     }
   },
   {
     "name": "analyze_brief",
-    "description": "Extract a structured product brief from multiple sources: web pages, GitHub repos, PDFs, or raw text/chat history. Combines all sources and uses Gemini to output a normalised JSON brief (product name, tagline, features, pain points, tone, etc.) — ready for video script generation.\n\nReturns the result inline when complete (typically 30s–5min). Progress updates are sent as notifications during execution. If the server budget expires before completion, falls back to `{ task_id, status }` — then call `task_status(task_id)` in a tight loop (no Bash, no sleep) until done.",
+    "description": "Extract a structured product brief (default) OR a free-form prose summary from up to 5 sources: web pages, GitHub repos, PDFs, or raw text. The format field switches output shape:\n- `brief` (default): Gemini returns a normalised JSON brief —   product name, tagline, features, pain points, tone, etc. Ready   for video-script generation.\n- `summary` (AGNT-68 #21): Gemini returns 2-5 paragraphs of prose   capturing each source's gist + cross-source notable points. Use   for non-product content (research, news, docs) where the rigid   brief shape doesn't fit.\n\nReturns the result inline when complete (typically 30s–5min). Progress updates are sent as notifications during execution. If the server budget expires before completion, falls back to `{ task_id, status }` — then call `task_status(task_id)` in a tight loop (no Bash, no sleep) until done.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -82,6 +250,15 @@
           "description": "Optional extra context: target audience, video purpose, what to focus on.",
           "type": "string",
           "maxLength": 2000
+        },
+        "format": {
+          "default": "brief",
+          "description": "Output shape. `brief` (default) returns structured JSON product brief; `summary` returns free-form prose (2-5 paragraphs). Both share the same source-fetching pipeline (AGNT-68 #21).",
+          "type": "string",
+          "enum": [
+            "brief",
+            "summary"
+          ]
         }
       },
       "required": [
@@ -91,14 +268,170 @@
     }
   },
   {
+    "name": "analyze_clip_highlights",
+    "description": "Find the most viral-worthy clip ranges in a video transcript. Returns scored start/end timestamps + hook + reason for each clip. Pure atomic primitive — single LLM call, no media output. Caller chains: transcribe_audio → analyze_clip_highlights → edit_trim (and optionally add_captions). Pass EITHER `transcript_words` (word-level timestamps from transcribe_audio) OR `transcript_text` (pre-formatted with `[XmYs]` timestamps), not both. Optional face-detection metadata (`first_face_time_s`, `no_face_intervals`) constrains clips so they don't start during slides/title cards.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "transcript_words": {
+          "description": "Word-level transcript with timestamps in seconds. Output of `transcribe_audio`. Mutually exclusive with `transcript_text`.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "text": {
+                "type": "string"
+              },
+              "start_s": {
+                "type": "number",
+                "minimum": 0
+              },
+              "end_s": {
+                "type": "number",
+                "minimum": 0
+              }
+            },
+            "required": [
+              "text",
+              "start_s",
+              "end_s"
+            ]
+          }
+        },
+        "transcript_text": {
+          "description": "Pre-formatted transcript with `[XmYs]` timestamps (e.g. `[1m23s] hello world`). Mutually exclusive with `transcript_words`.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 50000
+        },
+        "source_duration_s": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 7200,
+          "description": "Source video duration in seconds (max 2h)."
+        },
+        "num_clips": {
+          "default": 3,
+          "description": "How many clips to return (1-20, default 3).",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 20
+        },
+        "clip_duration_s": {
+          "default": 30,
+          "description": "Target clip duration in seconds (10-120, default 30). Min/max are clamped server-side to ±15 of this target, bounded by [15, 90].",
+          "type": "integer",
+          "minimum": 10,
+          "maximum": 120
+        },
+        "first_face_time_s": {
+          "description": "Optional: time at which the speaker first appears on screen. Clips that would start before this are dropped (intro title cards).",
+          "type": "number",
+          "minimum": 0
+        },
+        "no_face_intervals": {
+          "description": "Optional: list of `[start_s, end_s]` intervals where the speaker is NOT visible (slides, title cards, b-roll). Clips starting inside these intervals are dropped.",
+          "maxItems": 100,
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              }
+            ]
+          }
+        }
+      },
+      "required": [
+        "source_duration_s"
+      ],
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "clips": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "rank": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              },
+              "virality_score": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 10
+              },
+              "hook": {
+                "type": "string"
+              },
+              "reason": {
+                "type": "string"
+              },
+              "start_s": {
+                "type": "number",
+                "minimum": 0
+              },
+              "end_s": {
+                "type": "number",
+                "minimum": 0
+              },
+              "duration_s": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              }
+            },
+            "required": [
+              "rank",
+              "virality_score",
+              "hook",
+              "reason",
+              "start_s",
+              "end_s",
+              "duration_s"
+            ],
+            "additionalProperties": {}
+          }
+        },
+        "source_duration_s": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "num_clips_requested": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        },
+        "llm_model": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "clips",
+        "source_duration_s",
+        "num_clips_requested",
+        "llm_model"
+      ],
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": {}
+    }
+  },
+  {
     "name": "analyze_media",
-    "description": "Analyze an image or short video with Gemini vision model.",
+    "description": "Analyze an image, short video, OR audio clip with Gemini's multimodal model. The worker auto-routes based on the Content-Type the `media` URL responds with: image/*, video/*, audio/* (mp3/wav/m4a/aac/flac/ogg/opus/webm) all flow through the same inlineData → :generateContent path. Use for transcribing intent, mood/tone analysis, audio quality scoring, content moderation, etc. (AGNT-68 #20).",
     "inputSchema": {
       "type": "object",
       "properties": {
         "provider": {
           "default": "gemini",
-          "description": "Vision provider. Default: `gemini` (gemini-3-pro). No alternative providers wired today.",
+          "description": "Multimodal analysis provider. Default: `gemini` (gemini-3-flash). No alternative providers wired today.",
           "type": "string",
           "enum": [
             "gemini"
@@ -107,7 +440,7 @@
         "media": {
           "type": "string",
           "format": "uri",
-          "description": "Image or video URL to analyze."
+          "description": "Image, video, OR audio URL to analyze. Content-Type drives routing — audio/* MIME types are now accepted in addition to image/* and video/*."
         },
         "query": {
           "type": "string",
@@ -253,54 +586,377 @@
   },
   {
     "name": "clone_voice",
-    "description": "Clone a custom voice from an audio/video file or an existing Kling video. Returns a voice_id you can bind to a Kling element via create_kling_element (element_voice_id). Audio must be 5-30s, single clean voice, no background noise.\n\nReturns the result inline when complete (typically 30s–5min). Progress updates are sent as notifications during execution. If the server budget expires before completion, falls back to `{ task_id, status }` — then call `task_status(task_id)` in a tight loop (no Bash, no sleep) until done.",
+    "description": "Dispatch on `action` to manage cloned voices:\n- `clone` (default): clone a custom voice from an audio/video file   or an existing Kling video. Returns a voice_id you can bind to a   Kling element via create_kling_element (element_voice_id). Audio   must be 5-30s, single clean voice, no background noise.\n- `design` (AGNT-44 #B1): generate a brand-new voice from a text   description via ElevenLabs `/v1/text-to-voice/create-previews`.   No audio sample needed — just a prose description (e.g. 'warm   female narrator with British accent'). Returns the generated   voice_id + an optional preview sample URL.\n- `list` (AGNT-66 #14) + `provider`: list user's custom voices   (provider=kling supported in v1). Returns `{voices[], count}`.\n- `get` (AGNT-66 #15) + provider + voice_id: fetch one voice's   metadata.\n- `delete` (AGNT-66 #16) + provider + voice_id: delete a custom voice.\n\nMinimax voice CRUD is filed as a follow-up ticket; v1 ships kling for clone/list/get/delete and elevenlabs for design.\n\nReturns the result inline when complete (typically 30s–5min). Progress updates are sent as notifications during execution. If the server budget expires before completion, falls back to `{ task_id, status }` — then call `task_status(task_id)` in a tight loop (no Bash, no sleep) until done.",
     "inputSchema": {
       "type": "object",
       "properties": {
-        "voice_name": {
+        "action": {
+          "default": "clone",
+          "description": "Which voice operation to perform. Default `clone` preserves pre-Wave-1 behavior. `design` was added in AGNT-44 Tier-C #B1.",
           "type": "string",
-          "maxLength": 20,
-          "description": "Voice name (max 20 chars)."
+          "enum": [
+            "clone",
+            "design",
+            "list",
+            "get",
+            "delete"
+          ]
+        },
+        "provider": {
+          "description": "Required for action=list/get/delete (use `kling`). For action=design, callers may explicitly pass `elevenlabs` to make the routing explicit — design always routes there. action=clone always routes to kling regardless of this field. PR #206 minor: accepting `elevenlabs` so explicit design-route calls don't surface a confusing 'invalid enum value' error.",
+          "type": "string",
+          "enum": [
+            "kling",
+            "elevenlabs"
+          ]
+        },
+        "voice_name": {
+          "description": "Voice name (max 20 chars). Required when action=clone.",
+          "type": "string",
+          "maxLength": 20
         },
         "voice_url": {
-          "description": "Audio/video source URL (mp3/wav/mp4/mov). 5-30s, single clean voice. Mutually exclusive with video_id.",
+          "description": "Audio/video source URL (mp3/wav/mp4/mov). 5-30s, single clean voice. Mutually exclusive with video_id. Used by action=clone.",
           "type": "string",
           "format": "uri"
         },
         "video_id": {
-          "description": "Existing Kling video ID to extract voice from. Must be a v2.6 sound=on video, avatar, or lipsync output. Mutually exclusive with voice_url.",
+          "description": "Existing Kling video ID to extract voice from. Must be a v2.6 sound=on video, avatar, or lipsync output. Mutually exclusive with voice_url. Used by action=clone.",
           "type": "string"
+        },
+        "voice_description": {
+          "description": "Free-text description of the voice. Required when action=design. Example: 'warm female narrator with British accent, slow pacing'.",
+          "type": "string",
+          "minLength": 1
+        },
+        "preview_text": {
+          "description": "Optional 100-1000-char preview text for action=design. When omitted, ElevenLabs auto-generates a sample.",
+          "type": "string"
+        },
+        "seed": {
+          "description": "Optional seed for reproducibility on action=design.",
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        },
+        "voice_id": {
+          "description": "Required when action=get or action=delete. The voice id (returned by action=clone, action=design, or action=list).",
+          "type": "string"
+        },
+        "page_num": {
+          "description": "Optional pagination on action=list (default 1).",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "page_size": {
+          "description": "Optional page size on action=list (default 30; cap 500).",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 500
         }
       },
-      "required": [
-        "voice_name"
-      ],
       "$schema": "http://json-schema.org/draft-07/schema#"
     }
   },
   {
-    "name": "create_kling_element",
-    "description": "Create a Kling subject (element) from image or video references. Returns an element_id you can pass to generate_reference_video as element_ids[] for character/style consistency in kling omni r2v.\n\nReturns the result inline when complete (typically 30s–5min). Progress updates are sent as notifications during execution. If the server budget expires before completion, falls back to `{ task_id, status }` — then call `task_status(task_id)` in a tight loop (no Bash, no sleep) until done.",
+    "name": "connect_auth",
+    "description": "Auth operations for Composio third-party tools. Use op=list_accounts to see which apps the user has authorized and which are allowlisted; use op=request_link to obtain an OAuth URL for an unauthorized toolkit. To execute a tool, call connect_discover first (to get the slug + schema), then connect_call.",
     "inputSchema": {
       "type": "object",
       "properties": {
-        "element_name": {
+        "op": {
           "type": "string",
-          "maxLength": 20,
-          "description": "Subject name (max 20 chars)."
+          "enum": [
+            "list_accounts",
+            "request_link"
+          ],
+          "description": "Operation discriminator. `list_accounts` returns the caller's connected accounts (across all toolkits, or filtered by `toolkit`); `request_link` mints a fresh OAuth connect URL for the specified `toolkit` (which becomes required)."
+        },
+        "toolkit": {
+          "description": "Composio toolkit slug (kebab-case, e.g. `gmail`, `slack`, `github`, `notion`). REQUIRED when `op=request_link`; for `op=list_accounts` it is optional — pass to filter results to a single toolkit, omit to list across all toolkits.",
+          "type": "string",
+          "pattern": "^[a-z0-9-]{1,64}$"
+        }
+      },
+      "required": [
+        "op"
+      ],
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "op": {
+          "type": "string",
+          "enum": [
+            "list_accounts",
+            "request_link"
+          ]
+        },
+        "accounts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "toolkit_slug": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "ACTIVE",
+                  "INITIATED",
+                  "EXPIRED",
+                  "INACTIVE"
+                ]
+              },
+              "connected_at": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "toolkit_slug",
+              "status"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "available_toolkits": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "connect_url": {
+          "type": "string",
+          "format": "uri"
+        },
+        "expires_at": {
+          "type": "string"
+        },
+        "account_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "op"
+      ],
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "connect_call",
+    "description": "Execute one Composio action. You MUST have called connect_discover first to obtain the exact action slug and the JSON Schema for args — do NOT guess. For write actions (slug containing SEND/CREATE/DELETE/POST/UPDATE/REMOVE/WRITE/INSERT/ADD/PATCH/REPLY/FORWARD/MERGE/ARCHIVE/SCHEDULE/ASSIGN/REVOKE/MOVE/DRAFT/CLEAR/RESET), the user must confirm; pass confirm: true after confirmation. On needs_oauth, call connect_auth({op:'request_link', toolkit}).",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "toolkit": {
+          "type": "string",
+          "pattern": "^[a-z0-9-]{1,64}$",
+          "description": "Composio toolkit slug (kebab-case, e.g. `gmail`, `slack`). Must be a toolkit the caller has connected — if not, the response is `{ok:false, error:{code:'needs_oauth', …}}` and the caller should invoke `connect_auth({op:'request_link', toolkit})` to mint a connect URL."
+        },
+        "action": {
+          "type": "string",
+          "pattern": "^[A-Z0-9_]{1,128}$",
+          "description": "Composio action slug (SCREAMING_SNAKE_CASE, e.g. `GMAIL_SEND_EMAIL`, `SLACK_POST_MESSAGE`). Discover via `connect_discover({query})` — the returned `slug` field is exactly this value."
+        },
+        "args": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {},
+          "description": "Action-specific arguments matching the `arguments_schema` returned by `connect_discover`. The schema is action-specific and validated server-side by Composio."
+        },
+        "confirm": {
+          "default": false,
+          "description": "Destructive-action gate. For action slugs matching the destructive verb list (SEND / CREATE / DELETE / POST / UPDATE / REMOVE / WRITE / INSERT / ADD / PATCH / REPLY / FORWARD / MERGE / ARCHIVE / SCHEDULE / ASSIGN / REVOKE / MOVE / DRAFT / CLEAR / RESET), callers MUST pass `confirm: true` (after explicit user confirmation) or the call short-circuits with `{ok: false, error: {code: 'confirmation_required', ...}}` before any upstream call is made. No-op for read-only actions. The destructive-slug list is matched on the `action` slug verbatim — see `isDestructiveSlug` in `lib/composio-shim.ts` for the canonical regex.",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "toolkit",
+        "action",
+        "args"
+      ],
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "ok": {
+          "type": "boolean"
+        },
+        "data": {},
+        "error": {
+          "type": "object",
+          "properties": {
+            "code": {
+              "type": "string",
+              "enum": [
+                "feature_disabled",
+                "toolkit_not_allowed",
+                "unknown_tool",
+                "needs_oauth",
+                "confirmation_required",
+                "invalid_arguments",
+                "proxy_failure",
+                "upstream_failure",
+                "rate_limited",
+                "timeout",
+                "downstream_auth_failed",
+                "internal"
+              ]
+            },
+            "message": {
+              "type": "string",
+              "maxLength": 500
+            },
+            "correlation_id": {
+              "type": "string"
+            },
+            "toolkit_slug": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "ok"
+      ],
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "connect_discover",
+    "description": "Search Composio's third-party tool catalog by use case ('send an email', 'create a Linear issue', 'schedule a meeting'). Returns up to 25 matching tools with their full JSON Schema inline — you can construct a connect_call invocation directly from this output without a separate inspect call. Use connect_discover BEFORE connect_call; do NOT guess slug names or argument shapes.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "query": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500,
+          "description": "Free-text search across the Composio action catalog. Matches tool slugs, descriptions, and parameter names. Examples: `send email`, `create issue`, `search drive`. Result objects carry their full `arguments_schema` inline so a follow-up `inspect_tool` call is not needed."
+        },
+        "limit": {
+          "default": 10,
+          "description": "Max number of matching actions to return (1-25). Default 10. Each result carries the full JSON Schema for its arguments and output, so a wider limit increases response payload size non-trivially — pick the smallest value that gives enough candidates for the caller to pick from.",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 25
+        },
+        "toolkit": {
+          "description": "Optional toolkit slug filter (kebab-case, e.g. `gmail`). When set, only actions from that toolkit match. Omit to search the entire Composio catalog (discovery is connection- independent — connection is only required at `connect_call` time, not for discovery).",
+          "type": "string",
+          "pattern": "^[a-z0-9-]{1,64}$"
+        }
+      },
+      "required": [
+        "query"
+      ],
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "tools": {
+          "maxItems": 25,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "slug": {
+                "type": "string"
+              },
+              "toolkit_slug": {
+                "type": "string"
+              },
+              "description": {
+                "type": "string",
+                "maxLength": 500
+              },
+              "write_class": {
+                "type": "boolean"
+              },
+              "arguments_schema": {},
+              "output_schema": {},
+              "score": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              }
+            },
+            "required": [
+              "slug",
+              "toolkit_slug",
+              "description",
+              "write_class",
+              "arguments_schema",
+              "score"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "next_step_hint": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "tools",
+        "next_step_hint"
+      ],
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "create_kling_element",
+    "description": "Dispatch on `action` to manage Kling subjects (elements):\n- `create` (default): create an element from image/video   references. Returns `{element_id, element_name, task_id}`.   Use the element_id with generate_reference_video as   element_ids[] for character/style consistency in kling omni r2v.\n- `list` (AGNT-65 #5): list user's Kling elements. Returns   `{elements[], count}`. Supports `page_num`/`page_size`.\n- `get` (AGNT-65 #6) + element_id: fetch one element's metadata.\n- `delete` (AGNT-65 #7) + element_id: delete an element.\n- `presets` (AGNT-65 #8): list available tag preset IDs   (o_101..o_108) with human-readable labels. Free, no network call.\n\nReturns the result inline when complete (typically 30s–5min). Progress updates are sent as notifications during execution. If the server budget expires before completion, falls back to `{ task_id, status }` — then call `task_status(task_id)` in a tight loop (no Bash, no sleep) until done.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "action": {
+          "default": "create",
+          "description": "Which element operation to perform. Default `create` preserves pre-Wave-1 behavior.",
+          "type": "string",
+          "enum": [
+            "create",
+            "list",
+            "get",
+            "delete",
+            "presets"
+          ]
+        },
+        "element_name": {
+          "description": "Subject name (max 20 chars). Required when action=create.",
+          "type": "string",
+          "maxLength": 20
         },
         "element_description": {
+          "description": "Subject description (max 100 chars). Required when action=create.",
           "type": "string",
-          "maxLength": 100,
-          "description": "Subject description (max 100 chars)."
+          "maxLength": 100
         },
         "reference_type": {
+          "description": "Required when action=create. \"image_refer\": define from multi-angle photos (all styles). \"video_refer\": define from a short video clip (realistic human only, kling-v3+ models).",
           "type": "string",
           "enum": [
             "image_refer",
             "video_refer"
-          ],
-          "description": "\"image_refer\": define from multi-angle photos (all styles). \"video_refer\": define from a short video clip (realistic human only, kling-v3+ models)."
+          ]
         },
         "frontal_image": {
           "description": "Front-facing reference image URL. Required when reference_type=image_refer.",
@@ -327,7 +983,7 @@
           "type": "string"
         },
         "tag_ids": {
-          "description": "Category tags: o_101=趣梗 o_102=人物 o_103=动物 o_104=道具 o_105=服饰 o_106=场景 o_107=特效 o_108=其他",
+          "description": "Category tags: o_101=趣梗 o_102=人物 o_103=动物 o_104=道具 o_105=服饰 o_106=场景 o_107=特效 o_108=其他. Call action=presets to fetch the list at runtime.",
           "type": "array",
           "items": {
             "type": "string",
@@ -342,13 +998,65 @@
               "o_108"
             ]
           }
+        },
+        "element_id": {
+          "description": "Required when action=get or action=delete. The Kling element id (returned by action=create or action=list).",
+          "type": "string"
+        },
+        "page_num": {
+          "description": "Optional pagination on action=list (Kling default 1).",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "page_size": {
+          "description": "Optional page size on action=list (Kling default 30; cap 500).",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 500
         }
       },
-      "required": [
-        "element_name",
-        "element_description",
-        "reference_type"
-      ],
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    }
+  },
+  {
+    "name": "create_sora_character",
+    "description": "Dispatch on `action` to manage sora persistent assets:\n- `create_character` (default): create a reusable character from a   short reference video. Requires `name` + `video`. Returns   `{character_id, name}`.\n- `get_character` (AGNT-67): fetch character metadata by   `character_id`. Returns `{character_id, name, metadata}`.\n- `list_videos` (AGNT-67 #17): list the user's previously-generated   sora videos. Returns `{videos[], count}`.\n- `download_video` (AGNT-67 #18): fetch a sora video by   `video_id` and upload to the CDN. Returns `{url, video_id, bytes}`.\n- `delete_video` (AGNT-67 #19): delete a sora video by `video_id`.   Returns `{video_id, deleted}`.\n\nCharacter-creation reference video must be 2-4 seconds long, 16:9 or 9:16 aspect ratio — sora upstream rejects off-aspect clips with a 400 carrying the rule verbatim.\n\nReturns the result inline when complete (typically 30s–5min). Progress updates are sent as notifications during execution. If the server budget expires before completion, falls back to `{ task_id, status }` — then call `task_status(task_id)` in a tight loop (no Bash, no sleep) until done.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "action": {
+          "default": "create_character",
+          "description": "Which sora asset operation to perform. Default `create_character` preserves pre-Wave-1 behavior.",
+          "type": "string",
+          "enum": [
+            "create_character",
+            "get_character",
+            "list_videos",
+            "download_video",
+            "delete_video"
+          ]
+        },
+        "name": {
+          "description": "Display name for the character. Required when action=create_character.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "video": {
+          "description": "Reference video URL (mp4 / mov). 2-4 seconds, 16:9 or 9:16 aspect ratio. Required when action=create_character. The worker forwards this to sora's /v1/videos/characters endpoint as a multipart `video` upload.",
+          "type": "string",
+          "format": "uri"
+        },
+        "character_id": {
+          "description": "Required when action=get_character.",
+          "type": "string"
+        },
+        "video_id": {
+          "description": "Required when action=download_video or action=delete_video. The sora video id (returned by generate_video provider=sora).",
+          "type": "string"
+        }
+      },
       "$schema": "http://json-schema.org/draft-07/schema#"
     }
   },
@@ -419,6 +1127,42 @@
       "required": [
         "video_url",
         "zoom_keyframes"
+      ],
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    }
+  },
+  {
+    "name": "edit_audio_denoise",
+    "description": "Remove background noise / music / ambient sound from an audio recording, isolating the vocals or speech. Powered by ElevenLabs `/v1/audio-isolation`. Atomic primitive: single ~5-30s multipart POST, no poll. Returns the cleaned audio URL on the CDN. Pair with `transcribe_audio` for cleaner ASR on noisy field recordings, or with `generate_lipsync` to get a clean voice track before driving a face.\n\nReturns the result inline when complete (typically 30s–5min). Progress updates are sent as notifications during execution. If the server budget expires before completion, falls back to `{ task_id, status }` — then call `task_status(task_id)` in a tight loop (no Bash, no sleep) until done.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "audio_url": {
+          "type": "string",
+          "format": "uri",
+          "description": "URL of the audio file to clean (mp3/wav/m4a/etc.). The file may contain background music, noise, or non-speech audio; the denoise model removes it and returns just the vocals."
+        }
+      },
+      "required": [
+        "audio_url"
+      ],
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    }
+  },
+  {
+    "name": "edit_audio_isolate",
+    "description": "⚠ DEPRECATED — Renamed to `edit_audio_denoise`. Same parameters, same behavior. See `edit_audio_denoise` for full documentation. This alias will be removed in a future release.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "audio_url": {
+          "type": "string",
+          "format": "uri",
+          "description": "URL of the audio file to clean (mp3/wav/m4a/etc.). The file may contain background music, noise, or non-speech audio; the denoise model removes it and returns just the vocals."
+        }
+      },
+      "required": [
+        "audio_url"
       ],
       "$schema": "http://json-schema.org/draft-07/schema#"
     }
@@ -841,8 +1585,62 @@
     }
   },
   {
+    "name": "extract_audio",
+    "description": "⚠ DEPRECATED — Renamed to `extract_audio_from_video`. Same parameters, same behavior. See `extract_audio_from_video` for full documentation. This alias will be removed in a future release.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "video_url": {
+          "type": "string",
+          "format": "uri",
+          "description": "URL of the source video"
+        },
+        "format": {
+          "default": "mp3",
+          "description": "Output audio format. `mp3` (default) is compact and universally compatible; `wav` is sample-accurate PCM (larger file size) and what most downstream audio-analysis tools prefer.",
+          "type": "string",
+          "enum": [
+            "mp3",
+            "wav"
+          ]
+        }
+      },
+      "required": [
+        "video_url"
+      ],
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    }
+  },
+  {
+    "name": "extract_audio_from_video",
+    "description": "Pull the audio track out of a video file as an mp3 (default, 192k libmp3lame) or wav (PCM s16le) file. Input video is unchanged. Returns the audio URL on the CDN. Composes with `edit_audio_trim` if you need to slice a sub-range out of the extracted audio.\n\nCommon upstream sources: video clips you want to feed into `transcribe_audio` directly (note: transcribe_audio accepts video URLs too and extracts internally — use extract_audio_from_video when you want the intermediate audio URL exposed for later steps).\n\nReturns the result inline when complete (typically 30s–5min). Progress updates are sent as notifications during execution. If the server budget expires before completion, falls back to `{ task_id, status }` — then call `task_status(task_id)` in a tight loop (no Bash, no sleep) until done.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "video_url": {
+          "type": "string",
+          "format": "uri",
+          "description": "URL of the source video"
+        },
+        "format": {
+          "default": "mp3",
+          "description": "Output audio format. `mp3` (default) is compact and universally compatible; `wav` is sample-accurate PCM (larger file size) and what most downstream audio-analysis tools prefer.",
+          "type": "string",
+          "enum": [
+            "mp3",
+            "wav"
+          ]
+        }
+      },
+      "required": [
+        "video_url"
+      ],
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    }
+  },
+  {
     "name": "extract_frame",
-    "description": "Extract a single frame from a video as a PNG image. Uses fast input-side seek so extraction is near-instant even for long videos. The returned PNG URL can be used as reference_image in generate_image (e.g. capture_website → extract_frame → generate_image to generate a laptop mockup using the real website screenshot as reference).\n\nReturns the result inline when complete (typically 30s–5min). Progress updates are sent as notifications during execution. If the server budget expires before completion, falls back to `{ task_id, status }` — then call `task_status(task_id)` in a tight loop (no Bash, no sleep) until done.",
+    "description": "Extract one or more frames from a video as PNG image(s). Single-frame mode (default): pass `time_s` (or omit; defaults to 0) — returns `{url}`. Batch mode (AGNT-69 #22): pass exactly one of `count`, `interval_s`, or `at_times[]` (mutually exclusive with `time_s`) — returns `{urls: [...], url: urls[0]}` (the legacy `url` field is kept set to the first frame for back-compat with single-frame callers that handle both shapes).\n\nUses fast input-side seek so extraction is near-instant even for long videos.\n\nReturns the result inline when complete (typically 30s–5min). Progress updates are sent as notifications during execution. If the server budget expires before completion, falls back to `{ task_id, status }` — then call `task_status(task_id)` in a tight loop (no Bash, no sleep) until done.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -852,13 +1650,89 @@
           "description": "URL of the video to extract a frame from"
         },
         "time_s": {
-          "description": "Timestamp in seconds to extract (default 0 = first frame)",
+          "description": "Timestamp in seconds to extract (default 0 = first frame). Single-frame mode only — mutually exclusive with batch knobs.",
           "type": "number",
           "minimum": 0
+        },
+        "count": {
+          "description": "Batch: extract N frames evenly spaced across the video (skipping the first/last 5% so title/outro frames don't dominate). Requires the video duration to be probeable via ffprobe. 1-32. Mutually exclusive with time_s/interval_s/at_times.",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 32
+        },
+        "interval_s": {
+          "description": "Batch: extract a frame every N seconds starting at t=0 until either the video ends or the 32-frame cap is reached. Requires the video duration to be probeable via ffprobe. Mutually exclusive with time_s/count/at_times.",
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "at_times": {
+          "description": "Batch: explicit list of timestamps in seconds. 1-32 entries. Sorted + de-duplicated server-side. Mutually exclusive with time_s/count/interval_s.",
+          "minItems": 1,
+          "maxItems": 32,
+          "type": "array",
+          "items": {
+            "type": "number",
+            "minimum": 0
+          }
         }
       },
       "required": [
         "video_url"
+      ],
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    }
+  },
+  {
+    "name": "generate_effect_video",
+    "description": "⚠ DEPRECATED — Renamed to `pika_effect`. Same parameters, same behavior. See `pika_effect` for full documentation. This alias will be removed in a future release.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "image": {
+          "type": "string",
+          "format": "uri",
+          "description": "Source image URL the effect is applied to."
+        },
+        "effect": {
+          "type": "string",
+          "enum": [
+            "Cake-ify",
+            "Crumble",
+            "Crush",
+            "Decapitate",
+            "Deflate",
+            "Dissolve",
+            "Explode",
+            "Eye-pop",
+            "Inflate",
+            "Levitate",
+            "Melt",
+            "Peel",
+            "Poke",
+            "Squish",
+            "Ta-da",
+            "Tear"
+          ],
+          "description": "One of 16 named viral Pikaffects."
+        },
+        "prompt": {
+          "description": "Optional prompt to guide the effect.",
+          "type": "string",
+          "maxLength": 500
+        },
+        "negative_prompt": {
+          "type": "string",
+          "maxLength": 500
+        },
+        "seed": {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        }
+      },
+      "required": [
+        "image",
+        "effect"
       ],
       "$schema": "http://json-schema.org/draft-07/schema#"
     }
@@ -885,9 +1759,18 @@
           "description": "Description of the image. Be specific about subject, style, lighting."
         },
         "reference_image": {
-          "description": "Optional reference image URL for style / character consistency. On gpt-image-2 this routes through the /v1/images/edits endpoint (image-to-image editing).",
+          "description": "DEPRECATED — use `reference_images`. Single reference image URL for style / character consistency. When both are present, this is prepended to the head of `reference_images`.",
           "type": "string",
           "format": "uri"
+        },
+        "reference_images": {
+          "description": "Reference image URLs for style / character consistency (multi-ref). Per-provider caps: gemini up to 14, seedream up to 14, gpt-image-2 up to 16. Order matters — refs are sent in array order. On gpt-image-2 this routes through /v1/images/edits with one `image[]` multipart entry per ref.",
+          "maxItems": 16,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "format": "uri"
+          }
         },
         "aspect_ratio": {
           "description": "Output aspect ratio (default 1:1).",
@@ -901,7 +1784,7 @@
           ]
         },
         "resolution": {
-          "description": "Output resolution (default 1K). 4K supported on seedream only.",
+          "description": "Output resolution (default 1K). 4K supported on seedream and gemini (post-BACK-339 imageSize fix). gpt-image-2 native sizes are 1024x1024 / 1536x1024 / 1024x1536 / 1792x1024 / 1024x1792 only (all 1K-class) — passing resolution=2K or 4K on gpt-image-2 is rejected with a pointer to seedream (BACK-339 round-1+2 fixup; AGNT-149 widened the 16:9/9:16 native sizes).",
           "type": "string",
           "enum": [
             "1K",
@@ -910,12 +1793,13 @@
           ]
         },
         "quality": {
-          "description": "Image quality, gpt-image-2 only. `low` is ~10–20s; `medium`/`auto` are slower. `high` is intentionally NOT exposed — it exceeds the proxy 180s read timeout. Rejected on other providers.",
+          "description": "Image quality, gpt-image-2 only. `low` is ~10–20s; `medium`/`auto` are slower. `high` is the slowest tier — typically around two minutes. Rejected on other providers.",
           "type": "string",
           "enum": [
             "auto",
             "low",
-            "medium"
+            "medium",
+            "high"
           ]
         },
         "output_format": {
@@ -926,6 +1810,21 @@
             "jpeg",
             "webp"
           ]
+        },
+        "mask": {
+          "description": "Alpha PNG URL — mask for inpainting. gpt-image-2 only (routes to /v1/images/edits). Transparent regions are repainted, opaque regions are kept. Mask dimensions must match the reference image; mismatches return a clean upstream 400. Rejected on other providers.",
+          "type": "string",
+          "format": "uri"
+        },
+        "watermark": {
+          "description": "Toggle the seedream watermark. seedream only — defaults to false (no watermark). Mirrors the kling watermark precedent (BACK-278). Rejected on other providers.",
+          "type": "boolean"
+        },
+        "n": {
+          "description": "Number of images to generate (default 1, max 10). Output schema gains `urls[]` regardless; `url` retained as `urls[0]` for back-compat. gpt-image-2 native `n`; seedream uses `sequential_image_generation`; gemini does NOT support n>1 for image gen and returns a clean InvalidInput.",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10
         }
       },
       "required": [
@@ -1018,8 +1917,20 @@
           "description": "Source audio URL to sync to."
         },
         "prompt": {
-          "description": "Optional style/motion hint (parrot only).",
+          "description": "Optional style/motion hint. Parrot uses promptText; kling wires it through to the avatar payload for emotion / camera guidance (BACK-339 — was previously dropped).",
           "type": "string"
+        },
+        "mode": {
+          "description": "Kling avatar quality tier (std default upstream, pro higher fidelity). Kling only.",
+          "type": "string",
+          "enum": [
+            "std",
+            "pro"
+          ]
+        },
+        "watermark": {
+          "description": "Burn kling's watermark into the output. Default `false` — clean output by default. Pass `true` to opt back into kling's account-tier-dependent watermark. Kling only.",
+          "type": "boolean"
         }
       },
       "required": [
@@ -1067,7 +1978,7 @@
           ]
         },
         "model": {
-          "description": "Kling model id (kling only; default kling-v3).",
+          "description": "Kling model id (kling only; default kling-v3). kling-v2-6 is intentionally kept on motion-control (worker enforces the same two-value allow-list); the v2-6 deferral on `generate_video.kling_model` is t2v/i2v-specific.",
           "type": "string",
           "enum": [
             "kling-v3",
@@ -1081,6 +1992,33 @@
             "std",
             "pro"
           ]
+        },
+        "character_orientation": {
+          "description": "Kling motion-control character orientation source. `video` (default) uses the reference video's orientation; `image` uses the source image. Kling only. (BACK-339.)",
+          "type": "string",
+          "enum": [
+            "video",
+            "image"
+          ]
+        },
+        "keep_original_sound": {
+          "description": "Preserve the reference video's original audio in the output. Default `false` (BACK-339; was previously silently `yes`). Kling only.",
+          "type": "boolean"
+        },
+        "seed": {
+          "description": "Reproducibility seed for pika animate. Pika only — kling motion-control rejects this. (BACK-339.)",
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        },
+        "negative_prompt": {
+          "description": "What pika animate should AVOID generating. Pika only — kling motion-control rejects this. (BACK-339.)",
+          "type": "string",
+          "maxLength": 2500
+        },
+        "watermark": {
+          "description": "Burn kling's watermark into the output. Default `false` — clean output by default. Pass `true` to opt back into kling's account-tier-dependent watermark. Kling only.",
+          "type": "boolean"
         }
       },
       "required": [
@@ -1092,26 +2030,85 @@
   },
   {
     "name": "generate_music",
-    "description": "Generate music with vocals via MiniMax music-2.5. Duration is determined by lyric length (typically 20-60s); pass multi-section [verse]/[chorus] lyrics to get longer tracks.",
+    "description": "Generate music or sound effects. Default kind=`music` + provider=`minimax-music` calls MiniMax music-2.5 (full song with vocals; duration determined by lyric length, 20-60s typical). Set `kind: sfx` (AGNT-44 #B2) + `provider: elevenlabs` to generate a short sound effect via ElevenLabs `/v1/sound-generation` (e.g. 'thunder', 'glass breaking', 0.5-30s, no lyrics). Set `provider: kling-audio` (AGNT-44 #A2/A3) to generate music/SFX/BGM via Kling — `mode: text_to_audio` from a prompt, or `mode: video_to_audio` cued to an existing video (provide `source_video_url` or `source_video_id`).",
     "inputSchema": {
       "type": "object",
       "properties": {
         "provider": {
           "default": "minimax-music",
-          "description": "Which music model. Default minimax-music (currently the only provider).",
+          "description": "Music/SFX provider. `minimax-music` (default) for full songs with vocals + lyrics. `elevenlabs` for sound effects (requires kind=sfx). `kling-audio` (AGNT-44 #A2/A3) for music/SFX/BGM from a prompt (mode=text_to_audio) or cued to a video (mode=video_to_audio).",
           "type": "string",
           "enum": [
-            "minimax-music"
+            "minimax-music",
+            "elevenlabs",
+            "kling-audio"
+          ]
+        },
+        "kind": {
+          "default": "music",
+          "description": "What to generate. `music` (default) — full song with vocals/instruments via MiniMax. `sfx` (AGNT-44 #B2) — short sound effect via ElevenLabs (no lyrics; provider must be elevenlabs). Ignored for kling-audio (Kling handles music/SFX/BGM via mode + per-mode prompt fields).",
+          "type": "string",
+          "enum": [
+            "music",
+            "sfx"
+          ]
+        },
+        "mode": {
+          "description": "AGNT-44 #A2/A3 — kling-audio only. `text_to_audio` (default): generate audio from a prompt. `video_to_audio`: generate audio cued to a source video (provide source_video_url or source_video_id).",
+          "type": "string",
+          "enum": [
+            "text_to_audio",
+            "video_to_audio"
           ]
         },
         "prompt": {
           "type": "string",
           "minLength": 1,
-          "description": "Style/genre/mood description."
+          "description": "Style/genre/mood description (kind=music) OR the sound effect to generate (kind=sfx; e.g. 'thunder cracking with rain', 'glass shattering on tile') OR the audio prompt for kling-audio text_to_audio."
         },
         "lyrics": {
-          "description": "Song lyrics with optional [verse]/[chorus] section tags. Output length scales with lyric length; omit for a ~33s instrumental.",
+          "description": "Song lyrics with optional [verse]/[chorus] section tags. Output length scales with lyric length; omit for a ~33s instrumental. Ignored when kind=sfx or provider=kling-audio.",
           "type": "string"
+        },
+        "duration_seconds": {
+          "description": "kind=sfx only: target duration in seconds (0.5-30). When omitted, ElevenLabs auto-picks.",
+          "type": "number",
+          "minimum": 0.5,
+          "maximum": 30
+        },
+        "prompt_influence": {
+          "description": "kind=sfx only: how strictly to follow the prompt (0-1, default 0.3). Higher = more literal interpretation.",
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "loop": {
+          "description": "kind=sfx only: when true, generate seamless looping audio.",
+          "type": "boolean"
+        },
+        "source_video_url": {
+          "description": "kling-audio mode=video_to_audio: HTTPS URL of the source video (3-20s, mp4/mov). Mutually exclusive with source_video_id.",
+          "type": "string",
+          "format": "uri"
+        },
+        "source_video_id": {
+          "description": "kling-audio mode=video_to_audio: Kling video id (last 30 days). Mutually exclusive with source_video_url.",
+          "type": "string",
+          "minLength": 1
+        },
+        "sound_effect_prompt": {
+          "description": "kling-audio mode=video_to_audio: sound-effect prompt cued to the video (max 200 chars).",
+          "type": "string",
+          "maxLength": 200
+        },
+        "bgm_prompt": {
+          "description": "kling-audio mode=video_to_audio: background-music prompt cued to the video (max 200 chars).",
+          "type": "string",
+          "maxLength": 200
+        },
+        "asmr_mode": {
+          "description": "kling-audio mode=video_to_audio: enable ASMR generation mode.",
+          "type": "boolean"
         }
       },
       "required": [
@@ -1122,16 +2119,17 @@
   },
   {
     "name": "generate_reference_video",
-    "description": "Generate a video from multi-modal reference inputs (images, videos, audio) used as character / style / motion anchors — NOT as start frames. **Default: kling** (omni-video, sound-capable, up to 7 image / 3 video / 8 audio refs). Specialist: seedance — cinematic look, supports `fast` / `seed` / `resolution` / `auto_duration`, accepts up to 9 image / 3 video / 3 audio refs (combined ≤ 12).\n\nReference assets in prompt via <<<image_1>>>/<<<video_1>>> (kling) or @Image1/@Video1/@Audio1 (seedance).\n\nSound defaults to on; pass sound=false to suppress. For text- or single-image-driven video use `generate_video` instead.\n\nReturns the result inline when complete (typically 30s–5min). Progress updates are sent as notifications during execution. If the server budget expires before completion, falls back to `{ task_id, status }` — then call `task_status(task_id)` in a tight loop (no Bash, no sleep) until done.",
+    "description": "Generate a video from multi-modal reference inputs (images, videos, audio) used as character / style / motion anchors — NOT as start frames. **Default: kling** (omni-video, sound-capable, up to 7 image / 3 video / 8 audio refs). Specialist: seedance — cinematic look, supports `fast` / `seed` / `resolution` / `auto_duration`, accepts up to 9 image / 3 video / 3 audio refs (combined ≤ 12). Specialist: minimax — S2V-01 single-subject consistent-character mode (exactly 1 reference_image, no videos or audio). Subject must be a HUMAN face (animals/objects fail subject extraction).\n\nReference assets in prompt via <<<image_1>>>/<<<video_1>>> (kling) or @Image1/@Video1/@Audio1 (seedance).\n\nSound defaults to on; pass sound=false to suppress. For text- or single-image-driven video use `generate_video` instead.\n\nReturns the result inline when complete (typically 30s–5min). Progress updates are sent as notifications during execution. If the server budget expires before completion, falls back to `{ task_id, status }` — then call `task_status(task_id)` in a tight loop (no Bash, no sleep) until done.",
     "inputSchema": {
       "type": "object",
       "properties": {
         "provider": {
-          "description": "Which video model. **Default: kling** — fastest + cheapest, omni-video supports sound + up to 7/3/8 refs. seedance for cinematic look, fast tier, seed control, auto duration.",
+          "description": "Which video model. **Default: kling** — fastest + cheapest, omni-video supports sound + up to 7/3/8 refs. seedance for cinematic look, fast tier, seed control, auto duration. minimax for S2V-01 single-subject (exactly 1 reference_image). Subject must be a HUMAN face (animals/objects fail subject extraction).",
           "type": "string",
           "enum": [
             "kling",
-            "seedance"
+            "seedance",
+            "minimax"
           ]
         },
         "prompt": {
@@ -1213,7 +2211,8 @@
           ]
         },
         "shots": {
-          "description": "Multi-shot narrative segments. kling only. Up to 6 shots, each with its own prompt + duration. Sum of `shot.duration` MUST equal the top-level `duration`.",
+          "description": "Multi-shot narrative segments. kling only. 1-6 shots, each with its own prompt + duration. Sum of `shot.duration` MUST equal the top-level `duration`.",
+          "minItems": 1,
           "maxItems": 6,
           "type": "array",
           "items": {
@@ -1250,7 +2249,7 @@
           "maxLength": 2500
         },
         "watermark": {
-          "description": "Burn kling's watermark into the output. Default unset = kling applies its own (account-tier-dependent). Pass `false` for clean brand content. Kling only.",
+          "description": "Burn kling's watermark into the output. Default `false` — clean output by default. Pass `true` to opt back into kling's account-tier-dependent watermark. Kling only.",
           "type": "boolean"
         },
         "image_types": {
@@ -1352,6 +2351,87 @@
     }
   },
   {
+    "name": "generate_scene_video",
+    "description": "⚠ DEPRECATED — Renamed to `pika_scene`. Same parameters, same behavior. See `pika_scene` for full documentation. This alias will be removed in a future release.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "ingredients": {
+          "minItems": 2,
+          "maxItems": 6,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "format": "uri"
+          },
+          "description": "2-6 ingredient image URLs. The model composites the objects/people from these images into a coherent scene driven by `prompt`."
+        },
+        "prompt": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 50000,
+          "description": "Scene description — what happens with the ingredients (camera, action, mood, environment)."
+        },
+        "ingredients_mode": {
+          "description": "How faithful to the ingredients. `precise` (default) keeps each ingredient recognizable. `creative` lets the model interpret them loosely.",
+          "type": "string",
+          "enum": [
+            "precise",
+            "creative"
+          ]
+        },
+        "model": {
+          "description": "Pika model. 2.2 (default, best quality, supports duration / resolution); 2.1 (older); turbo (fastest, cheapest).",
+          "type": "string",
+          "enum": [
+            "2.2",
+            "2.1",
+            "turbo"
+          ]
+        },
+        "duration": {
+          "description": "Duration in seconds, model 2.2 only — 5 or 10.",
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        },
+        "resolution": {
+          "description": "Output resolution, model 2.2 only. Default 720p.",
+          "type": "string",
+          "enum": [
+            "720p",
+            "1080p"
+          ]
+        },
+        "aspect_ratio": {
+          "description": "Output aspect ratio. Forwarded to pika-api as `aspectRatio`.",
+          "type": "string",
+          "enum": [
+            "16:9",
+            "9:16",
+            "1:1"
+          ]
+        },
+        "negative_prompt": {
+          "description": "Optional — describe what to avoid.",
+          "type": "string",
+          "maxLength": 500
+        },
+        "seed": {
+          "description": "Optional seed for reproducibility.",
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        }
+      },
+      "required": [
+        "ingredients",
+        "prompt"
+      ],
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    }
+  },
+  {
     "name": "generate_slide_animation",
     "description": "Generate an animated motion-graphics video from a text prompt. Claude writes the HTML composition (scene structure, typography, GSAP animations, shader transitions); the HyperFrames engine renders it deterministically to MP4. Use for: title cards, product launch teasers, animated logo reveals, explainer slides, text-on-screen intros, designed motion graphics, and any 'slide animation' / 'animated text' / 'animated slides' request. NOT for real-footage video (use `generate_video`), still-image-to-video transitions (use `generate_keyframes_video`), or assembling existing clips (use `edit_concat`). Default returns the HTML CDN URL only (~30s); set `record_video=true` to also render an MP4 via deterministic per-frame seek (~30–90s typical, longer for dense shader work).\n\nReturns the result inline when complete (typically 30s–5min). Progress updates are sent as notifications during execution. If the server budget expires before completion, falls back to `{ task_id, status }` — then call `task_status(task_id)` in a tight loop (no Bash, no sleep) until done.",
     "inputSchema": {
@@ -1359,7 +2439,7 @@
       "properties": {
         "prompt": {
           "type": "string",
-          "maxLength": 1000,
+          "maxLength": 50000,
           "description": "Describe the slide deck — style, content, mood, audience. Example: \"A dark energetic product launch for a fitness app. Bold typography, neon accents.\""
         },
         "brief": {
@@ -1440,44 +2520,180 @@
   },
   {
     "name": "generate_speech",
-    "description": "Generate speech from text. Default: minimax-tts (fast). elevenlabs: premium, more voice options.",
+    "description": "Generate speech from text (default mode=text_to_speech), transform audio to a different voice (mode=speech_to_speech, AGNT-44 #B3), or dub a video into another language (mode=dub, AGNT-44 #B4). Default provider: minimax-tts (fast). elevenlabs: premium, more voice options + the only provider for speech_to_speech / dub. kling-tts (AGNT-44 #A4): Kling voice catalogue; runs in the worker envelope.\n\n**Typed result (sync paths only):** `text_to_speech` and `speech_to_speech` modes return `structuredContent` with measured `duration_seconds`, `word_count`, `char_count`, `pace_wps`, `pace_cps`. Pass `expected_duration_s` to also receive `drift_seconds` + `drift_pct`. Worker-backed paths (`mode=dub`, `provider=kling-tts`) return via `task_status` with the original opaque envelope; v2 typed coverage tracked.",
     "inputSchema": {
       "type": "object",
       "properties": {
         "provider": {
           "default": "minimax-tts",
-          "description": "minimax-tts or elevenlabs. Default minimax-tts.",
+          "description": "TTS provider. Default minimax-tts; elevenlabs / kling-tts alternatives. speech_to_speech + dub modes require provider=elevenlabs.",
           "type": "string",
           "enum": [
             "minimax-tts",
-            "elevenlabs"
+            "elevenlabs",
+            "kling-tts"
+          ]
+        },
+        "mode": {
+          "description": "What to generate. `text_to_speech` (default) — synthesize speech from text. `speech_to_speech` (AGNT-44 #B3) — transform a source audio recording to a target voice (elevenlabs only; requires voice_id + source_audio_url). `dub` (AGNT-44 #B4) — translate and dub a video into another language (elevenlabs only; requires source_video_url + target_language).",
+          "type": "string",
+          "enum": [
+            "text_to_speech",
+            "speech_to_speech",
+            "dub"
           ]
         },
         "text": {
+          "description": "Text to speak. Required for mode=text_to_speech (default); ignored for speech_to_speech / dub. Max 10000 chars.",
           "type": "string",
-          "minLength": 1,
-          "maxLength": 10000,
-          "description": "Text to speak. Max 10000 chars."
+          "maxLength": 10000
         },
         "voice_id": {
-          "description": "Provider-specific voice ID.",
+          "description": "Provider-specific voice ID. For mode=speech_to_speech the target voice (required).",
           "type": "string"
         },
         "language": {
           "default": "en",
           "description": "BCP-47 language tag (e.g. 'en', 'zh', 'es').",
           "type": "string"
+        },
+        "voice_language": {
+          "description": "kling-tts only: kling-specific voice language code (overrides voice's default language; see kling docs).",
+          "type": "string"
+        },
+        "speed": {
+          "description": "kling-tts only: playback speed multiplier (kling defaults).",
+          "type": "number"
+        },
+        "source_audio_url": {
+          "description": "mode=speech_to_speech only: HTTPS URL of the source audio (mp3/wav/m4a, ≤50 MB). Worker fetches and uploads as multipart to ElevenLabs STS.",
+          "type": "string",
+          "format": "uri"
+        },
+        "remove_background_noise": {
+          "description": "mode=speech_to_speech only: when true, strip background noise from the input before voice conversion.",
+          "type": "boolean"
+        },
+        "source_video_url": {
+          "description": "mode=dub only: HTTPS URL of the source video (mp4/mov). Passed to ElevenLabs as source_url (upstream pulls it).",
+          "type": "string",
+          "format": "uri"
+        },
+        "target_language": {
+          "description": "mode=dub only: ISO-639 target language code (e.g. 'es', 'fr', 'ja', 'de'). Required for dub.",
+          "type": "string"
+        },
+        "source_language": {
+          "description": "mode=dub only: ISO-639 source language code, or 'auto' (default) to let ElevenLabs detect.",
+          "type": "string"
+        },
+        "num_speakers": {
+          "description": "mode=dub only: number of speakers in the source (0 = auto-detect, default).",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 20
+        },
+        "expected_duration_s": {
+          "description": "Optional — caller's predicted audio duration in seconds. When provided, the response also includes `drift_seconds` (signed actual - expected) and `drift_pct` (fraction). Skills with no schedule can omit. AGNT-175.",
+          "type": "number",
+          "minimum": 0
+        }
+      },
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "audio_url": {
+          "type": "string"
+        },
+        "duration_seconds": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "model_used": {
+          "type": "string"
+        },
+        "voice_id": {
+          "type": "string"
+        },
+        "provider": {
+          "type": "string"
+        },
+        "mode": {
+          "type": "string",
+          "enum": [
+            "text_to_speech",
+            "speech_to_speech",
+            "dub"
+          ]
+        },
+        "word_count": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "char_count": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "pace_wps": {
+          "anyOf": [
+            {
+              "type": "number",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "pace_cps": {
+          "anyOf": [
+            {
+              "type": "number",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "drift_seconds": {
+          "type": "number"
+        },
+        "drift_pct": {
+          "type": "number"
         }
       },
       "required": [
-        "text"
+        "audio_url",
+        "duration_seconds",
+        "model_used",
+        "voice_id",
+        "provider"
       ],
-      "$schema": "http://json-schema.org/draft-07/schema#"
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": {}
     }
   },
   {
     "name": "generate_video",
-    "description": "Generate a video from a text prompt or a single image. One tool, multiple providers via the `provider` enum. **Default: kling** — fastest + cheapest, supports ambient sound/music. Prefer kling unless the caller's request has a concrete reason that maps to a specialist.\n\nFor reference-based generation (multi-ref images / videos / audio as character or style anchors) use `generate_reference_video` instead.\n\nSpecialist alternatives: veo3 — use when the clip needs synthesized natural-language dialogue or voice-over (higher cost). sora — up to 20s, premium quality. seedance — cinematic look, supports `end_image` / `fast` / `seed` / `resolution`. minimax — Hailuo, image_to_video only. pika — parrot i2v.\n\nSound defaults to on for sound-capable providers (kling / veo3 / sora / seedance); pass sound=false to suppress. Passing sound=true on pika or minimax is rejected.\n\nTwo modes: text_to_video (default), image_to_video (requires `image`).\n\nReturns the result inline when complete (typically 30s–5min). Progress updates are sent as notifications during execution. If the server budget expires before completion, falls back to `{ task_id, status }` — then call `task_status(task_id)` in a tight loop (no Bash, no sleep) until done.",
+    "description": "Generate a video from a text prompt or a single image. One tool, multiple providers via the `provider` enum. **Default: kling** — fastest + cheapest, supports ambient sound/music. Prefer kling unless the caller's request has a concrete reason that maps to a specialist.\n\nFor reference-based generation (multi-ref images / videos / audio as character or style anchors) use `generate_reference_video` instead.\n\nSpecialist alternatives: veo3 — use when the clip needs synthesized natural-language dialogue or voice-over (higher cost). sora — up to 20s, premium quality. seedance — cinematic look, supports `end_image` / `fast` / `seed` / `resolution`. minimax — Hailuo, image_to_video only. pika — fast t2v + i2v on 2.2 / 2.1 / turbo models, no sound.\n\nSound defaults to on for sound-capable providers (kling / veo3 / sora / seedance); pass sound=false to suppress. Passing sound=true on pika or minimax is rejected.\n\nThree modes: text_to_video (default), image_to_video (requires `image`), video_extend (AGNT-44 #A1 / BACK-397 — extend an existing Kling video by 4-5s; requires `source_video_id`, kling only).\n\nReturns the result inline when complete (typically 30s–5min). Progress updates are sent as notifications during execution. If the server budget expires before completion, falls back to `{ task_id, status }` — then call `task_status(task_id)` in a tight loop (no Bash, no sleep) until done.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -1494,17 +2710,23 @@
           ]
         },
         "mode": {
-          "description": "text_to_video (default): from prompt only. image_to_video: animate a source image as the first frame (requires `image`). minimax requires image_to_video. For reference-based generation (multi-ref images / videos / audio) use the sibling tool `generate_reference_video`.",
+          "description": "text_to_video (default): from prompt only. image_to_video: animate a source image as the first frame (requires `image`). minimax requires image_to_video. video_extend (AGNT-44 #A1 / BACK-397): extend an existing Kling video by 4-5 seconds (requires `source_video_id`; `prompt` optional; kling only). For reference-based generation (multi-ref images / videos / audio) use the sibling tool `generate_reference_video`.",
           "type": "string",
           "enum": [
             "text_to_video",
-            "image_to_video"
+            "image_to_video",
+            "video_extend"
           ]
         },
         "prompt": {
+          "description": "Description or motion direction for the video. Required for text_to_video / image_to_video; optional for video_extend (when omitted, kling continues the source video's existing motion).",
           "type": "string",
-          "minLength": 1,
-          "description": "Description or motion direction for the video."
+          "minLength": 1
+        },
+        "source_video_id": {
+          "description": "mode=video_extend only: Kling video id of the source clip to extend (must be ≤ 30 days old). Kling only — passing this on other providers is rejected.",
+          "type": "string",
+          "minLength": 1
         },
         "image": {
           "description": "Source image URL. Required when mode=image_to_video.",
@@ -1512,7 +2734,7 @@
           "format": "uri"
         },
         "duration": {
-          "description": "Length in seconds (default 5; **sora defaults to 4** since 5 isn't in its accepted set). Per-provider valid values: kling 5 or 10 · pika 5 or 10 · veo3 5–8 · seedance 3–12 · minimax 6 · **sora 4, 8, or 12 (no other values accepted)**.",
+          "description": "Length in seconds (default 5; **sora defaults to 4** since 5 isn't in its accepted set; **veo3 defaults to 4** since 5 isn't in its accepted set). Per-provider valid values: kling 5 or 10 · pika 5 or 10 · veo3 4, 6, or 8 · seedance 4–15 · minimax 6 or 10 · **sora 4, 8, or 12 (no other values accepted)**.",
           "type": "integer",
           "minimum": 3,
           "maximum": 20
@@ -1540,7 +2762,7 @@
           "format": "uri"
         },
         "seed": {
-          "description": "Reproducibility seed. seedance only (echoed in result). Rejected on other providers.",
+          "description": "Reproducibility seed. Accepted on seedance / pika / veo3. Rejected on kling / sora / minimax with a clear error.",
           "type": "integer",
           "minimum": -9007199254740991,
           "maximum": 9007199254740991
@@ -1550,16 +2772,19 @@
           "type": "boolean"
         },
         "resolution": {
-          "description": "Output resolution. seedance only. Default 720p. 1080p requires `fast=false`. Other providers ignore this.",
+          "description": "Output resolution. Accepted on seedance (480p/720p/1080p), pika (720p/1080p), veo3 (720p/1080p), and minimax (512p/720p/768p/1080p — sent upstream uppercased). Other providers (kling, sora) reject this field with a clear error. seedance fast tier additionally rejects 1080p.",
           "type": "string",
           "enum": [
             "480p",
+            "512p",
             "720p",
+            "768p",
             "1080p"
           ]
         },
         "shots": {
-          "description": "Multi-shot narrative segments (kling t2v only; rejected on kling i2v). Up to 6 shots, each with its own prompt + duration. Sum of `shot.duration` MUST equal the top-level `duration`.",
+          "description": "Multi-shot narrative segments (kling t2v only; rejected on kling i2v). 1-6 shots, each with its own prompt + duration. Sum of `shot.duration` MUST equal the top-level `duration`.",
+          "minItems": 1,
           "maxItems": 6,
           "type": "array",
           "items": {
@@ -1591,18 +2816,489 @@
           ]
         },
         "negative_prompt": {
-          "description": "What the model should AVOID generating. Common patterns to combine: general quality → 'blur, distortion, low quality'; clean look → 'watermarks, text overlay, logos'; character work → 'deformed anatomy, extra fingers'; single-shot → 'cuts, scene transitions'. Kling only — leave empty unless you have a specific artifact to suppress.",
+          "description": "What the model should AVOID generating. Accepted on kling / pika / veo3; rejected on sora / seedance / minimax with a clear error. Common patterns: general quality → 'blur, distortion, low quality'; clean look → 'watermarks, text overlay, logos'; character work → 'deformed anatomy, extra fingers'; single-shot → 'cuts, scene transitions'.",
           "type": "string",
           "maxLength": 2500
         },
         "watermark": {
-          "description": "Burn kling's watermark into the output. Default unset = kling applies its own (account-tier-dependent). Pass `false` for clean brand content. Kling only.",
+          "description": "Burn kling's watermark into the output. Default `false` — clean output by default. Pass `true` to opt back into kling's account-tier-dependent watermark. Kling only.",
+          "type": "boolean"
+        },
+        "quality_mode": {
+          "description": "Kling quality tier (std = 720p; pro = 1080p; 4k). Kling only.",
+          "type": "string",
+          "enum": [
+            "std",
+            "pro",
+            "4k"
+          ]
+        },
+        "image_tail": {
+          "description": "Kling i2v end-frame URL — drives a start→end morph. Requires mode=image_to_video. Kling only.",
+          "type": "string",
+          "format": "uri"
+        },
+        "voice_ids": {
+          "description": "Cloned voice IDs from `clone_voice` for sound generation. Up to 8 (kling upstream cap). Kling only.",
+          "minItems": 1,
+          "maxItems": 8,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "kling_model": {
+          "description": "Kling t2v/i2v model variant. Currently kling-v3 only; kling-v2-6 deferred per plan D6. Kling only.",
+          "type": "string",
+          "enum": [
+            "kling-v3"
+          ]
+        },
+        "pika_model": {
+          "description": "Pika model version. 2.2 = best quality (default); 2.1 / turbo are legacy and ignore duration / resolution. Pika only.",
+          "type": "string",
+          "enum": [
+            "2.2",
+            "2.1",
+            "turbo"
+          ]
+        },
+        "veo3_model": {
+          "description": "Veo3 model variant. Default veo-3.0. `-fast` cuts latency + cost; 3.1 is the newer model. veo3 only.",
+          "type": "string",
+          "enum": [
+            "veo-3.0",
+            "veo-3.0-fast",
+            "veo-3.1",
+            "veo-3.1-fast"
+          ]
+        },
+        "sora_model": {
+          "description": "Sora model variant. Default sora-2; sora-2-pro is the higher-fidelity tier (~$1/clip). sora only.",
+          "type": "string",
+          "enum": [
+            "sora-2",
+            "sora-2-pro"
+          ]
+        },
+        "size": {
+          "description": "Sora output resolution grid. When omitted, falls back to the aspect_ratio-derived selection. sora only.",
+          "type": "string",
+          "enum": [
+            "720x1280",
+            "1280x720",
+            "1024x1792",
+            "1792x1024"
+          ]
+        },
+        "character_id": {
+          "description": "Sora character ID (from `create_sora_character` — separate atomic tool, future work). sora only.",
+          "type": "string",
+          "minLength": 1
+        },
+        "minimax_model": {
+          "description": "Minimax video model variant. Default MiniMax-Hailuo-2.3-Fast. I2V-01-Director adds camera-movement tokens. minimax only.",
+          "type": "string",
+          "enum": [
+            "MiniMax-Hailuo-2.3",
+            "MiniMax-Hailuo-2.3-Fast",
+            "MiniMax-Hailuo-02",
+            "I2V-01-Director",
+            "I2V-01-live",
+            "I2V-01"
+          ]
+        },
+        "last_frame_image": {
+          "description": "Minimax end-frame image URL (start→end morph). minimax only.",
+          "type": "string",
+          "format": "uri"
+        },
+        "prompt_optimizer": {
+          "description": "Toggle minimax's server-side prompt rewrite. Default true. minimax only.",
           "type": "boolean"
         }
       },
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    }
+  },
+  {
+    "name": "generate_video_addition",
+    "description": "⚠ DEPRECATED — Renamed to `pika_addition`. Same parameters, same behavior. See `pika_addition` for full documentation. This alias will be removed in a future release.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "video": {
+          "type": "string",
+          "format": "uri",
+          "description": "Source video URL (mp4 / mov / webm) to add an element into."
+        },
+        "prompt": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 50000,
+          "description": "What to add, e.g. 'a small dog walking across the foreground'."
+        },
+        "object_image": {
+          "type": "string",
+          "format": "uri",
+          "description": "Required reference image of the object to composite in. Despite the canonical pika-video CLI documenting this as optional, pika-api/generate/pikadditions returns 422 'Unprocessable entity' without it (verified 2026-05-10, BACK-345). For prompt-only object generation use `pika_swap` with `region_text` instead."
+        },
+        "negative_prompt": {
+          "type": "string",
+          "maxLength": 500
+        },
+        "seed": {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        }
+      },
       "required": [
+        "video",
+        "prompt",
+        "object_image"
+      ],
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    }
+  },
+  {
+    "name": "generate_video_sora_edit",
+    "description": "⚠ DEPRECATED — Use `sora_edit({mode: \"edit\"})` instead. Same parameters, same behavior. This alias is kept for one release.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "source_video_id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Sora upstream task id (e.g. `video_abc...`) to re-prompt."
+        },
+        "prompt": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1500,
+          "description": "New prompt describing the edits."
+        },
+        "seconds": {
+          "description": "Optional output duration. Sora only accepts 4 / 8 / 12. Defaults to whatever the upstream's billing model picks.",
+          "type": "string",
+          "enum": [
+            "4",
+            "8",
+            "12"
+          ]
+        }
+      },
+      "required": [
+        "source_video_id",
         "prompt"
       ],
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    }
+  },
+  {
+    "name": "generate_video_sora_extension",
+    "description": "⚠ DEPRECATED — Use `sora_edit({mode: \"extension\"})` instead. Same parameters, same behavior. This alias is kept for one release.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "source_video_id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Sora upstream task id of the video to extend."
+        },
+        "prompt": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1500,
+          "description": "Prompt for the extension segment."
+        },
+        "seconds": {
+          "description": "Extension duration (default `4`). Sora only accepts 4 / 8 / 12.",
+          "type": "string",
+          "enum": [
+            "4",
+            "8",
+            "12"
+          ]
+        }
+      },
+      "required": [
+        "source_video_id",
+        "prompt"
+      ],
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    }
+  },
+  {
+    "name": "generate_video_sora_remix",
+    "description": "⚠ DEPRECATED — Use `sora_edit({mode: \"remix\"})` instead. Same parameters, same behavior. This alias is kept for one release.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "source_video_id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Sora upstream task id of the video to remix."
+        },
+        "prompt": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1500,
+          "description": "New prompt driving the remix."
+        }
+      },
+      "required": [
+        "source_video_id",
+        "prompt"
+      ],
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    }
+  },
+  {
+    "name": "generate_video_swap",
+    "description": "⚠ DEPRECATED — Renamed to `pika_swap`. Same parameters, same behavior. See `pika_swap` for full documentation. This alias will be removed in a future release.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "video": {
+          "type": "string",
+          "format": "uri",
+          "description": "Source video URL."
+        },
+        "prompt": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 50000,
+          "description": "What to replace the region with."
+        },
+        "mask": {
+          "description": "Mask image URL (white = replace, black = keep). Mutually exclusive with `region_text`.",
+          "type": "string",
+          "format": "uri"
+        },
+        "region_text": {
+          "description": "Free-text description of the region to replace, e.g. 'the person wearing red'. 1-500 chars after trim (whitespace-only rejected). Mutually exclusive with `mask`. At least one of `mask` or `region_text` is required.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        },
+        "replacement_image": {
+          "description": "Optional reference image of the replacement subject.",
+          "type": "string",
+          "format": "uri"
+        },
+        "negative_prompt": {
+          "type": "string",
+          "maxLength": 500
+        },
+        "seed": {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        }
+      },
+      "required": [
+        "video",
+        "prompt"
+      ],
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "oneOf": [
+        {
+          "required": [
+            "mask"
+          ]
+        },
+        {
+          "required": [
+            "region_text"
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "name": "html_to_pdf",
+    "description": "Render an HTML document (or array of body fragments) to PDF, PNG, or JPG via a persistent server-side Chromium subprocess. Single-html mode is preferred (native @page support). body_pages mode renders pages in parallel and merges via PyPDF — no cross-page CSS counters / scripts / shared state. Assets are server-fetched and served to Chromium via route interception (deny-by-default). Async by default; sync mode requires preflight (html ≤100KB, single page, ≤10 assets, no external @import).\n\nReturns the result inline when complete (typically 30s–5min). Progress updates are sent as notifications during execution. If the server budget expires before completion, falls back to `{ task_id, status }` — then call `task_status(task_id)` in a tight loop (no Bash, no sleep) until done.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "html": {
+          "description": "Complete HTML document as a string. Mutually exclusive with body_pages. All external assets (fonts, images, stylesheets) referenced via https:// are pre-fetched and inlined before Chromium renders — no live network access occurs during the render. Data URIs are served as-is. JavaScript is disabled in the render context. Max 10 MB.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 10485760
+        },
+        "body_pages": {
+          "description": "Array of per-page HTML body fragments (1–50). Each fragment is wrapped in a full HTML document using shared_head, rendered by its own Chromium subprocess, and merged into a single PDF via PyPDF. Pages are rendered in parallel. No cross-page CSS counters, scripts, or shared DOM state. Requires shared_head. Mutually exclusive with html.",
+          "minItems": 1,
+          "maxItems": 50,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "shared_head": {
+          "description": "HTML <head> content injected into every body_pages page (e.g. <style> blocks, <link rel='stylesheet'>, <meta> tags). Required when body_pages is set. Ignored when html is set (single-html mode carries its own <head>). Max 512 KB.",
+          "type": "string",
+          "maxLength": 524288
+        },
+        "format": {
+          "default": "pdf",
+          "description": "Output format. 'pdf' (default) — vector PDF via Chromium's print pipeline. 'png' — raster PNG at viewport resolution. 'jpg' — raster JPEG at viewport resolution.",
+          "type": "string",
+          "enum": [
+            "pdf",
+            "png",
+            "jpg"
+          ]
+        },
+        "wait_for": {
+          "default": "fonts_and_images",
+          "description": "Readiness mode before capture. 'fonts_and_images' (default) awaits document.fonts.ready + all <img> elements — safest for pixel-perfect output. 'fonts' awaits fonts only. 'domcontentloaded' / 'none' — capture immediately (fastest, may miss late-loading assets).",
+          "type": "string",
+          "enum": [
+            "none",
+            "domcontentloaded",
+            "fonts",
+            "fonts_and_images"
+          ]
+        },
+        "mode": {
+          "default": "async",
+          "description": "Execution mode. 'async' (default) — submit to worker queue, poll task_status for result. 'sync' — render inline within the MCP request (≤100 KB html, single page, ≤10 assets, no external @import). Use 'sync' only for small documents where latency matters more than throughput. Async is recommended for production use.",
+          "type": "string",
+          "enum": [
+            "async",
+            "sync"
+          ]
+        },
+        "pdf_options": {
+          "description": "PDF layout options. Ignored when format != 'pdf'.",
+          "type": "object",
+          "properties": {
+            "paper_size": {
+              "description": "Paper size. Named: 'letter' (default), 'a4', 'a3', 'legal', 'tabloid'. Or custom object {width, height, unit}.",
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "letter",
+                    "a4",
+                    "a3",
+                    "legal",
+                    "tabloid"
+                  ]
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "width": {
+                      "type": "number",
+                      "exclusiveMinimum": 0,
+                      "description": "Width in the unit specified by 'unit'."
+                    },
+                    "height": {
+                      "type": "number",
+                      "exclusiveMinimum": 0,
+                      "description": "Height in the unit specified by 'unit'."
+                    },
+                    "unit": {
+                      "default": "px",
+                      "description": "Unit for width/height. 'px' converted via 96 dpi.",
+                      "type": "string",
+                      "enum": [
+                        "px",
+                        "in",
+                        "mm"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "width",
+                    "height"
+                  ]
+                }
+              ]
+            },
+            "margins": {
+              "description": "Page margins. All sides default to 0.",
+              "type": "object",
+              "properties": {
+                "top": {
+                  "default": 0,
+                  "type": "number",
+                  "minimum": 0
+                },
+                "right": {
+                  "default": 0,
+                  "type": "number",
+                  "minimum": 0
+                },
+                "bottom": {
+                  "default": 0,
+                  "type": "number",
+                  "minimum": 0
+                },
+                "left": {
+                  "default": 0,
+                  "type": "number",
+                  "minimum": 0
+                },
+                "unit": {
+                  "default": "px",
+                  "description": "Unit for all four margin values.",
+                  "type": "string",
+                  "enum": [
+                    "px",
+                    "in",
+                    "mm"
+                  ]
+                }
+              }
+            },
+            "landscape": {
+              "default": false,
+              "description": "Rotate paper 90 degrees. Ignored when paper_size is a custom width/height object (swap width/height manually for custom sizes).",
+              "type": "boolean"
+            }
+          }
+        },
+        "raster_options": {
+          "description": "Raster capture options. Ignored when format == 'pdf'.",
+          "type": "object",
+          "properties": {
+            "viewport_px": {
+              "description": "Viewport dimensions for raster capture (PNG/JPG).",
+              "type": "object",
+              "properties": {
+                "width": {
+                  "default": 1200,
+                  "description": "Viewport width in CSS pixels (1–4096). Default 1200.",
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 4096
+                },
+                "height": {
+                  "default": 850,
+                  "description": "Viewport height in CSS pixels (1–16384). Default 850.",
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 16384
+                }
+              }
+            },
+            "quality": {
+              "default": 90,
+              "description": "JPEG quality (1–100). Ignored for PNG (lossless). Default 90.",
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            }
+          }
+        }
+      },
       "$schema": "http://json-schema.org/draft-07/schema#"
     }
   },
@@ -1623,12 +3319,16 @@
       "properties": {
         "text": {
           "type": "string",
-          "description": "The memory content to store"
+          "minLength": 1,
+          "maxLength": 8000,
+          "description": "The memory content to store (1-8000 chars after trim)"
         },
         "source": {
           "default": "agent",
-          "description": "Source of the memory (e.g. 'agent', 'user', 'skill')",
-          "type": "string"
+          "description": "Source of the memory (e.g. 'agent', 'user', 'skill'); 1-64 chars",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
         }
       },
       "required": [
@@ -1645,12 +3345,16 @@
       "properties": {
         "query": {
           "type": "string",
-          "description": "Keyword or phrase to search for in memory"
+          "minLength": 1,
+          "maxLength": 500,
+          "description": "Keyword or phrase to search for in memory (1-500 chars after trim)"
         },
         "top_k": {
           "default": 5,
-          "description": "Maximum number of matching lines to return (default 5)",
-          "type": "number"
+          "description": "Maximum number of matching lines to return (default 5, max 100)",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
         }
       },
       "required": [
@@ -1661,7 +3365,7 @@
   },
   {
     "name": "identity_persona_read",
-    "description": "Read a persona file from the agent workspace (IDENTITY.md, SOUL.md, or STYLE.md).",
+    "description": "Read a persona file from the agent workspace (IDENTITY.md, SOUL.md, or STYLE.md). Triggers: pika / pika bot / pikabot / pika.me / 'who am I' / 'who are you'.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -1677,6 +3381,28 @@
         }
       },
       "$schema": "http://json-schema.org/draft-07/schema#"
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "file": {
+          "type": "string",
+          "enum": [
+            "identity",
+            "soul",
+            "style"
+          ]
+        },
+        "content": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "file",
+        "content"
+      ],
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": {}
     }
   },
   {
@@ -1699,7 +3425,7 @@
   },
   {
     "name": "identity_set_voice",
-    "description": "Clone the user's voice from an audio sample and persist it. Use when `identity_voice_id` returned null. `audio_url` MUST be a Pika-CDN URL — call `upload_asset` first if needed. Provide a 10-30s clean voice recording. ElevenLabs is the default; choose `minimax` if ElevenLabs is unavailable. Returns JSON `{voice_id, platform}` on success. Errors: 409 if voice is already set, 422 if the audio was rejected (low quality / wrong format), 423 if a clone is already in progress, 502 on transient infra issues.",
+    "description": "Clone the user's voice from an audio sample and persist it. Use when `identity_voice_id` returned null. `audio_url` MUST be a Pika-CDN URL — call `upload_asset` first if needed. Provide a 10-30s clean voice recording. ElevenLabs is the default; choose `minimax` if ElevenLabs is unavailable. Returns JSON `{voice_id, platform}` on success. Errors: 409 if a voice is already set — by default we don't replace; first call `identity_voice_id` to surface the existing voice to the user, then re-invoke with `replace: true` if they explicitly want to swap (this overrides the 409 and replaces the existing voice clone). Other errors: 422 if the audio was rejected (low quality / wrong format), 423 if a clone is already in progress, 502 on transient infra issues.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -1716,6 +3442,11 @@
             "elevenlabs",
             "minimax"
           ]
+        },
+        "replace": {
+          "description": "AGNT-41: when `true`, override the 409 returned when a voice already exists and replace it with the new clone. Default `false` — first call `identity_voice_id` to show the user the existing voice, then re-invoke with this flag only after explicit confirmation. The replacement happens server-side in a single write; the old voice ID is discarded.",
+          "default": false,
+          "type": "boolean"
         }
       },
       "required": [
@@ -1753,11 +3484,274 @@
   },
   {
     "name": "identity_whoami",
-    "description": "Show the currently authenticated user.",
+    "description": "Show the currently authenticated user. Triggers: pika / pika bot / pikabot / pika.me / 'who am I' / 'who are you'.",
     "inputSchema": {
       "type": "object",
       "properties": {},
       "$schema": "http://json-schema.org/draft-07/schema#"
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "display": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "email": {
+          "type": "string"
+        },
+        "phone": {
+          "type": "string"
+        },
+        "agent_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "display"
+      ],
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": {}
+    }
+  },
+  {
+    "name": "pika_addition",
+    "description": "Generative video inpainting — composite an object/element into an EXISTING video. Powered by pika-api's `pikadditions`. Atomic primitive: single multipart submit + poll. The original video frames are preserved; the new subject is layered into the scene. For replacing a region instead of adding to it, use `pika_swap`.\n\nReturns the result inline when complete (typically 30s–5min). Progress updates are sent as notifications during execution. If the server budget expires before completion, falls back to `{ task_id, status }` — then call `task_status(task_id)` in a tight loop (no Bash, no sleep) until done.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "video": {
+          "type": "string",
+          "format": "uri",
+          "description": "Source video URL (mp4 / mov / webm) to add an element into."
+        },
+        "prompt": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 50000,
+          "description": "What to add, e.g. 'a small dog walking across the foreground'."
+        },
+        "object_image": {
+          "type": "string",
+          "format": "uri",
+          "description": "Required reference image of the object to composite in. Despite the canonical pika-video CLI documenting this as optional, pika-api/generate/pikadditions returns 422 'Unprocessable entity' without it (verified 2026-05-10, BACK-345). For prompt-only object generation use `pika_swap` with `region_text` instead."
+        },
+        "negative_prompt": {
+          "type": "string",
+          "maxLength": 500
+        },
+        "seed": {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        }
+      },
+      "required": [
+        "video",
+        "prompt",
+        "object_image"
+      ],
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    }
+  },
+  {
+    "name": "pika_effect",
+    "description": "Apply one of 16 named viral Pikaffects (Cake-ify, Crumble, Crush, Decapitate, Deflate, Dissolve, Explode, Eye-pop, Inflate, Levitate, Melt, Peel, Poke, Squish, Ta-da, Tear) to a single still image, producing a short video. Atomic primitive: single multipart submit + poll.\n\nReturns the result inline when complete (typically 30s–5min). Progress updates are sent as notifications during execution. If the server budget expires before completion, falls back to `{ task_id, status }` — then call `task_status(task_id)` in a tight loop (no Bash, no sleep) until done.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "image": {
+          "type": "string",
+          "format": "uri",
+          "description": "Source image URL the effect is applied to."
+        },
+        "effect": {
+          "type": "string",
+          "enum": [
+            "Cake-ify",
+            "Crumble",
+            "Crush",
+            "Decapitate",
+            "Deflate",
+            "Dissolve",
+            "Explode",
+            "Eye-pop",
+            "Inflate",
+            "Levitate",
+            "Melt",
+            "Peel",
+            "Poke",
+            "Squish",
+            "Ta-da",
+            "Tear"
+          ],
+          "description": "One of 16 named viral Pikaffects."
+        },
+        "prompt": {
+          "description": "Optional prompt to guide the effect.",
+          "type": "string",
+          "maxLength": 500
+        },
+        "negative_prompt": {
+          "type": "string",
+          "maxLength": 500
+        },
+        "seed": {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        }
+      },
+      "required": [
+        "image",
+        "effect"
+      ],
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    }
+  },
+  {
+    "name": "pika_scene",
+    "description": "Combine 2-6 ingredient images into a coherent multi-character / multi-object scene driven by `prompt`. Powered by pika-api's `pikascenes` endpoint. Atomic primitive: single multipart submit + poll. Use when you have separate character / object photos and want them composited into one scene (NOT a transition between two frames — for that use `generate_keyframes_video`).\n\nReturns the result inline when complete (typically 30s–5min). Progress updates are sent as notifications during execution. If the server budget expires before completion, falls back to `{ task_id, status }` — then call `task_status(task_id)` in a tight loop (no Bash, no sleep) until done.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "ingredients": {
+          "minItems": 2,
+          "maxItems": 6,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "format": "uri"
+          },
+          "description": "2-6 ingredient image URLs. The model composites the objects/people from these images into a coherent scene driven by `prompt`."
+        },
+        "prompt": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 50000,
+          "description": "Scene description — what happens with the ingredients (camera, action, mood, environment)."
+        },
+        "ingredients_mode": {
+          "description": "How faithful to the ingredients. `precise` (default) keeps each ingredient recognizable. `creative` lets the model interpret them loosely.",
+          "type": "string",
+          "enum": [
+            "precise",
+            "creative"
+          ]
+        },
+        "model": {
+          "description": "Pika model. 2.2 (default, best quality, supports duration / resolution); 2.1 (older); turbo (fastest, cheapest).",
+          "type": "string",
+          "enum": [
+            "2.2",
+            "2.1",
+            "turbo"
+          ]
+        },
+        "duration": {
+          "description": "Duration in seconds, model 2.2 only — 5 or 10.",
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        },
+        "resolution": {
+          "description": "Output resolution, model 2.2 only. Default 720p.",
+          "type": "string",
+          "enum": [
+            "720p",
+            "1080p"
+          ]
+        },
+        "aspect_ratio": {
+          "description": "Output aspect ratio. Forwarded to pika-api as `aspectRatio`.",
+          "type": "string",
+          "enum": [
+            "16:9",
+            "9:16",
+            "1:1"
+          ]
+        },
+        "negative_prompt": {
+          "description": "Optional — describe what to avoid.",
+          "type": "string",
+          "maxLength": 500
+        },
+        "seed": {
+          "description": "Optional seed for reproducibility.",
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        }
+      },
+      "required": [
+        "ingredients",
+        "prompt"
+      ],
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    }
+  },
+  {
+    "name": "pika_swap",
+    "description": "Replace a region of an existing video with a new subject. Region is defined by either `mask` (image, white=replace / black=keep) or `region_text` (free-text description). Optionally provide a `replacement_image` to anchor the new subject. Atomic primitive: single multipart submit + poll. For ADDING a subject without replacing existing content, use `pika_addition`.\n\nReturns the result inline when complete (typically 30s–5min). Progress updates are sent as notifications during execution. If the server budget expires before completion, falls back to `{ task_id, status }` — then call `task_status(task_id)` in a tight loop (no Bash, no sleep) until done.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "video": {
+          "type": "string",
+          "format": "uri",
+          "description": "Source video URL."
+        },
+        "prompt": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 50000,
+          "description": "What to replace the region with."
+        },
+        "mask": {
+          "description": "Mask image URL (white = replace, black = keep). Mutually exclusive with `region_text`.",
+          "type": "string",
+          "format": "uri"
+        },
+        "region_text": {
+          "description": "Free-text description of the region to replace, e.g. 'the person wearing red'. 1-500 chars after trim (whitespace-only rejected). Mutually exclusive with `mask`. At least one of `mask` or `region_text` is required.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        },
+        "replacement_image": {
+          "description": "Optional reference image of the replacement subject.",
+          "type": "string",
+          "format": "uri"
+        },
+        "negative_prompt": {
+          "type": "string",
+          "maxLength": 500
+        },
+        "seed": {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        }
+      },
+      "required": [
+        "video",
+        "prompt"
+      ],
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "oneOf": [
+        {
+          "required": [
+            "mask"
+          ]
+        },
+        {
+          "required": [
+            "region_text"
+          ]
+        }
+      ]
     }
   },
   {
@@ -1815,14 +3809,280 @@
     }
   },
   {
+    "name": "scrape_ads",
+    "description": "Scrape public ad-library data from Meta (Facebook), Google, or LinkedIn in a single call. Per-platform actions:\n- meta: ad-search | page-ads | ad-detail | advertiser-search\n- google: advertiser-search | ad-detail | company-ads\n- linkedin: ad-search | ad-detail\n\nReturns `{platform, action, count, items, meta}`. `meta.backend` is always `\"scrapecreators\"` and `meta.fallback_from` is always `null` (single-backend, no fallback chain). Backed by scrapecreators.com through Pika Proxy.\n\nReturns the result inline when complete (typically 30s–5min). Progress updates are sent as notifications during execution. If the server budget expires before completion, falls back to `{ task_id, status }` — then call `task_status(task_id)` in a tight loop (no Bash, no sleep) until done.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "platform": {
+          "type": "string",
+          "enum": [
+            "meta",
+            "google",
+            "linkedin"
+          ],
+          "description": "Which ad library to scrape."
+        },
+        "action": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 40,
+          "description": "Per-platform action. meta: 'ad-search' | 'page-ads' | 'ad-detail' | 'advertiser-search'. google: 'advertiser-search' | 'ad-detail' | 'company-ads'. linkedin: 'ad-search' | 'ad-detail'."
+        },
+        "query": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500,
+          "description": "Per-action input. For *-search actions: a free-text search term (company/brand name, advertiser name). For *-detail actions: a full upstream URL (e.g. https://www.facebook.com/ads/library/?id=123 for meta.ad-detail) — bare IDs are NOT accepted by the upstream and will 4xx. For meta.page-ads: a numeric pageId. For google.company-ads: the advertiser_id. The upstream endpoint also accepts a `domain` querystring — pass it via `params={\"domain\": \"...\"}` since `query` is fixed to `advertiser_id` for this action."
+        },
+        "limit": {
+          "default": 20,
+          "description": "Max items to return (1-200, default 20).",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 200
+        },
+        "params": {
+          "description": "Optional per-action knobs (e.g. country/region filters where the upstream supports them). Most actions ignore this.",
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {}
+        }
+      },
+      "required": [
+        "platform",
+        "action",
+        "query"
+      ],
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "platform": {
+          "type": "string",
+          "enum": [
+            "meta",
+            "google",
+            "linkedin"
+          ]
+        },
+        "action": {
+          "type": "string"
+        },
+        "count": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "items": {
+          "type": "array",
+          "items": {}
+        },
+        "meta": {
+          "type": "object",
+          "properties": {
+            "backend": {
+              "type": "string",
+              "const": "scrapecreators"
+            },
+            "fallback_from": {
+              "type": "null",
+              "const": null
+            }
+          },
+          "required": [
+            "backend",
+            "fallback_from"
+          ],
+          "additionalProperties": {}
+        }
+      },
+      "required": [
+        "platform",
+        "action",
+        "count",
+        "items"
+      ],
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": {}
+    }
+  },
+  {
+    "name": "scrape_social",
+    "description": "Scrape public data from 13 social platforms in a single call. NOT for authenticated user actions (post/reply/DM) — those go through the connect_* Composio tools. Per-platform actions (71 pairs total):\n- instagram: hashtag | profile | post | user-reels | user-posts | reels-search | post-comments | media-transcript | user-highlights\n- twitter: search | profile | tweet | user-tweets | tweet-transcript\n- linkedin: profile | post | company | job | post-detail | company-posts\n- tiktok: hashtag | keyword | profile | video | search-users | profile-videos | video-comments | video-transcript | user-followers | user-following | user-audience | trending-feed | popular-hashtags\n- youtube: search | channel | video | search-hashtag | channel-videos | channel-shorts | playlist | video-comments | video-transcript\n- facebook: profile | post | post-comments | media-transcript | user-posts | user-reels | user-photos | group-posts\n- threads: profile | post | search | search-users | user-posts\n- pinterest: profile | post | pin | search\n- twitch: profile | post | user-posts | user-schedule\n- truthsocial: profile | post | user-posts\n- bluesky: profile | post | user-posts\n- google: search\n- snapchat: profile\n\nThree tiktok actions are query-less and take their input via `params` instead: tiktok.user-audience (`params.handle` required), tiktok.trending-feed (`params.region` required), tiktok.popular-hashtags (`params.countryCode` optional). All other actions take their primary input via `query`.\n\nNote: facebook profile-shaped actions (profile, user-posts, user-reels, user-photos) accept EITHER a bare handle OR a full https://www.facebook.com/<handle>/ URL — the worker auto-expands handles, mirroring LinkedIn behavior. Facebook post/post-comments/media-transcript/group-posts require the full URL.\n\nNote: truthsocial only supports prominent public accounts; non-prominent handles raise InvalidInput.\n\nReturns `{platform, action, count, items, meta}` with per-action raw items lifted to common fields (id, author, text, url, likes, comments). `meta.backend` reports which provider actually served the response (`scrapecreators` | `apify` | `rapidapi`); `meta.fallback_from` is `null` when the primary served, otherwise a list of failed-hop records. Backed by scrapecreators.com (primary for most), Apify actors (instagram fallback), and RapidAPI twitter241 (twitter fallback), all through Pika Proxy.\n\nReturns the result inline when complete (typically 30s–5min). Progress updates are sent as notifications during execution. If the server budget expires before completion, falls back to `{ task_id, status }` — then call `task_status(task_id)` in a tight loop (no Bash, no sleep) until done.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "platform": {
+          "type": "string",
+          "enum": [
+            "instagram",
+            "twitter",
+            "linkedin",
+            "tiktok",
+            "youtube",
+            "facebook",
+            "threads",
+            "pinterest",
+            "twitch",
+            "truthsocial",
+            "bluesky",
+            "google",
+            "snapchat"
+          ],
+          "description": "Which platform to scrape."
+        },
+        "action": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 40,
+          "description": "Per-platform action (71 pairs total). instagram: 'hashtag' | 'profile' | 'post' | 'user-reels' | 'user-posts' | 'reels-search' | 'post-comments' | 'media-transcript' | 'user-highlights'. twitter: 'search' | 'profile' | 'tweet' | 'user-tweets' | 'tweet-transcript'. linkedin: 'profile' | 'post' | 'company' | 'job' | 'post-detail' | 'company-posts'. tiktok: 'hashtag' | 'keyword' | 'profile' | 'video' | 'search-users' | 'profile-videos' | 'video-comments' | 'video-transcript' | 'user-followers' | 'user-following' | 'user-audience' | 'trending-feed' | 'popular-hashtags'. youtube: 'search' | 'channel' | 'video' | 'search-hashtag' | 'channel-videos' | 'channel-shorts' | 'playlist' | 'video-comments' | 'video-transcript'. facebook: 'profile' | 'post' | 'post-comments' | 'media-transcript' | 'user-posts' | 'user-reels' | 'user-photos' | 'group-posts'. threads: 'profile' | 'post' | 'search' | 'search-users' | 'user-posts'. pinterest: 'profile' | 'post' | 'pin' | 'search'. twitch: 'profile' | 'post' | 'user-posts' | 'user-schedule'. truthsocial: 'profile' | 'post' | 'user-posts'. bluesky: 'profile' | 'post' | 'user-posts'. google: 'search'. snapchat: 'profile'."
+        },
+        "query": {
+          "description": "Search query, hashtag, profile URL/username, or company slug — depending on action. For instagram.hashtag pass the hashtag (without '#'); for *.profile pass the URL or vanity slug. OPTIONAL for the 3 query-less tiktok actions (user-audience / trending-feed / popular-hashtags) which take their input via `params` — worker raises InvalidInput with a query-less-alternatives hint when other actions get an empty query.",
+          "type": "string",
+          "maxLength": 500
+        },
+        "limit": {
+          "default": 20,
+          "description": "Max items to return (1-200, default 20).",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 200
+        },
+        "params": {
+          "description": "Optional per-action knobs AND required input for query-less actions. Query-less actions (tiktok.user-audience requires `{handle}`; tiktok.trending-feed requires `{region}`; tiktok.popular-hashtags accepts optional `{countryCode}`) supply their primary input here. Standard actions use this for optional knobs (e.g. linkedin.job `{location?}`).",
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {}
+        }
+      },
+      "required": [
+        "platform",
+        "action"
+      ],
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "platform": {
+          "type": "string",
+          "enum": [
+            "instagram",
+            "twitter",
+            "linkedin",
+            "tiktok",
+            "youtube",
+            "facebook",
+            "threads",
+            "pinterest",
+            "twitch",
+            "truthsocial",
+            "bluesky",
+            "google",
+            "snapchat"
+          ]
+        },
+        "action": {
+          "type": "string"
+        },
+        "count": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "items": {
+          "type": "array",
+          "items": {}
+        },
+        "meta": {
+          "type": "object",
+          "properties": {
+            "backend": {
+              "type": "string",
+              "enum": [
+                "scrapecreators",
+                "apify",
+                "rapidapi"
+              ]
+            },
+            "fallback_from": {
+              "anyOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "backend": {
+                        "type": "string"
+                      },
+                      "reason": {
+                        "type": "string",
+                        "enum": [
+                          "5xx",
+                          "4xx_auth",
+                          "4xx_quota",
+                          "rate_limited",
+                          "timeout",
+                          "network",
+                          "provider_unavailable",
+                          "normalize_error",
+                          "non_2xx_4xx",
+                          "unknown"
+                        ]
+                      },
+                      "status_code": {
+                        "anyOf": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    },
+                    "required": [
+                      "backend",
+                      "reason"
+                    ],
+                    "additionalProperties": false
+                  }
+                }
+              ]
+            }
+          },
+          "additionalProperties": {}
+        }
+      },
+      "required": [
+        "platform",
+        "action",
+        "count",
+        "items"
+      ],
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": {}
+    }
+  },
+  {
     "name": "search_music",
-    "description": "Search a public music catalogue. Default: apple (Apple Music). Returns song metadata + 30s preview URLs.",
+    "description": "Search a public music catalogue. Default: apple (Apple Music). Returns song metadata; pass `include_preview_url: true` to also receive each track's 30-second M4A preview URL (AGNT-70 — useful for ducking sample previews into edits, etc.).",
     "inputSchema": {
       "type": "object",
       "properties": {
         "provider": {
           "default": "apple",
-          "description": "Music catalogue provider. Default: `apple` (Apple Music). Returns song metadata + 30s preview URLs.",
+          "description": "Music catalogue provider. Default: `apple` (Apple Music).",
           "type": "string",
           "enum": [
             "apple"
@@ -1839,12 +4099,71 @@
           "type": "integer",
           "minimum": 1,
           "maximum": 25
+        },
+        "include_preview_url": {
+          "default": false,
+          "description": "When true, each track in the response includes a `preview_m4a_url` field — Apple Music's official 30-second preview clip (M4A). Default false to keep the response compact for callers that only need metadata.",
+          "type": "boolean"
         }
       },
       "required": [
         "query"
       ],
       "$schema": "http://json-schema.org/draft-07/schema#"
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "tracks": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "artist": {
+                "type": "string"
+              },
+              "album": {
+                "type": "string"
+              },
+              "preview_url": {
+                "type": "string"
+              },
+              "album_art_url": {
+                "type": "string"
+              },
+              "duration_ms": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "id",
+              "name",
+              "artist",
+              "preview_url"
+            ],
+            "additionalProperties": {}
+          }
+        },
+        "count": {
+          "type": "number"
+        },
+        "provider": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "tracks",
+        "count",
+        "provider"
+      ],
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": {}
     }
   },
   {
@@ -1855,16 +4174,110 @@
       "properties": {
         "query": {
           "type": "string",
-          "description": "Natural language query to search for skills"
+          "minLength": 1,
+          "maxLength": 500,
+          "description": "Natural language query to search for skills (1-500 chars after trim)"
         },
         "top_k": {
           "default": 5,
-          "description": "Maximum number of results to return (default 5)",
-          "type": "number"
+          "description": "Maximum number of results to return (default 5, max 25)",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 25
         }
       },
       "required": [
         "query"
+      ],
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "results": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "description": {
+                "type": "string"
+              },
+              "mode": {
+                "type": "string"
+              },
+              "tags": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "id",
+              "name",
+              "description"
+            ],
+            "additionalProperties": {}
+          }
+        },
+        "count": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "results",
+        "count"
+      ],
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": {}
+    }
+  },
+  {
+    "name": "sora_edit",
+    "description": "Edit, extend, or remix an existing sora-generated video by upstream task id. Returns a NEW video id + CDN URL (the source is unchanged).\n\nModes:\n- `edit` (default): re-prompt — POST `/v1/videos/edits` with new prompt.\n- `extension`: append a continuation segment — POST `/v1/videos/extensions`.\n- `remix`: generative variant — POST `/v1/videos/{source_video_id}/remix`.\n\n`source_video_id` is the upstream sora task id (NOT a CDN URL) returned by a prior `generate_video` provider=sora call.\n\n⚠ Sora upstream is expected to be discontinued; the surface is intentionally minimal.\n\nReturns the result inline when complete (typically 30s–5min). Progress updates are sent as notifications during execution. If the server budget expires before completion, falls back to `{ task_id, status }` — then call `task_status(task_id)` in a tight loop (no Bash, no sleep) until done.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "mode": {
+          "default": "edit",
+          "description": "Operation type. `edit` re-prompts an existing video; `extension` appends a continuation segment; `remix` generates a creative variant. Default `edit`.",
+          "type": "string",
+          "enum": [
+            "edit",
+            "extension",
+            "remix"
+          ]
+        },
+        "source_video_id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Sora upstream task id (e.g. `video_abc...`) of the video to edit / extend / remix. NOT a CDN URL."
+        },
+        "prompt": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1500,
+          "description": "Prompt driving the new video. For `edit` describes the changes; for `extension` describes the continuation; for `remix` describes the variant."
+        },
+        "seconds": {
+          "description": "Optional output duration (sora only accepts 4 / 8 / 12). On `mode=edit` the upstream picks if omitted; on `mode=extension` the worker defaults to `4` when omitted; on `mode=remix` the field is silently ignored — sora's remix endpoint doesn't accept it.",
+          "type": "string",
+          "enum": [
+            "4",
+            "8",
+            "12"
+          ]
+        }
+      },
+      "required": [
+        "source_video_id",
+        "prompt"
       ],
       "$schema": "http://json-schema.org/draft-07/schema#"
     }
@@ -1883,6 +4296,36 @@
         "task_id"
       ],
       "$schema": "http://json-schema.org/draft-07/schema#"
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "taskId": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string",
+          "const": "cancelled"
+        },
+        "createdAt": {
+          "type": "string"
+        },
+        "lastUpdatedAt": {
+          "type": "string"
+        },
+        "ttl": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "taskId",
+        "status",
+        "createdAt",
+        "lastUpdatedAt",
+        "ttl"
+      ],
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": {}
     }
   },
   {
@@ -1900,19 +4343,58 @@
         "task_id"
       ],
       "$schema": "http://json-schema.org/draft-07/schema#"
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "taskId": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string"
+        },
+        "createdAt": {
+          "type": "string"
+        },
+        "lastUpdatedAt": {
+          "type": "string"
+        },
+        "ttl": {
+          "type": "number"
+        },
+        "pollInterval": {
+          "type": "number"
+        },
+        "statusMessage": {
+          "type": "string"
+        },
+        "result": {}
+      },
+      "required": [
+        "taskId",
+        "status",
+        "createdAt",
+        "lastUpdatedAt",
+        "ttl",
+        "pollInterval"
+      ],
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": {}
     }
   },
   {
     "name": "transcribe_audio",
-    "description": "Transcribe audio to text using OpenAI Whisper. Accepts audio URLs directly OR video URLs (audio track is extracted server-side via ffmpeg). Returns text + optional auto-detected language.\n\nReturns the result inline when complete (typically 30s–5min). Progress updates are sent as notifications during execution. If the server budget expires before completion, falls back to `{ task_id, status }` — then call `task_status(task_id)` in a tight loop (no Bash, no sleep) until done.",
+    "description": "Transcribe audio to text. Accepts audio URLs directly OR video URLs (audio track is extracted server-side via ffmpeg). Returns text + optional auto-detected language. Three providers: `whisper` (default, supports timestamps), `deepgram` (nova-2, faster, text-only), `gemini` (2.5-flash, multilingual, text-only).\n\nReturns the result inline when complete (typically 30s–5min). Progress updates are sent as notifications during execution. If the server budget expires before completion, falls back to `{ task_id, status }` — then call `task_status(task_id)` in a tight loop (no Bash, no sleep) until done.",
     "inputSchema": {
       "type": "object",
       "properties": {
         "provider": {
-          "description": "Transcription provider. Currently only `whisper` is supported (default).",
+          "description": "Transcription provider. `whisper` (default) supports timestamps. `deepgram` (nova-2) is faster, text-only. `gemini` (2.5-flash) is multilingual, text-only. Note: `timestamps=true` requires `whisper`.",
           "type": "string",
           "enum": [
-            "whisper"
+            "whisper",
+            "deepgram",
+            "gemini"
           ]
         },
         "audio": {
@@ -1964,6 +4446,108 @@
         "size_bytes"
       ],
       "$schema": "http://json-schema.org/draft-07/schema#"
+    }
+  },
+  {
+    "name": "web_publish",
+    "description": "Publish (create or update) a static site at a pika.me-hosted URL. Pass file paths + their `source_url` (the file's CDN URL — typically from a previous `upload_asset` call). Server fetches each source_url, uploads to backing storage, and finalizes the site in one atomic operation. List/delete/password operations are NOT exposed via MCP — use the pika.me dashboard for those.\n\nReturns the result inline when complete (typically 30s–5min). Progress updates are sent as notifications during execution. If the server budget expires before completion, falls back to `{ task_id, status }` — then call `task_status(task_id)` in a tight loop (no Bash, no sleep) until done.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "slug": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 63,
+          "pattern": "^[a-z0-9-]+$",
+          "description": "Subdomain slug (a-z0-9-, 3-63 chars). Becomes the URL: https://{slug}.pika.me"
+        },
+        "files": {
+          "minItems": 1,
+          "maxItems": 200,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 500,
+                "description": "Relative path within the site (e.g. 'index.html')."
+              },
+              "source_url": {
+                "type": "string",
+                "format": "uri",
+                "description": "https URL the worker fetches and uploads to backing storage. Typically a CDN URL from upload_asset."
+              }
+            },
+            "required": [
+              "path",
+              "source_url"
+            ]
+          },
+          "description": "Files to publish (1-200)."
+        },
+        "title": {
+          "description": "Optional site title.",
+          "type": "string",
+          "maxLength": 200
+        },
+        "description": {
+          "description": "Optional site description (used in OG tags).",
+          "type": "string",
+          "maxLength": 1000
+        },
+        "password": {
+          "description": "Optional shared password for site access. Omit for a public site.",
+          "type": "string",
+          "minLength": 4,
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "slug",
+        "files"
+      ],
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "slug": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        },
+        "file_count": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "version_id": {
+          "type": "string"
+        },
+        "uploaded": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "skipped": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        }
+      },
+      "required": [
+        "slug",
+        "url",
+        "file_count",
+        "version_id",
+        "uploaded",
+        "skipped"
+      ],
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": {}
     }
   }
 ]
