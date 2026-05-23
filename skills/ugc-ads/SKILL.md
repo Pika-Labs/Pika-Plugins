@@ -6,12 +6,10 @@ description: >-
   every beat has spoken dialogue with native lip-sync, 5-act narrative arc
   (set → name → reveal → twist → punchline). Six category essences
   (HAUL / APP / FOOD / BEAUTY / FITNESS / TECH) auto-picked from the input URL.
-  Different from `/pika:short-ads`: that one is a polished single-clip brand
-  commercial with logo reveal + BGM; this one is creator-style raw UGC
-  talking-head with multi-beat conversational dialogue. Use when the user asks
-  to "make a UGC ad", "jump-cut product ad", "POV product reveal",
-  "creator-style ad", "haul-style ad", "unboxing ad", "TikTok-style product
-  video", "talking-head ad about [URL]".
+  Creator-style raw UGC talking-head with multi-beat conversational dialogue.
+  Use when the user asks to "make a UGC ad", "jump-cut product ad",
+  "POV product reveal", "creator-style ad", "haul-style ad", "unboxing ad",
+  "TikTok-style product video", or "talking-head ad about [URL]".
 argument-hint: <url> [avatar_url=<url>] [provider=seedance|kling] [aspect_ratio=9:16|3:4] [category=auto|HAUL|APP|FOOD|BEAUTY|FITNESS|TECH] [captions=true]
 ---
 
@@ -37,9 +35,25 @@ Typical end-to-end run: **6–12 minutes**. Breakdown:
 - Step 7b/c (cartoonize + retry): adds ~1–2 min if seedance moderation rejects the avatar
 - Step 8 (captions): single `add_captions` call, ~30s–5 min (transcribe + burn in one shot)
 
-If the run exceeds 15 min without progress, something is wrong — check `task_status` returned errors.
+If the run exceeds 15 min without progress, something is wrong — inspect the tool-reported generation status and error message.
+
+## Engine choice: Seedance default, Kling fallback
+
+Default to Seedance for UGC selfie/talking-head ads because it handles native lip-sync, single-prompt multi-beat pacing, and optional 3:4 output well. Use Kling when the caller explicitly passes `provider=kling` or when Seedance moderation keeps rejecting the avatar after the cartoonized retry. Kling's tradeoff is stricter aspect-ratio support but a separate moderation path and explicit shot segmentation.
 
 ## Steps
+
+### 0. Resolve input (empty-args menu)
+
+Strip flags and `key=value` parameters from `$ARGUMENTS`. If no product URL remains and there is no usable product URL in prior context, print this menu and stop:
+
+> **Which product should the UGC ad promote?** Required:
+>
+> - **Product URL** — page to fetch for product name, category, visual references, and language
+>
+> Optional: `avatar_url=`, `provider=seedance|kling`, `aspect_ratio=9:16|3:4`, `category=auto|HAUL|APP|FOOD|BEAUTY|FITNESS|TECH`, `captions=true|false`.
+
+If the product URL is present, skip this step silently.
 
 ### 1. Fetch + categorize
 
@@ -162,7 +176,7 @@ Call `generate_reference_video`:
 
 For `provider=kling`: convert the multi-beat prose into `shots: [{prompt, duration}, ...]` (5 shots × 3s = 15s sum), plus a top-level `prompt` summarizing the ad. References use `<<<image_1>>>` / `<<<image_2>>>` instead of `@Image1` / `@Image2`.
 
-If the call returns `{ task_id, status: "queued" }`, poll `task_status(task_id)` in a tight loop (no Bash, no sleep) until done. Capture `result.url` → `video_url` and proceed to step 8.
+If generation completes asynchronously, follow the MCP tool's returned status handle until it reaches a terminal state. Capture the result URL → `video_url` and proceed to step 8.
 
 **7b. On rejection — auto-cartoonize the avatar**
 
@@ -170,9 +184,10 @@ If 7a returns `422 content_policy_violation` on `image_urls` / `reference_images
 
 Call `generate_image`:
 - `provider: "seedream"` (native Pixar/3D-animated look)
-- `reference_image: <avatar_url>`
+- `reference_images: [avatar_url]` (the new plural form; `reference_image: <url>` is still accepted as a deprecated single-image alias for back-compat — see [pika-mcp-server BACK-339, 2026-05-10])
 - `aspect_ratio`: same as the ad's aspect ratio
 - `resolution: "1K"`
+- `watermark: false` (seedream-only knob added by BACK-339 — keep the restyled avatar clean of provider watermark for the downstream lip-sync re-render)
 - `prompt: "Stylized 3D game character render — Unreal Engine 5 / Overwatch / Valorant / Apex Legends visual style. Anatomically grounded facial proportions with subtle stylization: slightly larger expressive eyes, defined sculpted cheekbone planes, smooth skin shader (smoother than photoreal, no micropore detail), idealized but believable features. PBR materials with subtle subsurface scattering, strand-based hair simulation, crisp cloth shader. Cinematic three-point studio lighting with strong rim light. Clearly a stylized AAA-game-character render — NOT photorealistic person, NOT Pixar plastic-toy cartoon, NOT exaggerated big-head proportions. Same person, same glasses, same outfit, same accessories. Centered medium portrait, neutral indoor background."`
 
 Capture returned URL → `avatar_url_cartoon`.
@@ -200,6 +215,19 @@ Capture the returned URL → `final_url`.
 ### 9. Return
 
 Return `final_url` on one line, plus a one-line summary: which category ran, whether the avatar was caller-supplied / built-in fallback / cartoonize-recovered, whether the screenshot was used or fell back to prose, whether the user's voice sample was used or default, the provider chosen, the language detected for dialogue, and whether captions were burned on.
+
+## Load-bearing phrases
+
+These anchors keep the ad from drifting into a generic product demo:
+
+| Phrase | Where | Why load-bearing |
+|---|---|---|
+| `HOOK + 3 JUMP CUTs + OUTRO` | Prompt skeleton | Forces the TikTok-style multi-cut rhythm instead of one continuous presenter shot. |
+| `Every beat has a Says: "..." line` | Prompt skeleton | Gives the video engine explicit lip-sync material across all beats. |
+| `Trust @Image2` | Screen close-up rule | Prevents invented product UI when a real screenshot is already supplied. |
+| `exactly one` screen-close-up beat | Prompt composition | Keeps the ad from becoming a screen recording instead of a creator-style reveal. |
+| `Write all Says lines in the language detected from step 1` | Dialogue rule | Keeps localized product pages from getting English dialogue by default. |
+| `single add_captions call` | Caption step | Avoids quality loss and drift from chained text overlays. |
 
 ## Examples
 

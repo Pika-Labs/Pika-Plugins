@@ -1,6 +1,13 @@
 ---
 name: podcast
-description: Two-host podcast video for any URL OR free-form topic — 1 minute, 4 acts × ~15s, native multi-shot dialogue, optional voice cloning for Host A. CANONICAL workflow for podcast-style spoken video. Accepts EITHER a URL (scraped and reviewed) OR a free-form brief like "I and Elon Musk talk about Mars", "two scientists debate AGI", "podcast about quantum computing", "interview with a VC about seed-stage fundraising". Use when the user asks to "make a podcast", "podcast about [thing]", "podcast review of [url]", "two-host explainer", "interview-style clip", "two-host take on [topic]", "two people talking on camera about [thing]", "podcast clip", "GRWM podcast", "I and X talk about Y", "interview with [persona] about [topic]" — or any variant of "two hosts discussing [anything]". No captions burned (native audio is the deliverable; auto-transcription mistranscribes domain-specific terms).
+description: >-
+  Two-host podcast video for any URL or free-form topic — 1 minute, 4 acts × ~15s,
+  native multi-shot dialogue, optional voice cloning for Host A. Use when the user
+  asks to "make a podcast", "podcast about [thing]", "podcast review of [url]",
+  "two-host explainer", "interview-style clip", "two people talking on camera",
+  "I/me and X talk about Y", or "interview with [persona] about [topic]". Native
+  audio is the deliverable; captions are skipped by default because podcast dialogue
+  mistranscribes domain terms.
 argument-hint: <url-or-topic> [bg_img=] [host_a_img=] [host_b_img=] [voice_a=] [voice_b=] [use_avatar] [aspect_ratio=16:9]
 ---
 
@@ -35,9 +42,9 @@ Claude Desktop can't pass inline-pasted images to MCP tools yet (Anthropic-side 
 > Heads up — pasted images don't reach MCP tools on Claude Desktop yet (Anthropic limitation). Two easy options for your photo:
 >
 > - **Paste a URL** if it's already hosted (Imgur, S3, your site) — fastest
-> - **Zip it and attach the `.zip`** — right-click → Compress (macOS) / Send to → Compressed folder (Windows) / `zip pic.zip pic.png` (Linux). I'll take it from there.
+> - **Attach the image file** so I can upload it before generation.
 
-When a `.zip` arrives, unzip it via Bash, call `upload_asset` for a presigned PUT URL, push the bytes with `curl -X PUT`, then use the returned `public_url` as the parameter — all before Step 1. Already-hosted `https://...` URLs work as-is and skip this entirely.
+When a local file arrives, convert it to a public URL with `upload_asset` and use the returned `public_url` as the parameter before Step 1. Already-hosted `https://...` URLs work as-is and skip this entirely.
 
 If the user names a real public figure without attaching anything, do NOT auto-generate their likeness — Step 4 (Real-person handling) uses an archetype portrait instead.
 
@@ -89,7 +96,7 @@ Strip flags (`--yes`, `--no-captions`, etc.) and key=value parameters from `$ARG
   - **Hosts** — explicit if mentioned ("I and Elon Musk", "two scientists", "Joe and Sarah"); otherwise use defaults (enthusiastic host + skeptic host)
   - **Angle** — debate / interview / explainer / casual
   - **Concrete facts** — any specific claims, numbers, dates, quotes the user gave
-- If no concrete facts are given, invent **2–3 plausible specific claims** to anchor jokes and the "wait, actually..." pivot. Stay grounded — verifiable-sounding, not wild fabrications. The audience can tell.
+- If no concrete facts are given, use **2–3 clearly framed observations or hypotheses** to anchor jokes and the "wait, actually..." pivot. Do not present invented claims as facts; if factual accuracy matters for the topic, ask for a source or URL.
 - If the user says "I and X" or "me and X", Host A = the user (use `use_avatar` flow if not already, or default avatar) and Host B = X.
 
 ### 4. Real-person handling (topic mode only)
@@ -123,7 +130,7 @@ Acts: Hook → Feature deep-dive → The Turn → Verdict
 
 Delegate to a subagent with all resolved assets and the script. The subagent runs acts 1→2→3→4 sequentially — do NOT parallelize.
 
-Each act: one `generate_reference_video` call (`kling-v3-omni`, `duration=15`, `sound=true`). Pass `reference_images=[bg_img, host_a_img, host_b_img]` and `voice_ids=[voice_a, voice_b]`. Three shots:
+Each act: one `generate_reference_video` call (`kling-v3-omni`, `duration=15`, `sound=true`). Pass `reference_images=[bg_img, host_a_img, host_b_img]` and `voice_ids=[voice_a, voice_b]`. Optional knobs (added by `pika-mcp-server` BACK-339, 2026-05-10): `quality_mode: "pro"` for higher-fidelity kling output (longer wall-clock; reserve for high-stakes renders), and `kling_model` to pin a specific kling family member if you need reproducibility across runs. Three shots:
 
 - Wide 5s: both hosts, no voice token
 - MCU-A 5s: `<<<voice_1>>> '<HOST_A line>'`
@@ -146,6 +153,33 @@ Return the final video URL and a one-sentence verdict. **Do not call `add_captio
 **Rules:**
 - `voice_ids` must be valid Kling voice IDs — never use name-style strings like `Calm_Man`
 - Host A always LEFT (`<<<image_2>>>`), Host B always RIGHT (`<<<image_3>>>`) — never swapped
+
+## Load-bearing phrases
+
+These anchors keep the podcast output coherent across URL and topic modes:
+
+| Phrase | Where | Why load-bearing |
+|---|---|---|
+| `Host A always LEFT, Host B always RIGHT` | Layout and shot prompts | Prevents host identity swapping across the four separate act renders. |
+| `4 acts × 15s each` | Overall structure | Keeps the concat predictable and avoids uneven act pacing. |
+| `Hook → Feature deep-dive → The Turn → Verdict` | Script structure | Gives the episode a conversational arc instead of four disconnected reactions. |
+| `wait, actually...` skeptic-flip moment | Script requirements | Creates the pivot that makes the podcast feel like a real exchange. |
+| `Do not call add_captions` | Output rule | Avoids low-quality burned captions on fast two-host dialogue with names and jargon. |
+
+## Engine choice: Kling v3-omni for native two-host dialogue
+
+Use Kling v3-omni for the four acts because it supports native dialogue with two reference hosts and voice tokens in a single shot plan. The tradeoff is that acts run sequentially for consistency and can take longer than pure edit/composite flows. Do not add a separate caption or music layer by default; the value of this skill is the native spoken exchange.
+
+## Runtime expectations
+
+Typical wall-clock is 8-18 minutes:
+
+| Step | Wall clock | Notes |
+|---|---:|---|
+| Missing asset generation | 30-90s | Skipped for provided background/host refs |
+| URL/topic parse + script | 1-3 min | URL mode depends on page fetch quality |
+| Four Kling acts | 6-14 min | Runs sequentially to reduce host/voice drift |
+| Concat + return | 30-90s | Final URL only; captions skipped by default |
 
 ## Examples
 
