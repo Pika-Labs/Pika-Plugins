@@ -1,6 +1,6 @@
 ---
 name: explainer
-description: ~60-80s explainer video for any URL — GitHub repo, product page, docs site, blog post, or launch. CANONICAL workflow for URL walkthroughs. Use when the user asks to "explain this URL / repo / website / product", "make a walkthrough video for [url]", "demo this site", "Loom-style explainer of [url]", "explainer for github.com/...", or "explain this product link". Drives a real browser through the URL, generates an avatar lipsync, and composites in a 1280×800 macOS Sonoma frame with a 246-pixel bottom-left avatar circle. GitHub URLs activate a repo-aware mode (README scan + live-demo detection); other URLs use a generic page-walkthrough flow.
+description: ~60-80s explainer video for any URL — GitHub repo, product page, docs site, blog post, or launch. Canonical workflow for URL walkthroughs. Use when the user asks to "explain this URL / repo / website / product", "make a walkthrough video for [url]", "demo this site", "Loom-style explainer of [url]", "explainer for github.com/...", or "explain this product link". Drives a real browser through the URL, generates an avatar lipsync, and composites in a 1280×800 macOS Sonoma frame with a 246-pixel bottom-left avatar circle. GitHub URLs activate a repo-aware mode (README scan + live-demo detection); other URLs use a generic page-walkthrough flow.
 argument-hint: <url> [--focus angles] [--avatar url] [--voice id] [--live-url url] [--lipsync-provider pika|kling] [--no-captions] [--preview]
 ---
 
@@ -27,13 +27,13 @@ Claude Desktop can't pass inline-pasted images to MCP tools yet (Anthropic-side 
 > Heads up — pasted images don't reach MCP tools on Claude Desktop yet (Anthropic limitation). Two easy options for your avatar:
 >
 > - **Paste a URL** if it's already hosted (Imgur, S3, your site) — fastest
-> - **Zip it and attach the `.zip`** — right-click → Compress (macOS) / Send to → Compressed folder (Windows) / `zip pic.zip pic.png` (Linux). I'll take it from there.
+> - **Attach the image file** so I can upload it before generation.
 
-When a `.zip` arrives, unzip it via Bash, call `upload_asset` for a presigned PUT URL, push the bytes with `curl -X PUT`, then use the returned `public_url` as `--avatar <url>` — all before Step 1. Already-hosted `https://...` URLs work as-is and skip this entirely. If no avatar is supplied at all, the identity-store default fires.
+When a local file arrives, convert it to a public URL with `upload_asset` and use the returned `public_url` as `--avatar <url>` before Step 1. Already-hosted `https://...` URLs work as-is and skip this entirely. If no avatar is supplied at all, the identity-store default fires.
 
 ### Step 0 — Resolve URL (empty-args menu)
 
-Strip flags (`--focus`, `--avatar`, `--voice`, `--live-url`, `--lipsync-provider`, `--no-captions`, `--preview`, `--skip-preview`, `--yes`) and `key=value` parameters from `$ARGUMENTS`. **If what remains contains no `https://...` URL** (or is empty / whitespace-only), print this menu **verbatim** as your full response, then **stop and wait for the user's next message** — do NOT call any tool, do NOT proceed to Step 1, do NOT invent a URL. If `$ARGUMENTS` already carries a URL, skip this step silently and proceed to Step 1.
+Strip flags (`--focus`, `--avatar`, `--voice`, `--live-url`, `--lipsync-provider`, `--no-captions`, `--preview`, `--skip-preview`, `--yes`) and `key=value` parameters from `$ARGUMENTS`. **If what remains contains no `https://...` URL** (or is empty / whitespace-only), print this menu **verbatim** as your full response, then **stop and wait for the user's next message**. Calling a tool here risks recording or explaining the wrong page. If `$ARGUMENTS` already carries a URL, skip this step silently and proceed to Step 1.
 
 > **Which URL would you like me to walk through?** Works on any of:
 >
@@ -182,7 +182,7 @@ Before authoring the beat sheet, **scan the README** (case-insensitive, full-tex
 
 **GitHub heading slug rule:** lowercase, spaces → dashes, strip non-`[a-z0-9-]` characters. So "How it works" → `#user-content-how-it-works`, "Quick Start" → `#user-content-quick-start`. GitHub injects the `<a id="user-content-{slug}">` anchor inside each rendered `<hN>`, so `hN:has(#user-content-{slug})` reliably grabs the heading element across any GitHub README.
 
-**Selector contract:** `bbox_selector` MUST be vanilla CSS that resolves via `document.querySelector` (`capture_website` runs the post-action smooth-scroll JS via `page.evaluate`, which uses the browser's native selector engine). **Do NOT use Playwright extensions like `:has-text("...")`, `text=...`, or `:visible`** — those resolve in Playwright's `page.query_selector` (so the bbox capture finds the element) but silently fail in the smooth-scroll's `document.querySelector` (so the page never scrolls to the target, and `bbox.y` ends up at document-Y instead of `top - 60 px`, which trips Step 8b's `bbox.y > recording_viewport.h` degenerate filter and falls back to default-position zoom). CSS Level 4 `:has(...)` IS vanilla and supported in modern Chromium.
+**Selector contract:** `bbox_selector` needs to be vanilla CSS that resolves via `document.querySelector` (`capture_website` runs the post-action smooth-scroll JS via `page.evaluate`, which uses the browser's native selector engine). Avoid Playwright extensions like `:has-text("...")`, `text=...`, or `:visible`: those resolve in Playwright's `page.query_selector` (so the bbox capture finds the element) but silently fail in the smooth-scroll's `document.querySelector` (so the page never scrolls to the target, and `bbox.y` ends up at document-Y instead of `top - 60 px`, which trips Step 8b's `bbox.y > recording_viewport.h` degenerate filter and falls back to default-position zoom). CSS Level 4 `:has(...)` is vanilla and supported in modern Chromium.
 
 These sections are the highest-information visuals in most explainer-worthy repos. Missing them produces a generic walkthrough; including them gives the explainer a concrete "show, don't tell" beat. The original tarball SKILL.md flagged the first four with `SPECIAL` rules in the Gemini prompt; this Step 3.0 promotes them from incidental guidance to a hard requirement and adds three more high-signal headings common in OSS READMEs.
 
@@ -201,12 +201,12 @@ Write a JSON array of 8–10 beats, **with a hard total duration of 65–80 seco
 ```
 
 **Hard constraints (validate before emitting the beat sheet — reject the draft if any fails):**
-1. Every beat MUST have all five fields: `t_start`, `t_end`, `action` (with `type` and `url`), `zoom_target` (with `selector`), `vo_text`. Missing fields ⇒ reject and re-author. (Mirrors tarball's `github_explainer.py:183-190` validation pass.)
+1. Every beat needs all five fields: `t_start`, `t_end`, `action` (with `type` and `url`), `zoom_target` (with `selector`), `vo_text`. Missing fields ⇒ reject and re-author. (Mirrors tarball's `github_explainer.py:183-190` validation pass.)
 2. `t_start` of beat 0 = 0.0; `t_end[i] == t_start[i+1]` (continuity).
 3. `len(vo_text.split()) / 2.5` ≈ `t_end - t_start` per beat. Aim for ±10% of this estimate; if your draft is denser than 2.5 wps, tighten the `vo_text` until it fits.
 4. **Total `t_end` of last beat ≤ 80 seconds.** (Reference output is 86.5s including intro; lipsync audio is ~83s. Kling avatar/image2video stalls reliably past ~90s of audio under current load — going over 80s risks a 20-min Kling timeout.)
 5. **Total spoken word count between 165 and 200 words.**
-6. Every beat's `zoom_target.selector` MUST be a valid CSS selector for the page that beat lands on. **GitHub mode prefers** GitHub-specific selectors: `h1.f1`, `#readme`, `article h2`, `.blob-code-inner`, `.highlight`, `.octicon-star`, `nav`. **Generic-URL mode prefers** robust generic selectors: `h1`, `[role="main"]`, `main`, `header`, `nav`, `.hero`, `.feature`, `section h2`, `[class*="cta"]`, `[class*="hero"]`, `button`, `a[href]`. **Selectors must resolve on the rendered page after the beat's action settles** — verify against the DOM you can see via WebFetch before emitting.
+6. Every beat's `zoom_target.selector` needs to be a valid CSS selector for the page that beat lands on. **GitHub mode prefers** GitHub-specific selectors: `h1.f1`, `#readme`, `article h2`, `.blob-code-inner`, `.highlight`, `.octicon-star`, `nav`. **Generic-URL mode prefers** robust generic selectors: `h1`, `[role="main"]`, `main`, `header`, `nav`, `.hero`, `.feature`, `section h2`, `[class*="cta"]`, `[class*="hero"]`, `button`, `a[href]`. **Selectors need to resolve on the rendered page after the beat's action settles** — verify against the DOM you can see via WebFetch before emitting.
 7. `vo_text` is 1-2 conversational sentences. Dev voice. No stage directions. No markdown.
 8. `action.url` is a valid `https://...` URL when `action.type == "navigate"`; required.
 
@@ -234,14 +234,37 @@ If `--focus` is supplied, weave its angles into `vo_text` without mutating the s
 
 Call `mcp__pika__generate_speech` with `provider: "minimax-tts"`, `text: <full vo_text join>`, optional `voice_id`. Capture `result.audio_url` (the dispatcher returns audio under `audio_url`, not `url`) and `result.duration_seconds`. Voice defaults to identity-store injection in plugin mode.
 
-### Step 4.5 — Audio length verification
+**Stale-voice fallback detection (AGNT-231):** the dispatcher retries once with the default `Calm_Woman` voice on Minimax `status_code:2054` (voice id not found — typically a per-agent workspace pointer that Minimax auto-deleted after 7 days of inactivity). On retry success the response carries two extra fields beyond the documented schema (passthrough): `voice_id_requested` (the planted-but-stale id the worker tried first) and `fallback_reason: "invalid_minimax_voice_id"`. **If you see `fallback_reason == "invalid_minimax_voice_id"` in the response, surface a one-line note to the user along the lines of:** "your registered voice expired on Minimax (auto-GC'd after 7 days of inactivity); we used the system default. Re-clone via `clone_voice` if you want personalization back." The render does NOT fail — it just uses the default voice — so this is informational, not a retry trigger.
 
-The TTS engine's actual output rate often diverges from the 2.5 wps estimate in Step 3. Verify before committing to the long-pole lipsync step.
+**Cookie-banner audio padding (Generic-URL mode with `cookie_banner_present == true` from Step 2.6 §B):** prepend MiniMax's pause marker `<#1.5#>` to the `text:` argument **before** calling `generate_speech`. MiniMax's `speech-2.8-hd` honors `<#N#>` as N-second silence; the returned `audio_url` and `duration_seconds` include the 1.5s lead-in natively. This aligns the audio with the screen recording's cookie-dismissal +1.5s offset applied in Step 4.5.
 
-- If `|audio_duration_seconds - beats[-1].t_end| > 10` seconds, **abort** and re-author the beat sheet with a tighter / looser word budget.
-- If `audio_duration_seconds > 90`, **abort** regardless — Kling avatar/image2video stalls reliably past 90s of audio under current load.
+**Fallback** (only if smoke-test shows the marker is ignored on this voice): call `generate_speech` normally, then `mcp__pika__edit_audio_mix` to overlay the result onto a 1.5s silent base at offset 1.5s. **Then call `mcp__pika__analyze_media(url=<padded_audio_url>)` to probe the padded duration and rebind `duration_seconds = result.duration_seconds`** before Step 4.5 consumes it. `analyze_media` is the **single authoritative duration probe** — do not rely on `edit_audio_mix`'s return payload (its duration field is not contractually guaranteed).
 
-This gate exists to catch length drift before it costs 20 minutes of Kling timeout. Tarball had an equivalent verification table.
+### Step 4.5 — Audio length verification + beat-sheet rescale
+
+Applied to `audio_duration_seconds` post Step 4 (which includes any cookie lead-in pad). End state: `beats[].t_start` / `t_end` are absolute wall-clock seconds matching the audio playback timeline. **All `beats[]` mutations happen here**; Steps 6 and 8 are read-only consumers.
+
+**Gate 1 — Kling stall ceiling (provider cap, raw audio_duration_seconds):**
+If `audio_duration_seconds > 90`, abort and re-author the beat sheet with a tighter word budget. Kling avatar/image2video stalls past ~90s.
+
+**Gate 2 — Degenerate TTS (spoken-content length):**
+Compute `narration_duration = audio_duration_seconds - (1.5 if cookie_banner_present else 0.0)`. If `narration_duration < 30s`, retry Step 4 once (and recompute `narration_duration` from the retry's audio). If the retry also returns `narration_duration < 30s`, abort and investigate — likely failure modes: truncated MiniMax response, silent audio, vo_text not joined correctly.
+
+**Gate 3 — Rescale:**
+- `narration_duration = audio_duration_seconds - (1.5 if cookie_banner_present else 0.0)`
+- `scale = narration_duration / beats[-1].t_end`
+- If `scale < 0.5` or `scale > 1.5`, abort and re-author. Structurally broken TTS (or wildly off word budget); rescaling won't save it.
+- For each beat: `beat.t_start *= scale; beat.t_end *= scale`
+- If `cookie_banner_present`: for each beat, `beat.t_start += 1.5; beat.t_end += 1.5`
+- **Final clamp:** `beats[-1].t_end = audio_duration_seconds` (exact). Guarantees float equality of the invariant regardless of cookie mode or accumulated float drift.
+
+**After Gate 3 passes**, emit a one-line operator log to surface the scale value for post-run diagnosis:
+
+```
+Rescaled beats by scale=X.XX (audio=Y.YYs, narration_duration=Z.ZZs, cookie_pad=W.Ws)
+```
+
+**Advisory (not a gate):** scale near 1.0 is ideal. `scale > 1.2` means audio is meaningfully slower than predicted — visuals feel "stretched" but stay in-sync. `scale < 0.85` means audio is faster — visuals feel "rushed" but in-sync. Both pass the gates; if the user reports "feels off-pace" rather than "out of sync," re-author with a tighter / looser word budget.
 
 ### Step 5 — Preview gate (opt-in via `--preview`)
 
@@ -276,14 +299,14 @@ Call `mcp__pika__capture_website`:
 
 - `url: <beat 0's action.url>`
 - `timed_actions: <the N-element list built above>` (one entry per beat)
-- `duration_s: max(ceil(beats[-1].t_end), ceil(audio_duration_seconds))` — covers both the beat budget AND any TTS overrun. MiniMax-TTS commonly produces audio ~5-10% longer than the 2.5 wps estimate (Step 4.5 already gates drift > 10s); using the max ensures the screen recording covers the full lipsync, otherwise `edit_pip`'s `shortest=1` would clip the recording's tail and you'd lose the last few seconds of audio with no screen behind it.
+- `duration_s: ceil(audio_duration_seconds)` — `beats[].t_start` and `t_end` have already been rescaled to the TTS audio timeline by Step 4.5, so `duration_s` is simply the audio length. The old `max(...)` defense against TTS overrun is no longer needed.
 
 **Generic-URL mode additions** (per Step 2.6 pre-flight):
 
 - `extra_css: <the cookie-banner-hiding CSS payload from Step 2.6 §B>` — defensive: hides common consent platforms via `display: none !important;` so even if the optional click misses, the banner is invisible in the recording.
 - **Prepend a `wait` action** `{type: "wait", at_s: 0.0, ms: 2500}` for SPA / lazy-render pages (per Step 2.6 §D); use 1500ms for "normal" pages. This gives time for hero images to lazy-load, fonts to swap, and scroll-triggered animations to be ready before the first beat fires.
-- **If `cookie_banner_present` from Step 2.6 §B**, also prepend a `click` action `{type: "click", at_s: 0.5, selector: <detected dismissal selector from WebFetch DOM>}` and shift all beat `t_start` / `t_end` values by `+1.5s` to compensate. Beat 1 navigates / scrolls at `t_start: 1.5` (or whatever offset accommodates the dismissal animation). The lipsync audio also needs to start with a 1.5s lead-in pause — easiest to just have beat 1's `vo_text` begin with a half-second pause-friendly opener like _"Alright,"_ or _"So,"_, or pad the audio externally before lipsync.
-- **No cookie banner shifts needed** if `cookie_banner_present == false`; just the prepended wait action.
+- **If `cookie_banner_present` from Step 2.6 §B**, also prepend a `click` action `{type: "click", at_s: 0.5, selector: <detected dismissal selector from WebFetch DOM>}`. **The `beats[]` array has already been shifted by `+1.5s` in Step 4.5 to account for the cookie-dismissal lag, and the TTS audio has already been padded with 1.5s of silence (Step 4); no further shifting is required here. Beat 1's `timed_action.at_s` reads `beats[0].t_start` directly, which is 1.5 in cookie mode.**
+- **No cookie banner action needed** if `cookie_banner_present == false`; just the prepended wait action.
 
 Capture `video_url`, `recording_viewport`, `action_bboxes`. The result returns `recording_viewport: {w, h}` and `action_bboxes: [{idx, selector, found, bbox: {x,y,w,h}}]` alongside `video_url`.
 
@@ -314,6 +337,8 @@ Constants:
 - `SCALE = 1.35` (precise element-targeted zoom).
 - `FALLBACK_SCALE = 1.25` (default-position fallback when no usable bbox).
 - `FALLBACK_RAMP = 0.4`.
+
+**Note:** `beats[].t_start` / `t_end` were rescaled (and cookie-shifted if applicable) to the audio timeline by Step 4.5. HOLD_GAP (0.6s), MIN_BEAT_DUR (1.5s), and the 1.0s interior-interval check all operate on those final values — they are real visual seconds on the rendered video.
 
 `edit_browser_frame`'s inner-content offsets: `CONTENT_X=56, CONTENT_Y=108, CONTENT_W=1168, CONTENT_H=637` (verified against the worker's `edit_browser_frame/main.py`).
 
@@ -361,6 +386,7 @@ If `len(zoom_keyframes) > 0`, call `mcp__pika__edit_animate_zoom` with `video_ur
 - `provider: <resolved_lipsync_provider>` — **default: `pika`** (parrot a2v). Honor `--lipsync-provider kling` if explicitly passed.
 - `image: <avatar>`
 - `audio: <Step 4 audio_url>`
+- **kling-only knobs** (since `pika-mcp-server` BACK-339, 2026-05-10): when `provider == "kling"`, add `mode: "pro"` and `prompt: "talking head, face centered, mouth syncs to audio, minimal head movement, professional presenter"` for the polished-presenter feel. Both are silently ignored on `pika` (parrot has its own driver).
 
 **Provider tradeoffs:**
 
@@ -369,7 +395,7 @@ If `len(zoom_keyframes) > 0`, call `mcp__pika__edit_animate_zoom` with `video_ur
 | **`pika`** (default) | ~2–5 min | Slightly more dramatic, naturalistic | Default for most runs — fast iteration, watchable output, ~10× faster than kling |
 | `kling` (opt-in) | ~5–30 min | Minimal, face-centered, presenter-style | High-stakes renders where the avatar must read like a polished presenter; tolerate the long pole |
 
-Server-side-await covers the call inline; if the response shape is `{task_id, status: "queued"}`, poll `mcp__pika__task_status` in a tight loop (no sleep) until the status reaches a terminal state (`done`, `failed`, or `cancelled`). On `done`, capture `lipsync_url`. On `failed` / `cancelled`, fall back to the **other** provider (kling ↔ pika) per the failover note below.
+Most runs complete inline. If lipsync returns an async status handle, follow the MCP tool's status flow until it reaches a terminal state. On success, capture `lipsync_url`. On failure or cancellation, fall back to the **other** provider (kling ↔ pika) per the failover note below.
 
 **Failover:**
 - If `pika` fails (rare — parrot a2v is robust at typical explainer audio lengths) → retry once with `provider: "kling"`.
@@ -394,9 +420,9 @@ For the canonical "polished presenter" feel of the original tarball reference ou
 - `stroke_color: "white"`
 - `position_px: {x: 20, y: 476}`    ← `800 − 246 − 78` for dock clearance (matches tarball's `H − CIRCLE_OUT − 78`)
 
-Do NOT pass `size` — `size_px` and `size` are mutually exclusive. Returns `final_url`.
+Pass `size_px`, not `size`; the fields are mutually exclusive. Returns `final_url`.
 
-**Master-duration / audio-source contract** (matching tarball `github_explainer.py:418-419, 531-533, 578-582`): `edit_pip` uses `shortest=1` semantics by default, which means the composite's duration is the shorter of (zoomed screen recording) and (lipsync video). Step 6's `duration_s = max(ceil(beats[-1].t_end), ceil(audio_duration_seconds))` ensures the screen recording is ≥ the lipsync, so the composite duration is set by the lipsync. Audio comes from the lipsync video's audio track (the lipsync embeds the original TTS audio); the standalone `audio_url` is not re-mixed. If the lipsync video is shorter than the screen recording (Kling sometimes trims trailing silence), the screen will get cut off at the lipsync end — accept this; the alternative (looping the screen) is worse for explainer content.
+**Master-duration / audio-source contract** (matching tarball `github_explainer.py:418-419, 531-533, 578-582`): `edit_pip` uses `shortest=1` semantics by default, which means the composite's duration is the shorter of (zoomed screen recording) and (lipsync video). Step 6's `duration_s = ceil(audio_duration_seconds)` ensures the screen recording length matches the lipsync exactly (Step 4.5 rescaled beats to the audio timeline). The composite duration is set by the lipsync via `edit_pip`'s `shortest=1` semantics. Audio comes from the lipsync video's audio track (the lipsync embeds the original TTS audio); the standalone `audio_url` is not re-mixed. If the lipsync video is shorter than the screen recording (Kling sometimes trims trailing silence), the screen will get cut off at the lipsync end — accept this; the alternative (looping the screen) is worse for explainer content.
 
 ### Step 11 — Burn captions
 
@@ -408,16 +434,46 @@ Skip this step only if the user passed `--no-captions` (parsed in Step 1) — th
 
 Emit `captioned_url` (or `final_url` if Step 11 was skipped) on one line: `Done: <url>`.
 
+## Load-bearing phrases
+
+These anchors preserve the visual contract across page types:
+
+| Phrase | Where | Why load-bearing |
+|---|---|---|
+| `vanilla CSS that resolves via document.querySelector` | Selector contract | Keeps scroll, bbox capture, and zoom targeting aligned inside `capture_website`. |
+| `GitHub URLs activate repo-aware mode` | Mode detection | Prevents generic product-page beats from replacing README/code walkthrough beats. |
+| `8-10 beats`, `65-80 seconds`, `165-200 words` | Beat-sheet authoring | Keeps narration, screen recording, lipsync, and captions within the reliable duration envelope. |
+| `all beats[] mutations happen here` | Audio rescale step | Ensures later capture/zoom/composite steps consume one stable timeline. |
+| `extra_css` cookie-banner hiding payload | Generic URL pre-flight | Reduces first-frame banner occlusion when a banner click misses. |
+
+## Engine choice: Pika lipsync default, Kling opt-in
+
+Default to Pika/parrot lipsync because it is faster and keeps most explainers in a short iteration loop. Use Kling only when the user explicitly requests `--lipsync-provider kling` or when a high-stakes render needs a more centered presenter look and can tolerate a much longer long-pole stage. Screen capture, browser frame, zoom, PiP, and captions remain deterministic edit/composite steps around that lipsync choice.
+
+## Runtime expectations
+
+Typical wall-clock is 5-10 minutes with Pika lipsync, or 10-30+ minutes with Kling lipsync:
+
+| Step | Wall clock | Notes |
+|---|---:|---|
+| URL read + pre-flight | 10-60s | GitHub README scan or generic URL DOM/cookie checks |
+| TTS + audio rescale | 30-90s | Beat timing is normalized after actual audio length |
+| Screen recording | 60-180s | Depends on page load and navigation count |
+| Browser frame + zooms | 1-3 min | Deterministic edit/composite stages |
+| Lipsync | 2-5 min Pika / 5-30 min Kling | Kling is opt-in because it is the long pole |
+| PiP + captions | 1-3 min | Captions skipped when `--no-captions` is set |
+
 ## Known gaps (carried as follow-up server-side work)
 
-- **Kling avatar `mode:"pro"` and `prompt` not exposed.** Tarball calls Kling directly with `{mode:"pro", prompt:"talking head, face centered, mouth syncs to audio, minimal head movement, professional presenter"}`. The Pika MCP `generate_lipsync` wrapper drops both for the kling provider (schema says prompt is "parrot only"; mode is hardcoded). Real quality lever for reducing dramatic head motion in the lipsync. Server PR follow-up: surface `prompt` and `mode` on `generate_lipsync` for kling.
-- **No white-frame trim on the screen recording.** Tarball's `recorder.py:165-185` detects mean-brightness > 245 in the first 4s and trims with ffmpeg. `capture_website` has internal trim heuristics but doesn't expose them to the caller. Visible as a brief white flash at the start of the explainer when the page is still loading. The 800ms `wait` action at `at_s: 0.0` mitigates this somewhat by giving the page time to paint, but doesn't trim already-recorded white frames. Worker enhancement.
+- ~~**Kling avatar `mode:"pro"` and `prompt` not exposed.**~~ **Resolved** by `pika-mcp-server` BACK-339 (PR #186, shipped 2026-05-10): `generate_lipsync` now wires both `mode` (e.g. `"pro"`) and `prompt` end-to-end for the kling provider. To enable polished-presenter mode here, pass `--lipsync-provider kling` and the Step 9 call should add `mode: "pro"` plus a prompt like `"talking head, face centered, mouth syncs to audio, minimal head movement, professional presenter"`. Real quality lever for reducing dramatic head motion in the lipsync — no longer a server-side gap.
+- **No caller-controlled white-frame trim on the screen recording.** `capture_website` has internal trim heuristics but doesn't expose them to the caller. Visible as a brief white flash at the start of the explainer when the page is still loading. The 800ms `wait` action at `at_s: 0.0` mitigates this somewhat by giving the page time to paint, but doesn't trim already-recorded white frames. Worker enhancement.
 - **No `networkidle` wait on per-beat navigation.** Tarball uses `page.goto(url, wait_until="networkidle", timeout=20000)` plus `wait_for_timeout(600)` after every navigate. `capture_website` settles to `domcontentloaded` plus the bbox-capture branch's 600 ms post-action settle (server-side, when `bbox_selector` is set), but SPA blob pages whose final render happens after `domcontentloaded` can still get bbox'd against unmounted code blocks. Worker enhancement: expose a `wait_until` knob on `timed_actions[].navigate`.
 - **No per-step output-size verification gates.** Tarball's `verify()` helper at `github_explainer.py:35-39` checked TTS ≥ 50KB, preview ≥ 100KB, screen ≥ 200KB, lipsync ≥ 500KB, final ≥ 1MB after each step. The MCP path returns URLs only; verifying file size would require an extra `mcp__pika__analyze_media` call per step (~30s overhead each). Worth adding once user-side latency budget allows it. For now, a downstream-failure cascade (e.g. zero-byte TTS → silent lipsync → blank composite) only surfaces at Step 11.
 - **`text_content` bbox capture not implemented.** `capture_website` v1 returns `action_bboxes` only for steps with a CSS `selector`. `text_content`-only steps produce no entry. Prefer CSS selectors in `zoom_target` for guaranteed zoom coverage.
 - **Beat-sheet wording is non-deterministic.** Running the same input twice produces different vo_text and different zoom positions. Visual *kind* is the contract, not pixel-exact reproduction.
 - **Generic-URL mode quality varies by site.** Modern indie / SaaS landing pages with semantic markup (`<h1>` + clear `<section>` + named class hooks) work well. Big-name corporate sites (apple.com, microsoft.com, amazon.com) hit several known limits: (a) **bot detection** — the page may serve a degraded version under headless Chrome, or a captcha; Step 2.6 §A aborts on these but the heuristics aren't exhaustive; (b) **obfuscated class names** — `tile-headline` instead of `hero-title` defeats generic selectors; Step 2.6 §C's WebFetch DOM scan helps but isn't perfect; (c) **scroll-triggered animations don't play** — IntersectionObserver-driven hero reveals fire on real user scrolls, not Playwright's `scrollIntoView`; the recorded frame may be a static placeholder; (d) **lazy-loaded images** — picture/source elements with `loading="lazy"` may not have resolved by the 600ms-or-2500ms settle window; the bbox lands on a transparent placeholder. Workarounds: prefer simpler / smaller marketing pages for launch demos, always pass `--focus "the X feature"` to anchor beat selection, accept that big-name sites need a follow-up server PR (cookie-banner click retry + `wait_until=networkidle` + animation-trigger via `IntersectionObserver` polyfill).
 - **Cookie-banner click is single-attempt.** Step 2.6 §B emits one `click` against the dismissal selector extracted from the WebFetch DOM. If the WebFetch's HTML doesn't include the banner (rendered post-JS) or the selector is wrong, the click silently misses — the `extra_css` payload is the load-bearing defense. Worker enhancement: support a list of fallback selectors per `click` action so the worker tries each in order.
+- **Step 8b ↔ Step 6 `idx`-mapping mismatch in Generic-URL mode.** Step 6 maps `beat_idx = entry.idx - prepend_count`, but Step 8b uses `beat_idx = entry.idx` naively. Pre-existing bug independent of rescaling.
 
 ## Auth
 
@@ -434,6 +490,6 @@ GitHub-mode (repo-aware: README scan + live-demo detection):
 Generic-URL mode (any non-GitHub URL — drives through the page directly):
 
 - `/pika:explainer https://pika.art`
-- `/pika:explainer https://linear.app --focus "the cycle planning view"`
+- `/pika:explainer https://vercel.com --focus "the deployment workflow"`
 - `/pika:explainer https://docs.anthropic.com/en/docs/claude-code/plugins`
 - `/pika:explainer https://your-product-page.com --avatar https://cdn.example.com/me.png --preview`

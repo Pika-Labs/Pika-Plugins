@@ -16,11 +16,18 @@ A two-call pika pipeline: spectator-POV Jumbotron still (`gpt-image-2`) → 15-s
 
 ## Prerequisites
 
-pika MCP available in the host. Tool name prefix varies by mount point — use whatever the host exposes. Tools needed: `upload_asset`, `generate_image`, `generate_reference_video`, `task_status`.
+pika MCP available in the host. Tool name prefix varies by mount point — use whatever the host exposes. Tools needed: asset upload, image generation, reference-video generation, and async status follow-up when a generation does not complete inline.
 
 ## Stage 0 — Intake
 
-Ask the user for both photos in a single message; running before both have arrived leaves Step 1 with a missing `reference_images` entry and produces an inconsistent still.
+If invoked with empty args and no usable prior context, print this menu and stop:
+
+> **Which two subjects should be on the Kiss Cam?** Required:
+>
+> - **Subject A reference photo** — local path or HTTPS URL
+> - **Subject B reference photo** — local path or HTTPS URL
+
+If one photo is already present, ask only for the missing photo. Running before both have arrived leaves Step 1 with a missing `reference_images` entry and produces an inconsistent still.
 
 - **Subject A reference photo** *(required)* — local path or https URL. Save as `state.subject_a_url`.
 - **Subject B reference photo** *(required)* — local path or https URL. Save as `state.subject_b_url`.
@@ -35,7 +42,7 @@ Confirm back in one line ("Generating a Madison Square Garden Kiss Cam moment fo
 
 The kiss cam graphic + scoreboard + retro frame get baked into the still at frame 0 — load-bearing, so Kling treats the entire decorative UI as pixel-locked burned-in UI in Step 2 instead of animating it mid-clip.
 
-**Why gpt-image-2 (and no fallback):** sharper LED panel detail (scoreboard numerals, kiss cam typography, retro decorative edges) and stronger reference-likeness lock than alternative providers; the LED-sharpness + likeness combo is what sells the trend. On a `moderation_blocked` response, re-roll the same call instead of swapping providers — alternatives produced softer likeness and softer LED detail in earlier trials. Trade-off: gpt-image-2 max for 16:9 is 1536×1024 (~1080p), which is sufficient since Kling pro outputs 1080p downstream.
+**Why gpt-image-2 (and no fallback):** sharper LED panel detail (scoreboard numerals, kiss cam typography, retro decorative edges) and stronger reference-likeness lock than alternative providers; the LED-sharpness + likeness combo is what sells the trend. On a `moderation_blocked` response, re-roll the same call instead of swapping providers — alternatives produced softer likeness and softer LED detail in earlier trials. Trade-off: gpt-image-2's 16:9 native is 1792×1024 (1K-class grid), which is sufficient since Kling pro outputs 1080p downstream.
 
 **Why a Jumbotron-POV phone shot (and not a TV broadcast overlay):** the first iteration produced a TV broadcast cutaway with a pink-heart kiss cam graphic on the feed — user feedback was "the kiss cam graphics is ugly, look how real kiss cam moments look in real videos." Real viral kiss-cam clips online are virtually all spectator phone shots OF the Jumbotron (Obama-era USA Basketball kiss cam, Sarah Hyland / Wells Adams kiss cam, etc.). The Jumbotron-shot framing hits the aesthetic users actually associate with "real kiss cam" — retro red border + sparkly hearts + cursive Kiss Cam script + adjacent LED scoreboard panels + arena darkness + fans filming with phones.
 
@@ -69,7 +76,7 @@ Phone-camera aesthetic: slight motion blur, mild handheld imperfection, slightly
 - `provider`: `gpt-image-2` (load-bearing — sharpest LED detail and strongest reference-likeness lock; no fallback provider, re-roll the same call on moderation hits)
 - `reference_images`: `[state.subject_a_url, state.subject_b_url]` *(order matters — Subject A must be index 0, Subject B index 1; the prompt's "FIRST / SECOND reference image" refers to array index)*
 - `aspect_ratio`: `16:9`
-- `quality`: `medium` *(don't pass `high` — exceeds the proxy 180s timeout)*
+- `quality`: `medium` *(default for speed; `high` is now exposed but ~2 min/call — use only when fidelity matters)*
 - `output_format`: `png`
 
 **Do not pass textual feature descriptions for either subject.** The prompt above already refers to each subject only as "the character from the FIRST/SECOND reference image" — that's intentional. Describing hair / face / clothing / accessories in text fights the reference image and causes drift: verbal features override the visual reference, and the model homogenizes the subjects toward the description.
@@ -105,7 +112,7 @@ scene cuts, scoreboard changing, Kiss Cam text changing, graphics morphing, char
 
 `prompt_adherence: strict` paired with the full `negative_prompt` anchor list are load-bearing — without both, Kling animates the scoreboard or "Kiss Cam" text mid-clip and subjects regress toward over-acting / lip-syncing the off-screen PA announcer.
 
-**`prompt`** (verbatim, ~2400 chars — DO NOT re-inflate, Kling caps at 2500):
+**`prompt`** (verbatim, ~2400 chars — keep it pre-trimmed because Kling caps prompts at 2500 chars):
 
 ```
 First frame: spectator-POV phone shot at MSG of the Jumbotron Kiss Cam segment. Fan-filmed TikTok / Instagram kiss-cam clip style. Handheld phone, NOT pro broadcast.
@@ -144,27 +151,13 @@ Aesthetic: real spectator phone-shot, noisy darks, slightly blown LED, subtle mo
 
 The working framing keeps the style-preservation lock but specifies subtle, restrained, true-to-life motion at the level of someone actually caught on a stadium camera — paired with `exaggerated acting / theatrical expressions / over-acting / mugging at camera / cartoon reactions` in the `negative_prompt` to suppress regression toward the third-iteration failure mode.
 
-Save the returned video URL as `state.kisscam_video_url`. If the call returns a `task_id`, poll `task_status(task_id)` per MCP server instructions; client-layer timeouts orphan the upstream task with no recovery handle, so re-run from scratch on timeout.
+Save the returned video URL as `state.kisscam_video_url`. If generation completes asynchronously, follow the MCP tool's returned status handle. Client-layer timeouts can orphan the upstream task with no recovery handle, so re-run from scratch on timeout.
 
 **On failure**: re-run kling — don't switch video engines. Seedance's two-stage likeness gate (same as the `baseball-trend` sibling) makes it unusable here. If the still itself is the issue (use the Step 1 self-check criteria — text spelling, scoreboard, likeness — to decide), re-run Step 1.
 
 ## Step 3 — Deliver
 
-Per project convention (`feedback_media_display_workflow`): download the CDN URLs locally, then emit `[[image:]]` / `[[video:]]` markers with **absolute paths** (relative `./tmp/` is ambiguous depending on cwd):
-
-```bash
-DEST="$(pwd)/tmp"
-mkdir -p "$DEST"
-curl -fsSL "$STILL_URL" -o "$DEST/kisscam-still.png"
-curl -fsSL "$VIDEO_URL" -o "$DEST/kisscam.mp4"
-```
-
-Then emit (with absolute paths) AND echo the CDN URLs in plaintext as a fallback:
-
-```
-[[image:/absolute/path/to/tmp/kisscam-still.png]]
-[[video:/absolute/path/to/tmp/kisscam.mp4]]
-```
+Return both Pika CDN URLs: the still image URL and the final video URL. If the host client requires local media markers, create the local preview outside this skill after confirming both CDN URLs are reachable.
 
 One-line summary: *"Kiss Cam moment at MSG — 15s, 16:9, 1080p, Kling v3-omni, native PA-announcer commentary and crowd reaction."*
 
@@ -216,7 +209,7 @@ Don't edit these without a re-validation pass — they're empirical behavior dep
 
 **Step 2 — Kling, no Seedance.** Seedance has a two-stage `partner_validation_failed` 422 gate (same as the `baseball-trend` sibling skill): an input-side gate that rejects references with recognizable real people, and an output-side gate that rejects AFTER generation if the produced clip contains recognizable-looking faces. Every Kiss Cam shot has a packed-arena crowd full of faces, so the output-side gate is unavoidable here. Kling is the only engine that lands this recipe.
 
-**Kling trade-offs**: 2500-char `prompt` cap (recipe above is pre-trimmed to ~2400 chars — DO NOT re-inflate), no `seed` param (re-rolls are non-reproducible — to re-roll just call again).
+**Kling trade-offs**: 2500-char `prompt` cap (recipe above is pre-trimmed to ~2400 chars; re-inflating it can trigger prompt-length errors), no `seed` param (re-rolls are non-reproducible — to re-roll just call again).
 
 ## Failure cheat sheet
 
