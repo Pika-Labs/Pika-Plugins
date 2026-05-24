@@ -195,7 +195,6 @@ No — Pika manages provider routing internally so you don't juggle API keys, ra
 
 - [Changelog](./CHANGELOG.md) — release history
 - [Tool schema](./tools-manifest.json) — all 58 atomic tools with full param surfaces
-- [Pika MCP endpoint](https://mcp.pika.me/api/mcp) — raw HTTP MCP
 - [Pika Developer Portal](https://www.pika.me/dev/) — keys and SDK references
 - [Security policy](./SECURITY.md)
 - Open-source skill modules → [`Pika-Labs/Pika-Skills`](https://github.com/Pika-Labs/Pika-Skills)
