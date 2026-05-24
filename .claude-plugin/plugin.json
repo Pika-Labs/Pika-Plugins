@@ -1,7 +1,7 @@
 {
   "name": "pika",
-  "description": "Pika Creative Suite — give any AI agent a face, a voice, and a full creative studio. 5 curated /pika:* slash commands backed by 58 atomic media tools at mcp.pika.me.",
-  "version": "1.3.0",
+  "description": "Pika Creative Suite — give any AI agent a face, a voice, and a full creative studio. 9 curated /pika:* skills backed by 58 atomic media tools at mcp.pika.me.",
+  "version": "1.4.0",
   "author": { "name": "Pika Labs", "email": "support@pika.art", "url": "https://pika.me" },
   "homepage": "https://pika.me",
   "repository": "https://github.com/Pika-Labs/Pika-Plugins",
@@ -10,6 +10,8 @@
     "pika", "video", "podcast", "explainer", "ads", "ugc",
     "baseball", "mlb", "espn", "broadcast", "trend",
     "lipsync", "creative", "mcp", "claude-code", "agent",
-    "kiss-cam", "nba", "knicks", "msg", "jumbotron"
+    "kiss-cam", "nba", "knicks", "msg", "jumbotron",
+    "app-sizzle", "app-store-screens", "build-a-brand",
+    "founder-product-video", "app-store", "brand", "founder"
   ]
 }
