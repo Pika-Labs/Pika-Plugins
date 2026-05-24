@@ -6,7 +6,7 @@
 </p>
 
 <p align="center">
-  <a href="./CHANGELOG.md"><img src="https://img.shields.io/badge/version-v1.3.0-blue" alt="Version"></a>
+  <a href="./CHANGELOG.md"><img src="https://img.shields.io/badge/version-v1.4.0-blue" alt="Version"></a>
   <a href="https://mcp.pika.me/api/mcp"><img src="https://img.shields.io/badge/MCP-mcp.pika.me-green" alt="MCP server"></a>
   <a href="./tools-manifest.json"><img src="https://img.shields.io/badge/tools-58_atomic_primitives-purple" alt="Tools"></a>
   <a href="./LICENSE"><img src="https://img.shields.io/badge/license-Apache_2.0-blue" alt="License"></a>
@@ -28,8 +28,8 @@ Pika ships as **three independent surfaces**. Pick one, mix two, or use all thre
 | Surface | What it gives you | Install mechanism | Works with |
 |---|---|---|---|
 | **MCP** | 58 atomic creative tools over HTTP MCP with OAuth | Add `https://mcp.pika.me/api/mcp` to any MCP-aware client | Claude Code, Cursor, Codex, Claude Desktop, Claude.ai connectors, any custom MCP agent |
-| **Skills** | 5 curated `/pika:*` workflows + MCP wiring | `npx skills add Pika-Labs/Pika-Plugins` | Any skill-aware agent — Claude Code, Cursor, Codex, OpenCode, Cline, plus 50+ more auto-detected by [`vercel-labs/skills`](https://github.com/vercel-labs/skills) |
-| **Claude plugin** | Same 5 skills bundled as a Claude Code-native plugin | `claude plugin marketplace add Pika-Labs/Pika-Plugins` | Claude Code only (marketplace + `/plugin` commands) |
+| **Skills** | 9 curated `/pika:*` workflows + MCP wiring | `npx skills add Pika-Labs/Pika-Plugins` | Any skill-aware agent — Claude Code, Cursor, Codex, OpenCode, Cline, plus 50+ more auto-detected by [`vercel-labs/skills`](https://github.com/vercel-labs/skills) |
+| **Claude plugin** | Same 9 skills bundled as a Claude Code-native plugin | `claude plugin marketplace add Pika-Labs/Pika-Plugins` | Claude Code only (marketplace + `/plugin` commands) |
 
 These aren't tiers — they're orthogonal mechanisms. A Claude Code user can pick the plugin, the skills, or just the raw MCP. A Cursor user picks skills + MCP. A custom agent picks just MCP.
 
@@ -63,7 +63,7 @@ codex mcp add pika --url https://mcp.pika.me/api/mcp
 
 **Claude.ai connectors** — add the endpoint URL in Settings → Connectors. **Any other MCP client** — follow your client's docs for the config shape; the endpoint is always `https://mcp.pika.me/api/mcp`.
 
-### 2. Skills — 5 curated workflows + MCP wiring
+### 2. Skills — 9 curated workflows + MCP wiring
 
 [`vercel-labs/skills`](https://github.com/vercel-labs/skills) detects your installed agents and writes each skill to the right path. Pass `--agent <name>` to target one agent, `--all` to install to every detected one.
 
@@ -80,7 +80,7 @@ claude plugin marketplace add Pika-Labs/Pika-Plugins
 claude plugin install pika@pika-plugins
 ```
 
-Full quit + reopen Claude Code, then run `/mcp` and authenticate `pika`. The plugin bundles the same 5 skills as §2 plus the MCP wiring — no separate `claude mcp add`.
+Full quit + reopen Claude Code, then run `/mcp` and authenticate `pika`. The plugin bundles the same 9 skills as §2 plus the MCP wiring — no separate `claude mcp add`.
 
 <details>
 <summary>Claude Code on the web (claude.ai/code)</summary>
@@ -145,6 +145,10 @@ Curated `/pika:*` skills (Surfaces §2 and §3) — one prompt to a finished, sh
 | **[UGC Ads](./skills/ugc-ads/SKILL.md)** | Product URL | 15s creator-style multi-cut UGC ad, 9:16 | `/pika:ugc-ads` |
 | **[Baseball-Trend](./skills/baseball-trend/SKILL.md)** | Name + photo | 15s ESPN behind-home-plate broadcast cutaway | `/pika:baseball-trend` |
 | **[Kiss Cam](./skills/kiss-cam/SKILL.md)** | Two photos | 15s MSG Jumbotron Kiss Cam moment | `/pika:kiss-cam` |
+| **[App Sizzle](./skills/app-sizzle/SKILL.md)** | App name or URL (App Store / website / paths) | Cinematic 1080p iOS app teaser video, GPT-image-2-enhanced screens + "COMING SOON" end card | `/pika:app-sizzle` |
+| **[App Store Screens](./skills/app-store-screens/SKILL.md)** | `brand.md` + product screenshots, or App Store URL | 5–6 splashy 1290×2796 PNGs ready for App Store Connect (hook → value → features → proof → close) | `/pika:app-store-screens` |
+| **[Build a Brand](./skills/build-a-brand/SKILL.md)** | Idea, website, reference brands, or product photos | Full brand identity + multi-page guidelines PDF (logo, palette, type, voice) | `/pika:build-a-brand` |
+| **[Founder Product Video](./skills/founder-product-video/SKILL.md)** | Product URL + founder name/photo (+ brand kit) | 65s founder-talking-head 16:9 1080p MP4 — 4×15s SeeDance acts with real product UI on the founder's phone + 5s branded end card | `/pika:founder-product-video` |
 
 Skills activate from natural language too — saying *"make a podcast about https://pika.art"* fires `/pika:podcast` automatically.
 

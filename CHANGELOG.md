@@ -3,6 +3,27 @@
 All notable changes to the Pika Claude Code plugin are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.4.0] — 2026-05-22
+
+### Added — four new curated skills
+
+Production skill count grows from **5 → 9**. All four new skills are MCP-first: they reach for `mcp__plugin_pika_pika__*` tools (App Store fetch, HTML render, image generation, video generation) instead of bundled local helpers, so the install footprint stays at a folder of `SKILL.md` files with no shell scripts.
+
+- **`/pika:app-sizzle`** — Cinematic 1080p iOS app teaser videos built from real App Store screenshots, with a `gpt-image-2` enhancement pass on each selected screen before SeeDance generation. Output is a beat-driven cinematic teaser ending with the brand logo/icon + "COMING SOON" title card. Screens sourced from Pika MCP App Store fetch, a live website (auto-captured), user-supplied files, or URLs. Triggers on "app sizzle", "app teaser", "app promo", "coming soon", etc.
+- **`/pika:app-store-screens`** — Generates 5–6 splashy 1290×2796 App Store screenshots in a given brand's aesthetic from a `brand.md`, raw product screenshots, or a public App Store listing fetched through Pika MCP. Story-driven (hook → value → features → proof → close), ready to drop into App Store Connect.
+- **`/pika:build-a-brand`** — Full brand identity + multi-page guidelines PDF from any input (an idea, an existing website, a list of reference brands, product photos, or a rebrand request). Covers logo, palette, typography, voice, and brand directions. Pairs with `/pika:founder-product-video` and `/pika:app-store-screens` via shared `brand.md` / `brand.json` kit.
+- **`/pika:founder-product-video`** — 65-second founder-style product video from a product URL + user-supplied imagery. Output is a 16:9 1080p MP4 — 4×15s SeeDance acts of a talking founder + 5s branded end card + background music, with real product screenshots shown on the founder's phone in reveal shots (on-screen UI is real, not AI-imagined). Consumes a `build-a-brand` kit.
+
+### Changed
+
+- **Plugin metadata** — README, `marketplace.json`, and all three plugin manifests (`.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`, `.cursor-plugin/plugin.json`) now advertise **9 curated skills**; version bumped `1.3.0` → `1.4.0` across all four manifests.
+- **`marketplace.json` `skills:` array** — extended from 5 to 9 entries (canonical Anthropic string-array form, stable order: originals first, four new skills appended).
+- **Featured workflows table in README** — extended from 5 to 9 rows with input / output / invoke for each new skill, so the table is the single source of truth for the curated surface.
+
+### Notes
+
+- The 58-tool MCP surface (`tools-manifest.json`, 58 canonical primitives + 9 deprecation aliases = 67 entries) is unchanged in this release. Future tool-surface refreshes will ship in their own minor/patch versions.
+
 ## [1.3.0] — 2026-05-20
 
 ### Repositioned
