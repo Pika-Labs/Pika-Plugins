@@ -1,7 +1,7 @@
 {
   "name": "pika-plugins",
   "metadata": {
-    "description": "Pika Claude Code plugin marketplace — distributes the /pika:* plugin (5 curated slash commands: podcast, explainer, ugc-ads, baseball-trend, kiss-cam)."
+    "description": "Pika Claude Code plugin marketplace — distributes the /pika:* plugin (9 curated skills: podcast, explainer, ugc-ads, baseball-trend, kiss-cam, app-sizzle, app-store-screens, build-a-brand, founder-product-video)."
   },
   "owner": {
     "name": "Pika Labs",
@@ -11,10 +11,10 @@
   "plugins": [
     {
       "name": "pika",
-      "description": "Pika Creative Suite — give any AI agent a face, a voice, and a full creative studio. 5 curated /pika:* slash commands backed by 58 atomic media tools at mcp.pika.me.",
+      "description": "Pika Creative Suite — give any AI agent a face, a voice, and a full creative studio. 9 curated /pika:* skills backed by 58 atomic media tools at mcp.pika.me.",
       "source": "./",
       "category": "creative",
-      "version": "1.3.0",
+      "version": "1.4.0",
       "author": {
         "name": "Pika Labs",
         "email": "support@pika.art"
@@ -26,9 +26,13 @@
         "./skills/explainer",
         "./skills/ugc-ads",
         "./skills/baseball-trend",
-        "./skills/kiss-cam"
+        "./skills/kiss-cam",
+        "./skills/app-sizzle",
+        "./skills/app-store-screens",
+        "./skills/build-a-brand",
+        "./skills/founder-product-video"
       ],
-      "tags": ["pika", "video", "podcast", "explainer", "ads", "ugc", "baseball", "mlb", "espn", "broadcast", "trend", "lipsync", "creative", "mcp", "claude-code", "agent", "kiss-cam", "nba", "knicks", "msg", "jumbotron"]
+      "tags": ["pika", "video", "podcast", "explainer", "ads", "ugc", "baseball", "mlb", "espn", "broadcast", "trend", "lipsync", "creative", "mcp", "claude-code", "agent", "kiss-cam", "nba", "knicks", "msg", "jumbotron", "app-store", "app-sizzle", "brand", "founder", "product-video"]
     }
   ]
 }
