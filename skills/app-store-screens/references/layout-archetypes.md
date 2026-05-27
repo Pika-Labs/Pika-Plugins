@@ -6,7 +6,7 @@
 
 Six layouts + techniques that show up in real App Store campaigns. If a user-supplied reference uses one of these, the description here helps you describe what you're seeing back to the user before designing.
 
-All examples assume a 1290×2796 stage. Coordinates and font sizes are approximate; tune per brand.
+All examples assume a 1290×2796 stage. Coordinates and font sizes are approximate; tune per brand. The strict safe-zone rule from `render-pipeline.md` applies to every example: load-bearing text and readable product UI stay inside y=180..2616. Decorative background color, blur, and non-readable texture may extend outside that range; critical claims and usable app UI may not.
 
 **Default device dimensions:** 1000px wide (≈ 78% of canvas), height ≈ 2168px at native iPhone 15/16 aspect (393/852). Fits fully within the canvas at top=580 (rounded bottom corners visible). For bleed variants, push top to ≥ 819. If you find yourself sizing devices below 800px wide, the layout is wrong, not the device — rework it.
 
@@ -69,14 +69,14 @@ The workhorse. Phone screen sits centered or slightly off-center on a splash bac
 
 ## 2. Full-Bleed UI
 
-Phone canvas fills the entire stage (no device frame visible, or a faint one at the edges). Typography overlays at top or bottom in a contrasting color. Use for the **hook** screen — biggest, boldest, most "this is the app" moment.
+Phone canvas feels oversized and immersive, but the readable product UI remains inside the safe area. Use for the **hook** screen — biggest, boldest, most "this is the app" moment. If you want edge-to-edge drama, use a blurred or cropped duplicate as decorative background and place the real product UI inside y=180..2616.
 
 ```
 ┌─────────────────────────────┐
 │   ┌─────────────────────┐   │
 │   │                     │   │
-│   │   APP UI FILLS      │   │  ← UI bleeds to ~90%
-│   │   THE FRAME         │   │     of the canvas
+│   │   APP UI FILLS      │   │  ← readable UI stays
+│   │   THE SAFE AREA     │   │     inside y=180..2616
 │   │                     │   │
 │   │                     │   │
 │   │   ▓▓▓▓▓▓▓▓▓▓▓       │   │
@@ -91,12 +91,18 @@ Phone canvas fills the entire stage (no device frame visible, or a faint one at 
 
 ```html
 <div class="stage" style="width: 1290px; height: 2796px; background: var(--brand-bg); overflow: hidden;">
-  <img src="https://cdn.pika.art/.../screenshot.png" style="
-    position: absolute; top: 0; left: 0;
-    width: 100%; height: 100%; object-fit: cover;
+  <img class="decorative-bg" src="https://cdn.pika.art/.../screenshot.png" style="
+    position: absolute; inset: -80px;
+    width: calc(100% + 160px); height: calc(100% + 160px);
+    object-fit: cover; filter: blur(28px); opacity: 0.18;
+  ">
+  <img class="product-ui" src="https://cdn.pika.art/.../screenshot.png" style="
+    position: absolute; top: 240px; left: 80px;
+    width: 1130px; height: 1500px; object-fit: cover;
+    border-radius: 88px;
   ">
   <div class="overlay" style="
-    position: absolute; bottom: 0; left: 0; right: 0;
+    position: absolute; bottom: 180px; left: 0; right: 0;
     height: 720px;
     background: linear-gradient(to top, var(--brand-ink) 30%, transparent);
     display: flex; align-items: flex-end; padding: 0 80px 200px;
@@ -187,7 +193,7 @@ Phone in front, a large branded shape or generated image floating behind it. Til
 ```html
 <div class="stage" style="width: 1290px; height: 2796px; background: var(--brand-bg); position: relative;">
   <h1 style="
-    position: absolute; top: 160px; left: 80px; right: 80px;
+    position: absolute; top: 180px; left: 80px; right: 80px;
     text-align: center; font-size: 140px; line-height: 0.95;
     color: var(--brand-ink); margin: 0;
   ">

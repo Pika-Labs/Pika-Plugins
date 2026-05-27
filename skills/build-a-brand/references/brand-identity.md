@@ -7,7 +7,7 @@ genuinely different in name personality, color mood, and voice — not just pale
 
 ```
 ### Option [1/2/3]: [Brand Name]
-**Tagline:** [Short punchy line — under 8 words]
+**Tagline:** [Short punchy line — 8 words max]
 
 **Colors:**
 - [Name]: #[hex] (role: primary/accent/background/text)
@@ -26,70 +26,21 @@ A complete brand identity has BOTH a wordmark and a symbol — they're different
 - **Symbol** = a standalone graphic mark that lives WITHOUT the wordmark. Used for app icon, favicon, social avatar, browser tab — anywhere the wordmark is too long.
 - **Lockup** = how the two combine (horizontal, stacked, symbol-only).
 
-### Logo Pipeline — generate a high-res symbol via gpt-image-2, ship it as transparent PNG (no tracing)
-
-**Hand-coded SVG symbols look amateur.** Do not write `<path d="M..."/>` strings to build the brand symbol. But also: **don't trace the gen'd symbol to SVG.** Keep the symbol as a high-resolution transparent PNG. Only the wordmark gets vectorized (in the brand kit). Pipeline:
-
-1. **Generate the symbol via `generate_image` with `provider="gpt-image-2"`, `quality="high"` (or `"medium"` for first drafts), 1:1 aspect ratio, 1024×1024 minimum.** The symbol's visual style is a brand-personality decision — pick the style that fits the brand's voice and design language, not a default.
-   - **Flat is correct** when the brand reads as flat — sticker-style, screen-print, comic/cartoon, vintage print, Memphis-era, modernist, anything that lives in a 2D vocabulary. Most brands land here.
-   - **Dimensional / 3D / glossy / painted / photographic** is correct when the brand actually reads that way — luxury beauty, Y2K product-render, 3D-rendered toy, ceramic craft, anything where the visual world has volumetric depth as part of its character.
-   - **Neither is the default.** The trace requirement is gone, but that doesn't mean dimensional is "better." Style follows brand. If you removed the trace constraint and immediately reached for dimensional, ask: would the brand prefer flat? Often the answer is yes.
-   - The only style-style constraints are the ones in "Symbol output rules" below (≤3 colors, recognizable at 16×16, etc.). Within those, you're free.
-2. **The prompt MUST include the no-text guardrail**: "absolutely no text, no letters, no typography, no words, no characters anywhere in the image." gpt-image-2 produces garbled fake text inside logos if you don't explicitly forbid it.
-3. **Show the user the gen'd symbol(s).** Generate 2-3 variations if appropriate. Wait for user approval before committing.
-4. **Once approved, save as a high-res transparent PNG.** Standard: 2048×2048 PNG with true alpha-channel transparency (verify with PIL — see `brand-guidelines.md` "gpt-image-2 transparent-background caveat"; key out the painted near-white pixels if needed, or regenerate with a solid bg matching the placement surface). Use this PNG everywhere the symbol appears — guidelines pages, brand kit, etc. **Do NOT trace to SVG.** The symbol stays raster.
-5. **Wordmark = Google Font, NEVER baked into the image.** Pick a Google Font that matches the brand vibe (see `brand-guidelines.md` "Must Have Character"). The wordmark is rendered as live text in HTML/CSS for the guidelines pages, and converted to text-as-paths SVG in the brand kit (see step 7).
-6. **Lockup composition is perfectly measured + permanently fixed.** Pick one horizontal lockup geometry AND one stacked lockup geometry. For each, specify: symbol size (px or em), wordmark font size (px), gap between symbol and wordmark (px), vertical baseline alignment (which point of the symbol aligns with which baseline of the wordmark). **The measurements never change across color variants or contexts.** Document the exact measurements on the Logo page so a designer or developer can rebuild the lockup without guessing.
-7. **In the brand kit:** the symbol ships as `symbol-[color].png` (high-res transparent raster) at multiple sizes (16, 32, 64, 128, 256, 512, 1024, 2048). The wordmark ships as `wordmark-[color].svg` with the Google Font text converted to outlined paths (so the SVG renders identically without the font file installed). The lockup ships as `lockup-[orientation]-[color].svg` containing the symbol PNG embedded inline + the wordmark as paths, positioned at the locked measurements.
-
-### Symbol output rules — what the gen'd symbol must satisfy
-
-The symbol doesn't need to be flat or traceable anymore — but it does still need to function as a logo. Every gen'd symbol must satisfy ALL of:
-
-- **Conceptually linked to the product / brand.** The mark must MEAN something about what the brand IS or DOES. Not a decorative shape, not a random pretty thing — a mark that connects to the brand's reason for existing. The koalacore heart-with-koala-ears doesn't just look cute; it says "a koala you wear like an accessory." A camera app's symbol could be a shutter aperture (product-feature), an abstract eye (sense of seeing), or a literal frame (what the app does to a photo). Whatever the concept lane (see "Symbol concepts must differ across the 3 brand options"), there has to be a real conceptual link.
-- **Feels unique. Makes sense. Doesn't feel generic.** If you can describe the mark in a way that would fit 50 other unrelated brands ("a heart," "a smiling face," "an arrow"), push further — add specificity that ties it to this brand's actual personality. The uniqueness comes from the SPECIFIC interpretation, not the broad category.
-- **Recognizable at small size — mandatory favicon test after every gen.** The mark must read as the brand at 16×16 (favicon size). Test procedure (run AFTER every symbol gen, before any approval ask): use PIL to resize the symbol to 16×16 with LANCZOS, then upscale that 16-px version with NEAREST to ~128×128 (pixel-doubling, so you can actually see what a viewer sees at favicon scale). Read the test image. If the dominant elements have collapsed into mush or vanished entirely, the mark fails — **regenerate**, don't ship.
-  - **The fix when a mark fails the test depends on what went wrong:**
-    - **All-hairline mark dissolves at small scale** (common for luxury / heritage / engraved aesthetics). Fix: give the *dominant central element* a solid filled mass while keeping the framing details (outer ring, decorative crest, laurel, ornamental flourishes) in hairline weight. The DMV exercise demonstrated this: hairline car silhouette → vanished at 16 px; same composition with the car silhouette filled solid → reads clearly at every scale. The lux feel survives because the engraved fine-line frame is still there at large sizes — at small sizes, the solid central mass carries the recognition load.
-    - **Too many tiny detail elements** (e.g. many separate ornaments, fine pinstripes, small leaves). Fix: simplify — keep one or two dominant elements, remove the rest.
-    - **Weak silhouette / outline blends with background.** Fix: thicken outlines OR pick colors with stronger luminance contrast against likely placement backgrounds.
-    - **Light-on-light or low-contrast composition.** Fix: increase the contrast between the mark's dominant color and its background.
-  - **Style is preserved, weight is adjusted.** A richly-rendered 3D mark, a painted mark, a photographic mark, a hairline engraving — all can pass the favicon test by ensuring the dominant readable element has enough mass at 16 px. The fix is compositional, not a style downgrade.
-- **No more than 3 colors.** Counting the dominant color regions, not individual gradient stops. The mark can be a gradient FROM one color TO another (that counts as 2). Or a 3-tone illustration. But not a full rainbow / not a richly multicolored scene. 3 dominant colors max keeps the mark memorable and reproducible across material applications (embroidery, print, etc.).
-- **High resolution.** Generate at gpt-image-2's highest available res, then upscale or regenerate larger if needed. The final shipped PNG should be at least 2048×2048 so it scales cleanly to billboard size without pixelation.
-- **NO TEXT inside the symbol image.** Ever. Text goes in the wordmark only. The symbol is purely a visual mark.
-- **Transparent background, verified.** True alpha=0 in the transparent region. If gpt-image-2 paints near-white pixels in the "transparent" area (it often does), key them out with PIL or regenerate with a solid bg that matches the placement surface.
-
-If the gen'd output has text, more than 3 dominant colors, or fails the 16×16 recognizability test, **regenerate** — don't ship it.
-
-### Symbol concepts must DIFFER across the 3 brand options
-
-The three identity options are different brands, not the same brand in three skins. Their symbols should differ in *concept*, not only in visual style. **Do not generate three "literal brand mascot face" logos in three styles** — that's one idea repeated.
-
-Pick a different concept lane for each option. Possible concept lanes:
-- **Literal mascot / character** — the brand's animal/object rendered as the mark (most expected).
-- **Product-feature reference** — symbol references what the product *does* (e.g. a camera shutter for a camera app, a needle-and-thread for a tailor, a flame for a delivery app).
-- **Abstract / geometric mark** — a non-representational shape with meaning (e.g. an arrow, an arc, a spiral, a chevron).
-- **Monogram** — the brand initial(s) drawn distinctively.
-- **Hybrid** — two concepts fused into one shape (e.g. a heart whose top is animal ears, an arrow that's also a leaf).
-- **Container / frame** — a window, badge, stamp, or seal that holds the brand's signature element.
-
-When proposing 3 options, force the symbols across at least 2–3 different concept lanes. The brand-board comparison is more useful when the symbols argue different ideas about what the brand IS.
-
-### Whether to generate new ones depends on what the user has
-
+**Whether to generate new ones depends on what the user has:**
 - If the user has an existing wordmark or symbol they like — USE it. Document the existing asset in the guidelines.
 - If the user is asking for a new logo, or has said they don't like their current one — propose a new wordmark and/or symbol as part of the identity option.
 - If the user has a wordmark but no symbol — propose just the symbol. Brands need a non-typographic mark for app icons, favicons, etc., so a symbol is worth proposing even when the wordmark is kept.
 - Whatever the source, document BOTH in the guidelines. They're both part of complete brand documentation, even when only one is new.
 
 For each identity option, fill in:
-- **Wordmark:** [Which Google Font (or commercial font) is the wordmark set in? Why does it match the brand vibe? Reference existing if kept; describe new if proposed. Spec the font weight + letterspacing + baseline.]
-- **Symbol / mark:** [The standalone graphic mark — shape, reference, what it evokes. Generated via gpt-image-2 (NOT hand-coded SVG). Must read at 16×16 AND 512×512. Reference existing if kept; describe new if proposed.]
-- **Lockup:** [How wordmark + symbol combine — horizontal (symbol left, name right at exact x-offset), stacked (symbol above name with measured spacing), symbol-only at small sizes. Lock the placement and don't vary it across color variants.]
+- **Wordmark:** [How the brand name is typeset — typeface choice, custom letter treatment, spacing, ligature/cut/terminal detail, and lockup rhythm. Reference existing if kept; describe new if proposed. A wordmark is not just a Google Font typed in a brand color.]
+- **Symbol / mark:** [The standalone graphic mark — shape, reference, what it evokes. For new marks, prefer a generated PNG via `mcp__pika__generate_image` with `provider="gpt-image-2"` when image generation gives a richer, more ownable mark than hand-written SVG. Ask for a clean isolated mark on transparent background, centered, no text/watermark/mockup. Use SVG only if the idea is simple enough to draw cleanly. Must read at 16×16 AND 512×512. Reference existing if kept; describe new if proposed.]
+- **Lockup:** [How wordmark + symbol combine — horizontal (symbol left, name right), stacked (symbol above name), symbol-only at small sizes.]
 
 **Brand story:**
 [2-3 sentences for the About page. Written in brand voice. Real copy, not a template.]
+
+Board-preview copy is intentionally shorter: when this story appears on the 3-option brand board, rewrite it to the board budget (~35 words max, min 2 sentences, one compact paragraph). The 2-3 sentence version belongs in the text option/About-page snippet, not the preview board. For the full guidelines foundation page, expand the story to 2-3 paragraphs of real copy in brand voice.
 
 **Product / hero subject photography direction:**
 [How the main subject of brand photography should look — for product brands: the product itself.
@@ -125,56 +76,46 @@ After presenting all 3 identity options in text, **render a 3-page brand board P
 
 ### How to generate:
 
-Build one self-contained HTML file per option, render each to PDF via Chrome headless, then merge into a single 3-page PDF. Each page MUST have a layout that physically embodies its option's design philosophy (not three template recolours — see `brand-guidelines.md` "Brand Board Layout — Differentiate per Option" for rules and examples).
+Build three 1200×850 HTML body fragments and render them through Pika MCP:
 
-```bash
-WS="${BUILD_A_BRAND_WS:-$HOME/build-a-brand-workspace}"
-mkdir -p "$WS/boards"
+1. Use `html_to_pdf` with `body_pages` + `shared_head` so the server renders and merges the three boards into one PDF.
+2. Use `html_to_png` once per board for QA previews at `viewport_px: { width: 1200, height: 850 }`.
+3. Read every PNG preview before sending the PDF URL to the user. The check is not only "does it fit?" It must also look like a good brand board: one primary visual focal point with supporting required content grouped clearly, readable text, no empty placeholders, no muddy one-note palette, and no body copy intersecting decorative elements.
+4. Run `mcp__pika__analyze_media` on each PNG:
+   - Prompt: "Answer with PASS or FAIL on the first line, then explain. Does this brand board look polished enough to send? Check for ugly density, unreadable small text, text overlap, missing/empty mockups, muddy palette, weak hierarchy, clipped text, occluded text, and required board content. Treat flat color rectangles in website/social/app mockups as empty placeholders unless they are explicitly palette specimens. Masthead wordmark/tagline/issue metadata overlays on photos are allowed only with deliberate negative space or a contrast scrim and must pass contrast QA as defined in `brand-guidelines.md` Rule 5; body copy must not overlap images."
+   - If the tool returns `{task_id, status: "running"}`, poll `mcp__pika__task_status({task_id})` until terminal before judging.
+   - Treat the QA as unavailable and halt with a manual-review warning if the tool is missing, raises `tool_not_found`, `provider_unavailable`, `unsupported_media_type`, `rate_limited`, `quota_exceeded`, `auth_error`, any HTTP 4xx/5xx error envelope, or a transport error, says it cannot analyze the image, or returns final text that does not match ``/^\s*[`*]{0,2}(PASS|FAIL)\b/``.
+   - Interpret only the regex capture. Fix every captured FAIL before delivery. If the captured result is PASS but the explanation lists a blocking collision, clipping, unreadable text, or missing required board content, treat it as FAIL. Do not proceed silently.
 
-# 1. Write 3 HTML files: $WS/boards/01-<option-slug>.html ... 03-<option-slug>.html
-#    (Each with @page { size: 1200px 850px; margin: 0; } in CSS, fonts via @font-face file:// — see Step 0 of brand-guidelines.md.)
+Each page MUST have a layout that physically embodies its option's design philosophy (not three template recolours — see `brand-guidelines.md` "Brand Board Layout — Differentiate per Option" for rules and examples).
 
-# 2. Render each to PDF via Chrome headless
-CHROME="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"   # macOS path
-# Linux: CHROME=google-chrome   |  Windows-WSL: CHROME=/mnt/c/Program\ Files/Google/Chrome/Application/chrome.exe
+Assets in the HTML must be server-reachable: use HTTPS URLs from Pika tools, public raw URLs, or inline `data:` URIs. Local files and fonts must not appear as `file://` references.
 
-for i in 01 02 03; do
-  "$CHROME" --headless --disable-gpu --no-sandbox --hide-scrollbars \
-    --virtual-time-budget=8000 --no-pdf-header-footer \
-    --print-to-pdf="$WS/boards/$i.pdf" \
-    "file://$WS/boards/$i-"*.html
-done
-
-# 3. Merge into one PDF
-pdfunite "$WS/boards/01.pdf" "$WS/boards/02.pdf" "$WS/boards/03.pdf" "$WS/boards/brand-boards.pdf"
-
-# 4. QA: screenshot each page, read every one before sending
-for i in 01 02 03; do
-  "$CHROME" --headless --disable-gpu --no-sandbox --hide-scrollbars \
-    --virtual-time-budget=8000 --window-size=1200,850 \
-    --screenshot="$WS/boards/qa-$i.png" "file://$WS/boards/$i-"*.html
-done
-```
-
-If `pdfunite` (from poppler-utils) isn't installed: `brew install poppler` on macOS, or fall back to Python `pypdf.PdfWriter().append()`. Chrome ships on every Mac at `/Applications/Google Chrome.app/...` — no install needed.
-
-**Delivery:** save `$WS/boards/brand-boards.pdf` to `~/Desktop/[brand-slug]-brand-boards.pdf` and emit the local path in the chat. Do not upload or host the PDF unless the user explicitly asks for a hosted copy.
+**Delivery:** return the `file_url` from `html_to_pdf`. Save a local copy only when a downstream brand-kit export needs one.
 
 **Design rules for each board:**
 - Each option panel uses its own background color from that option's palette
-- Brand name displayed large in that option's display typeface (loaded via `@font-face file://` from `$WS/fonts/`)
+- Brand name displayed large in that option's display typeface (loaded via HTTPS font URL or inline `data:font/...`)
 - Color swatches shown as circles or rectangles with color names beneath
 - Typography is clean and editorial — no generic fonts (no Inter / Karla / DM Sans default)
 - Layout philosophy differs per board — a tabloid board looks like a newspaper, a fashion-house board looks like a lookbook spread, an archival board looks like a book frontispiece. See `brand-guidelines.md` "Brand Board Layout — Differentiate per Option" for the differentiation rule and `brand-guidelines.md` "Required content per board" for the per-page checklist.
-- No generic AI mood-board collages. Each board may use one purpose-built `gpt-image-2` mood image that matches that board's photography/illustration direction.
+- No AI-generated imagery on the boards beyond the single required lifestyle mood image per board and an optional generated PNG symbol when that is the strongest logo route. No generic AI mood-board collages, AI app mockups, AI product mockups, AI seals, or extra AI filler assets.
 - The whole thing should look like something a real brand studio would produce
+
+**Board copy budgets:**
+- Tagline: 8 words max.
+- Voice sample: 14 words max.
+- Brand story: 35 words max, min 2 sentences.
+- World description: 22 words max, min 1 full sentence.
+- Body text: 18px minimum. Labels: 14px minimum unless purely decorative.
+- If copy needs to be smaller than that, rewrite. Do not shrink, layer, or cram until the board technically contains everything but looks bad.
 
 ## Quality Bar
 
 - **Names**: Should be memorable, say-able, and googleable. Avoid made-up words unless they're genuinely good.
 - **Colors**: Give them real names (not "Dark Blue" — try "Ink", "Dusk", "Bone"). Specify roles.
 - **Voice examples**: Write an actual sentence in the brand's voice (a headline, a button label, an error message), not a description of the voice.
-- **Logo concepts**: Cover BOTH wordmark and symbol in every identity option — they're different things doing different jobs. Describe each visually — shape, reference, style. (e.g. wordmark: "a custom hand-drawn serif, slightly imperfect, like a signature"; symbol: "a thin-line greyhound silhouette, drawn mid-stride, in a single continuous line"). What you GENERATE depends on what the user has: use existing assets if the user wants to keep them, propose new ones if the user needs a logo or doesn't like their current one. If the user has a wordmark but no symbol, still propose a symbol — favicons and app icons need a non-typographic mark.
+- **Logo concepts**: Cover BOTH wordmark and symbol in every identity option — they're different things doing different jobs. Describe each visually — shape, reference, style. (e.g. wordmark: "a custom hand-drawn serif, slightly imperfect, like a signature"; symbol: "a thin-line greyhound silhouette, drawn mid-stride, in a single continuous line"). What you GENERATE depends on what the user has: use existing assets if the user wants to keep them, propose new ones if the user needs a logo or doesn't like their current one. For a new symbol, prefer the generated PNG route when a hand-authored SVG would look simplistic or illegible; use `mcp__pika__generate_image` with `provider="gpt-image-2"` and a transparent-background, no-text prompt. If the user has a wordmark but no symbol, still propose a symbol — favicons and app icons need a non-typographic mark.
 - **Fonts must have character.** Don't default to Inter / Karla / Outfit / DM Sans / Lato — they have no point of view. Explore the full Google Fonts library. See `brand-guidelines.md` "Font Selection — Must Have Character" for approved high-character options.
 - **Brand story**: Should make someone feel something. Name the founder's origin if appropriate.
 

@@ -176,7 +176,7 @@ Call `generate_reference_video`:
 
 For `provider=kling`: convert the multi-beat prose into `shots: [{prompt, duration}, ...]` (5 shots × 3s = 15s sum), plus a top-level `prompt` summarizing the ad. References use `<<<image_1>>>` / `<<<image_2>>>` instead of `@Image1` / `@Image2`.
 
-If generation completes asynchronously, follow the MCP tool's returned status handle until it reaches a terminal state. Capture the result URL → `video_url` and proceed to step 8.
+If the call returns `{ task_id, status: "queued" }`, poll `task_status(task_id)` in a tight loop (no Bash, no sleep) until terminal (`completed | failed | cancelled`). On `completed`, capture `result.url` → `video_url` and proceed to step 8.
 
 **7b. On rejection — auto-cartoonize the avatar**
 

@@ -395,7 +395,7 @@ If `len(zoom_keyframes) > 0`, call `mcp__pika__edit_animate_zoom` with `video_ur
 | **`pika`** (default) | ~2–5 min | Slightly more dramatic, naturalistic | Default for most runs — fast iteration, watchable output, ~10× faster than kling |
 | `kling` (opt-in) | ~5–30 min | Minimal, face-centered, presenter-style | High-stakes renders where the avatar must read like a polished presenter; tolerate the long pole |
 
-Most runs complete inline. If lipsync returns an async status handle, follow the MCP tool's status flow until it reaches a terminal state. On success, capture `lipsync_url`. On failure or cancellation, fall back to the **other** provider (kling ↔ pika) per the failover note below.
+Server-side-await covers the call inline; if the response shape is `{task_id, status: "queued"}`, poll `mcp__pika__task_status` in a tight loop (no sleep) until the status reaches a terminal state (`completed`, `failed`, or `cancelled`). On `completed`, capture `lipsync_url`. On `failed` / `cancelled`, fall back to the **other** provider (kling ↔ pika) per the failover note below.
 
 **Failover:**
 - If `pika` fails (rare — parrot a2v is robust at typical explainer audio lengths) → retry once with `provider: "kling"`.

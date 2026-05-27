@@ -4,13 +4,24 @@ description: >
   Generate cinematic 1080p iOS app teaser videos from real App Store screenshots,
   with a GPT-image-2 enhancement pass on each selected screen before generation.
   Output is a beat-driven cinematic teaser built from GPT-enhanced screenshots,
-  ending with the brand logo/icon + "COMING SOON" title card. Screens sourced
-  from Pika MCP App Store fetch, a live website (auto-captured), user-supplied files, or URLs.
+  ending with the brand logo/icon plus a deterministic `COMING SOON` overlay.
+  Screens sourced from Pika MCP App Store fetch, a live website (auto-captured), user-supplied files, or URLs.
   Starts by sourcing real screens and brand assets before any generation.
-  Triggers on: app sizzle, app teaser, app promo, video promo, app video, product
-  video, coming soon, seedance, motion graphics, make a promo, make a video for
-  [app], gpt enhance promo.
+  Triggers on: app sizzle, app teaser, app promo, iOS app promo video, app video,
+  app product video, coming soon, seedance, motion graphics, make a promo for my
+  app, make a video for [app], gpt enhance promo.
+  NOT for: short-form consumer content like GRWM, vlogs, UGC, or non-app product
+  ads (use content-video); app-sizzle is specifically for iOS app teaser videos
+  sourced from App Store screens or real app UI.
 argument-hint: <app-name-or-url> [screens=<app-store-url|website-url|paths>] [logo=<path-or-url>] [aspect=16:9|9:16|1:1]
+required-capabilities:
+  - mcp__pika__capture_website
+  - mcp__pika__fetch_appstore_screens
+  - mcp__pika__generate_image
+  - mcp__pika__generate_reference_video
+  - mcp__pika__edit_text_overlay
+  - mcp__pika__task_status
+  - mcp__pika__upload_asset
 ---
 
 # App Sizzle — GPT-Image-2 Enhanced iOS App Teaser
@@ -25,11 +36,14 @@ The visual aesthetic is **derived from the app's personality** — not defaulted
 
 ## Mode: Reference-to-Video
 
-Primary: `generate_reference_video(provider="seedance", resolution="1080p")` with 3–5 screenshots + the app icon/logo as the final reference.
+Primary: `mcp__pika__generate_reference_video(provider="seedance", resolution="1080p")` with 3–5 screenshots + the app icon/logo as the final reference.
 
 Fallback to `provider="kling", quality_mode="pro"` (= 1080p) when:
-- Seedance returns `partner_validation_failed` (celebrity faces, screen-recording UI)
+- Seedance returns non-audio `partner_validation_failed` (celebrity faces, screen-recording UI)
 - Seedance returns `insufficient_balance`
+- Seedance stays queued/running until it returns a timeout such as `seedance timed out after ...`
+
+Do not treat generated-audio moderation as an immediate Kling fallback. See the Seedance generated-audio moderation recovery runbook in Generate Video first.
 
 Kling prompt uses `<<<image_1>>>` … `<<<image_5>>>` tokens instead of `@Image1` … `@Image5`. Drop the `resolution` param (Kling uses `quality_mode` instead). See Gotchas.
 
@@ -47,7 +61,7 @@ To make your app promo, I need:
 
 2. Where should I pull the app screens from?
    — iOS App Store: give me the App Store URL or app name → I'll use
-     `fetch_appstore_screens` to fetch screenshots, metadata, and icon
+     `mcp__pika__fetch_appstore_screens` to fetch screenshots, metadata, and icon
    — Web app / website: give me the URL → I'll capture it with Pika MCP
    — Local files / URLs: drop the paths and I'll upload them
 
@@ -78,7 +92,7 @@ Before calling any generation tool, verify both assets are in hand:
 | Asset | Required | If missing |
 |-------|----------|------------|
 | Real app screenshots (≥1 actual sourced image) | Yes | Stop and ask for screenshots |
-| Brand logo OR app icon | Yes | Use the `fetch_appstore_screens` icon when App Store sourcing is used; otherwise stop and ask for a logo/icon |
+| Brand logo OR app icon | Yes | Use the `mcp__pika__fetch_appstore_screens` icon when App Store sourcing is used; otherwise stop and ask for a logo/icon |
 
 If either is missing, tell the user exactly what's needed and wait. Real assets are what keep the teaser grounded; text-to-video placeholders make Seedance invent UI.
 
@@ -98,7 +112,7 @@ what happened and ask the user to provide the screens manually. Never invent the
 
 ### iOS App Store
 
-Use Pika MCP `fetch_appstore_screens`; do not use a local scraper. It accepts a full App Store URL, numeric app ID, or app-name search term:
+Use Pika MCP `mcp__pika__fetch_appstore_screens`; do not use a local scraper. It accepts a full App Store URL, numeric app ID, or app-name search term:
 
 ```
 fetch_appstore_screens(
@@ -123,7 +137,7 @@ Expected result shape:
 }
 ```
 
-If `fetch_appstore_screens` returns no screenshots, report the error and ask the user for 3-5 real screenshots plus a logo/icon. Do not fall back to Playwright/headless App Store capture and do not invent UI.
+If `mcp__pika__fetch_appstore_screens` returns no screenshots, report the error and ask the user for 3-5 real screenshots plus a logo/icon. Do not fall back to Playwright/headless App Store capture and do not invent UI.
 
 After App Store assets are fetched, pick the 3–5 screens that show the core UI. Skip:
 - Pure text/splash screens (no UI)
@@ -158,7 +172,7 @@ For each screenshot, record:
 - **What feature it represents** — e.g. "creation entry", "agent at work", "output/share"
 - **Emotional register** — is this the power moment, the ease moment, the aha moment?
 
-Also pull the app metadata from the `fetch_appstore_screens` result, or from the user-provided description:
+Also pull the app metadata from the `mcp__pika__fetch_appstore_screens` result, or from the user-provided description:
 - App name, subtitle, one-line value prop
 - Category and target user
 
@@ -186,7 +200,7 @@ Every 15s promo needs a spine. Design the story arc before touching the prompt t
 | **Hook** | 0–3s | Grab attention — show the most dramatic UI moment or the problem being solved | The most visually striking screen |
 | **Build** | 3–10s | Feature walkthrough in logical user-journey order | 2–3 screens in sequence |
 | **Reveal** | 10–13s | Pull-back or product overview — the "so that's what it does" moment | Wide shot or most complete screen |
-| **Logo** | 13–15s | Brand lock — wordmark materializes, accent color pulse | Logo (@Image6 or last ref) |
+| **Logo** | 13–15s | Brand lock — wordmark materializes, accent color pulse | Logo (@Image6 or last ref). `COMING SOON` is added later as a post-generation text overlay. |
 
 ### Story arc types — pick one based on the app
 
@@ -205,7 +219,7 @@ Arc type: [Problem→Solution / Feature Parade / Journey / Transformation]
 Hook (0-3s): Screen [N] — [what happens] — camera: [extreme close-up on X]
 Build (3-10s): Screen [N] → [N] → [N] — [what each reveals] — camera: [whip pan / orbital / etc.]
 Reveal (10-13s): Screen [N] — [what it shows] — camera: [pull-back to show full product]
-Logo (13-15s): @Image[N] — wordmark materializes whole in a burst of [accent color] light. Below it, smaller text "COMING SOON" fades in. (NOT "assembles" — triggers per-glyph hallucination)
+Logo (13-15s): @Image[N] — wordmark materializes whole in a burst of [accent color] light and holds. Do not ask the video model to render the `COMING SOON` copy; it is added later as a post-generation text overlay.
 ```
 
 Do NOT write the Seedance prompt until this arc is defined.
@@ -254,7 +268,7 @@ This is the proven template. It uses the BEAT structure directly — Seedance re
 BEAT 1 (Hook, 0–3s): [Camera action] — @Image1 is [exact UI description from Stage 1 feature map, as specific as possible, quoting actual UI text if visible]. [What happens — camera move + how the UI is framed or revealed].
 BEAT 2 (Build A, 3–8s): [Camera cuts to] — @Image2 is [exact UI description]. [What the beat reveals about the feature — show the output or the moment of delight].
 BEAT 3 (Build B / Reveal, 8–12s): [Camera sweeps to or pulls back] — @Image3 is [exact UI description]. [What the product overview or transformation moment shows].
-BEAT 4 (Logo, 12–15s): Hard cut to black — @Image[last] is the [brand] wordmark. It materializes whole in a burst of [accent color] light. Below it, smaller text "COMING SOON" fades in and holds.
+BEAT 4 (Logo, 12–15s): Hard cut to black — @Image[last] is the [brand] wordmark. It materializes whole in a burst of [accent color] light and holds for the final overlay.
 
 Style: [aesthetic-specific — e.g. "dark cinematic thriller, self-luminous UI on absolute black, electric blue accent"]. No text, no words rendered in motion.
 ```
@@ -277,7 +291,7 @@ Style: [aesthetic-specific — e.g. "dark cinematic thriller, self-luminous UI o
 BEAT 1 (Hook): [Camera action] on @Image1 — [transformation: choose from vocabulary below].
 BEAT 2 (Build): [Camera action] cuts to @Image2 — [transformation]. Hard cut to @Image3 — [transformation].
 BEAT 3 (Reveal): Pull-back reveals [what the full product view shows].
-BEAT 4 (Logo): Hard cut to black — @Image[last] materializes whole in a burst of [accent color] light. Below, "COMING SOON" fades in.
+BEAT 4 (Logo): Hard cut to black — @Image[last] materializes whole in a burst of [accent color] light and holds for the final overlay.
 
 Style: liquid glass morphism, Apple Vision Pro aesthetic, premium 3D depth, self-luminous forms on absolute black, [accent color] accent lighting. No text rendered in motion.
 ```
@@ -311,11 +325,31 @@ generate_reference_video(
     duration=15,          # always
     sound=True,           # always
     aspect_ratio="16:9",  # or 9:16 / 1:1 per user request
-    seed=<int>,           # optional — use to retry on content policy failures
+    seed=<int>,           # set one; reuse it for content-policy recovery
 )
 ```
 
-**Fallback — Kling (partner_validation_failed or insufficient_balance):**
+### Seedance generated-audio moderation recovery
+
+If Seedance finishes generation and then returns a 422 whose body includes `type: "content_policy_violation"`, `reason: "partner_validation_failed"`, `loc: ["body", "generated_video"]`, and `msg: "Output audio has sensitive content."`, treat it as a recoverable generated-audio moderation false positive.
+
+1. Retry the exact same prompt and `reference_images` with `sound=False` and the same `seed`.
+2. If the silent probe succeeds, retry the exact same prompt/reference set with `sound=True` and the same seed.
+3. If the `sound=True` replay succeeds, route the recovered sound-on URL into Stage 4 as `generated_teaser_url`. Keep the silent probe URL only as debugging context.
+4. If the silent probe fails, treat the failure as video/reference moderation and use the Kling fallback.
+5. If the silent probe succeeds but the `sound=True` replay fails again, run the Kling fallback once. If Kling is unavailable, route the silent URL into Stage 4 as `generated_teaser_url` and explicitly note that generated-audio moderation remained flaky.
+
+Do not change the prompt, references, aspect ratio, duration, or seed during this recovery path. Changing any of them turns the silent probe into a new generation instead of testing whether only generated audio triggered moderation.
+
+### Seedance timeout recovery
+
+If task status remains queued or running until Seedance returns a timeout such as `seedance timed out after 900s` or `seedance timed out after 1200s`, treat it as provider queue saturation, not a prompt/content failure.
+
+When this happens, run the Kling fallback with the same selected references, same beat structure, `duration=15`, `sound=True`, and `quality_mode="pro"`. Convert `@ImageN` prompt tokens to `<<<image_N>>>` before calling Kling.
+
+Do not keep retrying Seedance after a timeout unless the user explicitly asks to wait for Seedance. The timeout path has already spent the launch-demo wall-clock budget; switching provider is the documented recovery.
+
+**Fallback — Kling (non-audio partner_validation_failed or insufficient_balance):**
 ```python
 generate_reference_video(
     provider="kling",
@@ -334,6 +368,18 @@ Seedance constraints: skip `fast=True` because it caps at 720p; skip `negative_p
 
 Kling constraint: use `quality_mode="pro"` for 1080p; Kling rejects `resolution=`.
 
+### Kling queued/handoff recovery
+
+Kling fallback is async. If `generate_reference_video(provider="kling")` returns a `task_id`, follow the task until terminal.
+
+If `task_status` returns status: `queued` with `statusMessage` containing `Worker handoff: task was requeued for retry on another worker.`, treat it as a worker restart handoff, not a failed render. Keep polling `mcp__pika__task_status(task_id)`; the next worker should reclaim the same task.
+
+If `statusMessage` starts with `Kling is at capacity`, treat it as provider capacity wait. Keep polling the same task while `lastUpdatedAt` continues moving.
+
+Do not submit a duplicate Kling request while the original task is still `queued` or `running`. Duplicates can burn provider quota and make artifact provenance unclear.
+
+If `status` stays `queued` for more than 10 minutes with no `lastUpdatedAt` movement, capture the `task_id`, `status`, `statusMessage`, and `lastUpdatedAt`, then cancel the stalled original with `mcp__pika__task_cancel(task_id)` before retrying. Only after cancel returns `cancelled`, retry the exact same Kling request once with the same prompt, references, shots, aspect ratio, duration, and quality mode. If cancel fails because the task already completed or failed, inspect that terminal result instead of retrying. If the retry also stalls, stop and report both task IDs instead of changing the creative prompt.
+
 ---
 
 ## Asset Upload (local files → public URL)
@@ -341,11 +387,39 @@ Kling constraint: use `quality_mode="pro"` for 1080p; Kling rejects `resolution=
 If the user provides local file paths, convert them to public URLs before calling generate:
 
 1. Read the file size and MIME type.
-2. Call `upload_asset(filename, mime_type, size_bytes)`.
+2. Call `mcp__pika__upload_asset(filename, mime_type, size_bytes)`.
 3. Upload the bytes to the returned `presigned_url` using the host client's file-upload capability.
 4. Use the returned `public_url` as the reference URL in generation calls.
 
 Supported mime types: `image/png`, `image/jpeg`, `image/webp`, `video/mp4`, `audio/mpeg`, `audio/wav`
+
+---
+
+## Stage 4 — Deterministic COMING SOON Overlay
+
+Do not ask Seedance or Kling to render `COMING SOON`. Video models garble new
+typography, especially all-caps CTA text, so the final two seconds use a
+deterministic `COMING SOON` overlay as a post-generation text overlay.
+
+After Seedance or Kling returns the 15s teaser URL, call:
+
+```python
+edit_text_overlay(
+    video_url=<generated_teaser_url>,
+    text="COMING SOON",
+    position="bottom_center",
+    font_size=56,
+    font_color="white",
+    start_s=13,
+    end_s=15,
+)
+```
+
+If `edit_text_overlay` returns `{ task_id }`, poll `mcp__pika__task_status`
+until it reaches `completed`, `failed`, or `cancelled`, then unwrap the returned
+URL. Save the returned URL as `final_url`. If the overlay call fails, surface
+that failure and the unoverlaid teaser URL as a diagnostic preview; do not
+deliver a teaser whose only `COMING SOON` text was generated by the video model.
 
 ---
 
@@ -440,15 +514,16 @@ Typical run time is 4-8 minutes:
 
 | Step | Wall clock | Notes |
 |---|---:|---|
-| Asset sourcing | 10-60s | App Store via `fetch_appstore_screens`; website capture depends on page load |
+| Asset sourcing | 10-60s | App Store via `mcp__pika__fetch_appstore_screens`; website capture depends on page load |
 | Screen analysis + arc | 2-5 min | User confirmation can add time |
 | GPT-image-2 enhancement | 30-90s | Run selected screens in parallel |
-| Seedance generation | 3-5 min | Kling fallback can be slower |
+| Seedance generation | 3-5 min | Generated-audio moderation recovery adds one silent probe plus one same-seed sound replay |
+| Kling fallback | 5-15 min | Capacity wait or worker handoff may temporarily show `queued`; follow the Kling queued/handoff recovery runbook |
 | Download verification | <30s | Local sanity check before delivery |
 
 ## Engine Choice: Seedance Primary, Kling Fallback
 
-Seedance is the default because it handles polished motion-graphics references and 1080p app teasers well. Kling is the fallback for moderation or balance failures because it is more permissive on some screen content and uses `quality_mode="pro"` for 1080p.
+Seedance is the default because it handles polished motion-graphics references and 1080p app teasers well. Kling is the fallback for moderation, balance, or Seedance timeout failures because it is more permissive on some screen content and uses `quality_mode="pro"` for 1080p.
 
 ## Failure Modes
 
@@ -456,13 +531,15 @@ Seedance is the default because it handles polished motion-graphics references a
 |---|---|---|
 | `fast=True` with `resolution="1080p"` | Seedance caps fast mode at 720p | Remove `fast`; keep `resolution="1080p"` |
 | `negative_prompt` rejected | Seedance does not accept this field | Use positive framing such as "smooth motion, stable camera" |
-| Seedance `partner_validation_failed` on audio | Often a false positive | Retry with `sound=False`; if video passes, retry with `sound=True` and the same seed |
+| Seedance generated-audio moderation: `content_policy_violation` / `partner_validation_failed`, `generated_video`, "Output audio has sensitive content." | Often a false positive on non-sensitive app-sizzle references | Follow the generated-audio recovery runbook: same-seed `sound=False` probe, then same-seed `sound=True` replay |
+| Seedance timeout such as `seedance timed out after ...` | Provider queue saturation or tail latency exceeded the tool budget | Run the Kling fallback; do not keep retrying Seedance unless the user explicitly asks to wait |
 | Seedance `partner_validation_failed` on video | Screen content includes recording UI, celebrity faces, or similar moderation triggers | Switch to `provider="kling"` and convert tokens to `<<<image_N>>>` |
 | Faces in screenshots trigger content policy | Screenshot includes real people | Crop faces out before upload, or use Kling |
 | 6+ reference images reduce quality | The model blends too many refs | Keep to 3-5 references, roughly one per 3 seconds |
 | Prompt tail ignored | Prompt exceeds about 200 words | Trim to the beat structure and the concrete UI details |
 | Text in output is garbled | Video model is asked to render new text | Keep text as existing reference-image content; overlay any new branding in post |
 | Logo reveal hallucinates letterforms | "assemble/build/construct" language triggers per-glyph rendering | Use "materializes whole", "crystallizes as a single form", or "fades in as a complete element" |
-| Task returns `{ task_id }` instead of inline | Long-running generation exceeded inline budget | Poll `task_status(task_id)` until `completed`/`done`, `failed`, or `cancelled`; unwrap `result.structuredContent` when present |
+| Task returns `{ task_id }` instead of inline | Long-running generation exceeded inline budget | Poll `mcp__pika__task_status(task_id)` until `completed`, `failed`, or `cancelled`; unwrap `result.structuredContent` when present |
+| Kling task returns status: `queued` after previously running | Worker handoff or provider capacity wait | Follow the Kling queued/handoff recovery runbook; do not duplicate-submit unless queued for more than 10 minutes with no `lastUpdatedAt` movement |
 | Kling rejects `resolution=` | Kling uses a different quality knob | Use `quality_mode="pro"` |
-| App Store icon URL points to promo art | App Store metadata fallback found feature artwork | Prefer the `icon.url` returned by `fetch_appstore_screens`; if missing, ask for a logo/icon file |
+| App Store icon URL points to promo art | App Store metadata fallback found feature artwork | Prefer the `icon.url` returned by `mcp__pika__fetch_appstore_screens`; if missing, ask for a logo/icon file |

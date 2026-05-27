@@ -1,35 +1,19 @@
 # Brand Guidelines — Build Guide
 
-The brand guidelines PDF is the primary deliverable of this skill. It is 14–16 pages depending on brand type, built locally with Chrome headless or WeasyPrint, and delivered as a local PDF path.
+The brand guidelines PDF is the primary (and only) deliverable of this skill. 15 pages (16 if the imagery page splits into separate photo + illustration pages), rendered through Pika MCP `html_to_pdf`, delivered as a single PDF via CDN link.
 
-This guide is the technical playbook: page layouts, image generation, font rules, local rendering, QA checklist. All non-negotiable.
+This guide is the technical playbook: page layouts, image generation, font rules, MCP render contract, QA checklist. All non-negotiable.
 
-## Execution Model — Local First
-
-Keep deterministic production local:
-- **Local:** workspace setup, downloaded fonts, compressed image files, transparent-background cleanup, favicon tests, HTML/CSS builds, PDF rendering, PNG screenshots, crop-and-read QA, logo asset assembly, and kit packaging.
-- **Cloud:** `gpt-image-2` image generation for symbols, photography, illustration, and textures; URL/source research when the brief requires it.
-
-Do not upload PDFs by default. Save PDFs and zips to `~/Desktop` on Mac, or the project working directory if Desktop is unavailable. Only create a hosted/CDN copy when the user explicitly asks.
-
-## Page Structure (14–16 pages depending on brand)
-
-**Page count is conditional:**
-- **14 pages** — non-digital brand (product, restaurant, fashion, service) with single-medium imagery. Icons page skipped.
-- **15 pages** — digital brand (app/web/SaaS) with single-medium imagery. Icons page included.
-- **15 pages** — non-digital brand with hybrid imagery. Imagery splits to 2 pages; Icons skipped.
-- **16 pages** — digital brand with hybrid imagery. Both Icons + split-Imagery present.
-
-Renumber pages contiguously based on what's included — don't leave gaps.
+## Page Structure (15 pages — all mandatory; 16 if hybrid imagery split)
 
 1. **Cover** — Full-bleed brand-specific layout. Brand name + tagline + hero mood image.
-2. **Strategy & Positioning** — Direction, positioning statement, customer, 3-4 reference brands with "borrow this" notes.
+2. **Strategy & Positioning** — Direction, positioning statement, audience segments (primary segment, secondary segment(s), and anchor persona), 3-4 reference brands with "borrow this" notes.
 3. **Brand Foundation** — Mission, values (3-5), why this exists (story in brand voice).
 4. **Logo** — Primary mark + variants (horizontal, icon-only, reversed), usage rules, clear space.
 5. **Logo Don'ts** — Misuse rendered in CSS with ✗ labels.
 6. **Color** — Swatches with hex+RGB+CMYK, full-bleed color columns (not floating swatches).
 7. **Typography** — Full hierarchy with px sizes, display/body specimens, usage rules.
-8. **Icons** *(digital brands only)* — 8-12 essential UI icons in brand's geometric style + stroke/corner/grid rules + library recommendation. SKIP this page entirely for non-digital brands; renumber subsequent pages accordingly.
+8. **Icons** — 8-12 essential UI icons in brand's geometric style + stroke/corner/grid rules + library recommendation. See "Icons Page — Structure & Rules" section.
 9. **Voice & Tone** — Adjectives + actual brand copy examples by context.
 10. **Imagery Rules** — adapts to the brand's primary medium (see "Imagery Rules Page — Adapts per Brand" section below):
     - Photography-led brand → Photography Rules (subject / light / cast / treatment / forbidden) + 1 example photo
@@ -43,32 +27,23 @@ Renumber pages contiguously based on what's included — don't leave gaps.
 
 ---
 
-## Step 0 — Workspace Setup
+## Step 0 — Render Inputs
 
-Images and fonts live in a persistent workspace path. `/tmp` is wiped between sessions on many systems, so don't put assets there.
+Server-side Chromium cannot read local `file://` paths. Every asset referenced by the HTML must be one of:
 
-Pick any writable directory. The default below works on Mac, Linux, and inside containers (it resolves `$HOME`, so no hardcoded paths). Override by exporting `BUILD_A_BRAND_WS=/some/other/path` before running, if you have a preferred location (e.g. `~/Downloads/...` or a project-relative `./tmp/build-a-brand`).
+- HTTPS URL returned by Pika tools (`generate_image`, `upload_asset`, `html_to_png`, etc.)
+- Public HTTPS raw asset URL
+- Inline `data:` URI (best for small SVGs and font subsets)
 
-```bash
-WS="${BUILD_A_BRAND_WS:-$HOME/build-a-brand-workspace}"
-mkdir -p "$WS/fonts" "$WS/images"
-```
+For local source files, call `upload_asset` first and use the returned `public_url` in HTML. `upload_asset` does not accept font files or PDFs, so fonts should use public HTTPS raw URLs or inline `data:font/...` sources.
 
-In Python, expand the same way:
-
-```python
-import os
-WS = os.environ.get('BUILD_A_BRAND_WS') or os.path.expanduser('~/build-a-brand-workspace')
-```
-
-Use `$WS/images/lifestyle1.jpg` etc., and `file://$WS/images/lifestyle1.jpg` in HTML (resolve `$WS` to an absolute path before baking into HTML — `file://` URLs don't do shell expansion).
-Build the HTML as a separate `.py` script file (e.g., `$WS/build_guidelines.py`) — avoids f-string parsing errors with inline Python heredocs.
+Build the final guidelines as one HTML string or as `body_pages` fragments plus `shared_head`. You may keep local working copies for debugging and kit export, but local paths must not appear in render HTML.
 
 ---
 
 ## Step 1 — Generate Imagery (in parallel batches of 4)
 
-You need **a minimum of 5 generated images**:
+You need **a minimum of 10 generated images**:
 - 1 hero mood image (for the cover)
 - 1 example image (for the photography rules page)
 - 4 lifestyle images (for the visual world grid)
@@ -76,14 +51,19 @@ You need **a minimum of 5 generated images**:
 
 That's 10 images. Run in parallel batches of 4 with `&` + `wait`. Never more than 4 at once (timeouts).
 
-**After every generation, compress before using in PDFs:**
-```python
-from PIL import Image
-img = Image.open(path)
-img.thumbnail((1200, 1200), Image.LANCZOS)
-img.save(path, 'JPEG', quality=68, optimize=True)
-```
-Target: under 150KB per image. WeasyPrint silently drops images that are too large — most common cause of missing images.
+Before generating or placing those images, write a short **crop plan** and **pre-generation slot plan** for the deck. This is required working context, not final user-facing copy:
+
+- **Crop plan**: for every generated image, name the destination page, slot aspect ratio, final pixel box, intended subject anchor (face/product/hands/object), expected `object-position`, and rounded frame risk. If rounded frame risk is high, use a softer radius, move the subject anchor lower/center, or regenerate for the actual slot ratio.
+- **Pre-generation slot plan**: list every slot expected to show imagery, including destination page, slot aspect ratio, planned medium, and prompt intent. Do not invent asset URLs before generation.
+- **Post-generation filled manifest / image slot manifest**: after image generation or upload, copy the final asset URLs/IDs into the same slot list and verify every planned slot is filled. The manifest must include the cover hero, imagery-rules example, visual-world grid, touchpoints grid, and the Digital / Social website hero, Instagram grid, and story template. Each required slot needs a real generated image or hosted image asset. Flat color rectangles count as empty unless the section is explicitly a palette specimen.
+- The Visual World page must use real generated images that match the brand's
+  medium. CSS color blocks, gradients, caption-only placeholders, and empty
+  rectangles are not image assets.
+- The Touchpoints page must use real generated photographs in believable
+  physical or digital context. CSS color blocks, flat vector mockups, and
+  captioned boxes are not substitutes for touchpoint photography.
+
+Generated image URLs can be used directly in MCP-rendered HTML. Keep page images reasonably sized: request the smallest image that survives the target crop, avoid duplicating the same source across pages, and use CSS `object-fit` / `object-position` explicitly. If a user provides a huge local image, upload it only after resizing or replacing it with a Pika-generated/hosted equivalent; extremely large assets slow the server renderer.
 
 **Photography prompt template (lifestyle):**
 ```
@@ -110,7 +90,7 @@ These are the failure modes that have burned us before. Apply EVERY prompt.
 
 ### 0. Default provider: gpt-image-2
 
-**Every `generate_image` call must pass `provider="gpt-image-2"` unless the user explicitly names a different model.** This is a global preference, not a per-skill rule. Don't default to `nano-banana-pro` (Gemini) — it has worse instruction-following for our brand work and bakes in text more aggressively. Use gpt-image-2 with `quality="medium"` for the default balance of speed and fidelity.
+**Every `generate_image` call must pass `provider="gpt-image-2"` unless monica explicitly names a different model.** This is a global preference, not a per-skill rule. Don't default to `nano-banana-pro` (Gemini) — it has worse instruction-following for our brand work and bakes in text more aggressively. Use gpt-image-2 with `quality="medium"` for the default balance of speed and fidelity.
 
 ### 1. Never let text bake into the image
 
@@ -134,25 +114,7 @@ Before writing the prompt, decide WHERE this photo will appear in the layout and
 
 Specify the subject's position in the prompt explicitly: "subject centered in frame, face occupying middle 50% of the image vertically."
 
-### 3. Logos: generate a high-res symbol via gpt-image-2, ship as transparent PNG (no tracing)
-
-Hand-coded SVG symbols look amateur. But also: **don't trace the gen'd symbol to SVG.** Keep the symbol as a high-resolution transparent PNG. Only the wordmark gets vectorized in the brand kit. The pipeline:
-
-1. **Generate the symbol via `generate_image` with `provider="gpt-image-2"`, `quality="high"` (or `"medium"` for first drafts), 1:1 aspect ratio, 1024×1024 minimum.** The symbol can be any style that fits the brand — flat illustration, 3D-rendered, painted, photographic, gradient-rich, chrome, holographic, hand-drawn. No flat-vector requirement. The only constraints are in "Symbol output rules" in `brand-identity.md`. **Always append the no-text guardrail**: "absolutely no text, no letters, no typography, no words, no characters anywhere in the image." gpt-image-2 produces garbled fake text inside logos if you don't explicitly forbid it.
-2. **The gen'd symbol must satisfy ALL of:** conceptually linked to the brand (means something about what the brand IS/DOES), feels unique (not generic), recognizable at 16×16, no more than 3 dominant colors, high res (2048×2048+ for the shipped version), no text inside the image, true transparent background. If it fails any of these — regenerate. See `brand-identity.md` "Symbol output rules" for the full list.
-3. **Generate 2-3 variations** if appropriate. Show them to the user. Wait for approval before committing. **When generating across the 3 brand-board options, symbols must DIFFER IN CONCEPT, not just style.** Don't ship three "literal mascot face" logos in three styles. See `brand-identity.md` "Symbol concepts must DIFFER across the 3 brand options" for concept lanes (mascot / product-feature reference / abstract / monogram / hybrid / container).
-4. **Save as transparent PNG, verified.** True alpha=0 in transparent regions. gpt-image-2 frequently paints near-white pixels in the "transparent" area — verify by sampling corner pixels with PIL (`alpha == 0`). If not, key them out with PIL, or regenerate with a solid background matching the placement surface. See "gpt-image-2 transparent-background caveat" in the QA section. **Do NOT trace to SVG.** The symbol stays as a high-res PNG.
-5. **The wordmark is ALWAYS rendered as real text in a Google Font, never baked into a generated image.** Pick the font in the typography step. Render the wordmark via live HTML/CSS for the guidelines pages, and convert to text-as-paths SVG only when packaging the brand kit.
-6. **Lockup composition is perfectly measured and permanently fixed.** Pick one horizontal lockup geometry AND one stacked lockup geometry. For each, specify: symbol size (px or em), wordmark font size (px), gap between symbol and wordmark (px), vertical baseline alignment (which point of the symbol aligns with which baseline of the wordmark). **The measurements never change across color variants or contexts** — cream / pink / lime / on-photo / on-dark variants all use the IDENTICAL geometry. Document the exact measurements on the Logo page so a designer or developer can rebuild the lockup without guessing.
-
-**In the brand kit:**
-- `symbol-[color].png` — high-res transparent raster at multiple sizes (16, 32, 64, 128, 256, 512, 1024, 2048). NOT vectorized.
-- `wordmark-[color].svg` — Google Font text converted to outlined paths (text-as-paths), so the SVG renders identically without the font file installed. PNG version at 1024 wide also included.
-- `lockup-[orientation]-[color].svg` — contains the symbol PNG embedded inline + the wordmark as paths, positioned at the locked measurements. PNG version of the assembled lockup at 1024 wide also included.
-
-This rule applies to brand boards (Step 2), the guidelines logo page (Step 3), and the kit's exported logo files (Step 4). Always.
-
-### 4. Verify by screenshot BEFORE delivering
+### 3. Verify by screenshot BEFORE delivering
 
 After rendering ANY PDF or board, screenshot every page and read every screenshot. The QA checklist at the bottom of this doc is mandatory. Never deliver based on assumption that the layout worked. Specifically check:
 
@@ -169,6 +131,11 @@ If anything looks wrong, fix it before delivering. Never ask the user to spot pr
 
 **Fonts are NOT hardcoded.** Select fonts that match the identity built in Step 3 of the main skill. If the fonts could work for a competitor, pick different ones.
 
+Before selecting final type, make a **font shortlist** for the identity:
+- Include at least 2 display families and at least 2 body/accent candidates that fit the specific brand vibe.
+- Do not reuse the same display/body pair from the last 3 brand briefs unless the user explicitly asks for that exact pairing.
+- Pick the pair for this brief from the shortlist and state why it fits the brand's category, audience segments, and visual world.
+
 ### Must Have Character — Don't Default to Safe Fonts
 
 If the brand's display font could appear on any random SaaS site without anyone noticing, it's wrong. Push for fonts with recognizable personality.
@@ -184,40 +151,7 @@ If the brand's display font could appear on any random SaaS site without anyone 
 - **Playful / loud / personality-forward** → Honk (chubby 3D), Tilt Warp, Tilt Neon, Bagel Fat One, Caveat (handwritten)
 - **Quiet / minimal-with-soul** → Public Sans, Hahmlet, Newsreader (light weights), Spectral (light weights)
 
-### No favorite fonts — every brand starts the search fresh
-
-There is no "house font" for this skill. No font is a default. No font is banned either — every font on Google Fonts is still in the running for the right brand, including ones used on previous brands. What's forbidden is the *pattern*: reaching for the same fonts across unrelated brands because they worked last time.
-
-Run the selection from scratch every brand. The fact that Sansita, Fraunces, Funnel Display, Bagel Fat One, etc. fit a past brand doesn't make them the right pick for this one — and it doesn't disqualify them either. The question is always "what UNIQUELY fits this brand's vibe?", run fresh.
-
-### The mandatory research step — do this every brand, every time
-
-Google Fonts hosts ~1500 families. The failure mode is selecting from a tiny mental shortlist of ~20 fonts that worked before. Force a real search:
-
-1. **Name the brand's vibe in 3-5 specific adjectives** ("warm, archival, slightly weird, with restraint"). The adjectives are the brief; the font search runs against them.
-2. **Brainstorm 5+ candidates from at least 3 different categories** — serif / sans / mono / display / script / slab / stencil. Don't pre-filter to fonts you remember liking; widen the net first, narrow after.
-3. **Pull at least 2 less-obvious options into the shortlist** — Eczar, Workbench, Bungee Shade, Climate Crisis, IM Fell DW Pica, Krona One, Suez One, Yeseva One, Tilt Prism, Italiana, Stardos Stencil, Inria Serif, Ribeye Marrow, etc. These don't get picked because they're weird; they get picked when the brand is the one that wants them.
-4. **Cross-brand variety check.** Before locking the choice, ask: "Have I reached for this font on a recent brand?" If yes, you need a real reason this brand specifically wants the same font — not just "it worked before." If you can't articulate why this brand uniquely wants it, pick a different fresh option that fits as well.
-5. **Sanity check:** would 5 brands in unrelated industries reach for this font? If yes, it's too generic — keep looking.
-6. **Pick** the one that UNIQUELY fits this brand's vibe.
-
-### Wider library by vibe — go beyond the top tier
-
-Use these as starting points only, not automatic defaults. The point is to widen your candidate pool every brand.
-
-- **Editorial / archival / literary** → Vollkorn, EB Garamond, Crimson Pro, Newsreader, Spectral, Cardo, Eczar, Inria Serif, Petrona, Faustina, Libre Caslon Text, Libre Baskerville, IM Fell DW Pica, Old Standard TT, PT Serif
-- **Magazine / cover energy / bold display** → Bricolage Grotesque, Big Shoulders Display, Familjen Grotesk, Karantina, Yeseva One, Suez One, Krona One, Italiana, Workbench
-- **Heavy display / chunky / 3D** → Honk, Bungee, Bungee Shade, Bungee Inline, Climate Crisis, Lilita One, Bowlby One, Modak, Alfa Slab One, Workbench, Ribeye, Ribeye Marrow
-- **Slab / vintage / sturdy** → Aleo, Bitter, Arvo, Rokkitt, Zilla Slab, Roboto Slab, Saira Stencil One, Stardos Stencil, Sancreek (western), Rye, Smokum
-- **Friendly / soft / consumer** → Lilita One, Albert Sans, Plus Jakarta Sans, Onest, Quicksand, Comfortaa, Nunito Sans, Mulish, Mona Sans
-- **Tech / mono / digital-native** → Reddit Mono, Geist Mono, IBM Plex Mono, Space Mono, DM Mono, Fragment Mono, Anonymous Pro, B612 Mono, Major Mono Display, Cutive Mono, Inconsolata, Fira Code, Cousine
-- **Playful / weird / personality-forward** → Honk, Tilt Warp, Tilt Neon, Tilt Prism, Workbench, Iceland, Limelight, Knewave, Climate Crisis, Permanent Marker, Caveat, Indie Flower, Cinzel Decorative
-- **Old style / classical / serious** → IM Fell DW Pica, Cinzel, Cardo, Old Standard TT, Vollkorn, Italiana, EB Garamond, Inria Serif, Stardos Stencil
-- **Script / handwriting** → Lobster, Lobster Two, Pacifico, Sacramento, Caveat, Indie Flower, Permanent Marker, Allura, Great Vibes, Berkshire Swash, Yellowtail
-- **Quiet / minimal-with-soul** → Public Sans, Hahmlet, Newsreader light, Spectral light, Inria Sans, Albert Sans, Onest
-
-### Pairing rules
-
+**Pairing rules:**
 - Display font must have character. Body font can be quieter but should still feel intentional.
 - Never pair two characterless fonts (Inter + DM Sans = no point of view).
 - Display + body should feel related but distinct.
@@ -238,35 +172,29 @@ Use these as starting points only, not automatic defaults. The point is to widen
 - Bold condensed headline → lightweight sans (DM Sans, Lato Light, Inter)
 - Geometric sans headline → same family lighter weight, or Inter
 
-### Download fonts to workspace
+### Font loading in MCP renders
 
-```bash
-WS="${BUILD_A_BRAND_WS:-$HOME/build-a-brand-workspace}"
-mkdir -p "$WS/fonts"
-# example — download the fonts you've selected:
-curl -sL "https://github.com/google/fonts/raw/main/ofl/syne/Syne%5Bwght%5D.ttf" -o "$WS/fonts/Syne.ttf" &
-curl -sL "https://github.com/google/fonts/raw/main/ofl/playfairdisplay/PlayfairDisplay%5Bwght%5D.ttf" -o "$WS/fonts/PlayfairDisplay.ttf" &
-curl -sL "https://github.com/google/fonts/raw/main/ofl/karla/Karla%5Bwght%5D.ttf" -o "$WS/fonts/Karla.ttf" &
-wait
+Use `@font-face` with server-reachable sources:
+
+```css
+@font-face {
+  font-family: 'SyneBrand';
+  src: url('https://github.com/google/fonts/raw/main/ofl/syne/Syne%5Bwght%5D.ttf') format('truetype');
+  font-weight: 300 900;
+}
+@font-face {
+  font-family: 'KarlaBrand';
+  src: url('data:font/ttf;base64,...') format('truetype');
+}
 ```
 
-Declare in CSS via `@font-face` only (`@import` or `<link>` cause 30s+ render timeouts in WeasyPrint and unreliable loading in Chrome headless). Resolve `$WS` to an absolute path in your HTML-generator script, then bake it in via f-string:
-
-```python
-# In your HTML-builder script:
-css = f"""
-@font-face {{ font-family: 'Syne'; src: url('file://{WS}/fonts/Syne.ttf'); }}
-@font-face {{ font-family: 'Karla'; src: url('file://{WS}/fonts/Karla.ttf'); }}
-"""
-```
-
-Always use **absolute file:// paths**. Never relative. Never `@import url(...)` from Google Fonts.
+Avoid `@import` and `<link>` because the renderer prefetches explicit asset URLs more reliably than CSS import chains. Give each brand face a unique family name. Render one page with `html_to_png` before the full PDF; if the type falls back to Times/Arial, fix the font source.
 
 ---
 
 ## Step 3 — Build HTML
 
-Write a fresh Python script (e.g., `$WS/build_guidelines.py`) that emits the HTML to `$WS/guidelines.html`. Never copy old deck HTML — always write fresh.
+Write fresh HTML for the chosen identity. Never copy old deck HTML — always write fresh.
 
 **Critical CSS (required in every guidelines doc):**
 ```css
@@ -274,62 +202,67 @@ Write a fresh Python script (e.g., `$WS/build_guidelines.py`) that emits the HTM
 .page { width: 1200px; height: 850px; overflow: hidden; page-break-after: always; display: block; }
 ```
 
-### WeasyPrint Hard Rules — Read Before Writing a Single Div
+### MCP Chromium Render Rules — Read Before Writing a Single Div
 
-WeasyPrint's flexbox engine is severely broken. `display:flex` fails silently — columns collapse to zero width and content disappears with no error message. This is the #1 cause of blank pages.
+The renderer is server-side Chromium. Flexbox, grid, absolute positioning, and CSS transforms are supported. Keep fixed-format pages explicit so QA is deterministic:
 
-#### Rule 1: No flex anywhere
-- **NEVER** `display:flex` on `.page`, on header bars, on two-column rows. Nowhere.
-- **For all multi-column layouts: use `<table>` elements** with explicit `width` and `height` on every `<td>`.
-- **For `.page`: use `display:block`**.
-- **Header bar template**: `<table style="width:1200px;height:68px;border-collapse:collapse;">` with two `<td>` cells.
-- **Two-column content template**: `<table style="width:1200px;height:782px;border-collapse:collapse;table-layout:fixed;">`.
-- **Column widths must add up to 1200px exactly.** Always verify.
-- **CSS `display:grid` is acceptable** for internal item arrangements (swatches, mockup grids, type specimens). NOT for page structure.
+#### Rule 1: Every page is a fixed canvas
+- Use `@page { size: 1200px 850px; margin: 0; }`.
+- Every `.page` must be `width:1200px;height:850px;overflow:hidden;page-break-after:always;position:relative;`.
+- Use explicit pixel dimensions for key regions. Flex/grid are fine, but don't let page height be content-driven.
+- Avoid viewport units (`vh`, `vw`) inside pages; they couple layout to the browser window rather than the page box.
 
-#### Rule 2: `vertical-align:middle` is unreliable
-Even with real `<table>` elements + explicit heights, `vertical-align:middle` often renders content at the top.
+#### Rule 2: Use server-reachable assets only
+- No `file://` URLs.
+- Local images must be uploaded via `upload_asset` first.
+- Small SVGs and font subsets can be inlined as `data:` URIs.
+- External HTTPS assets are server-fetched and inlined by the renderer. If an asset is private or blocks server requests, upload/replace it.
 
-**For full-page content centering**: nested table pattern — outer table 782px, inner table auto-height, `vertical-align:middle` on outer td. Works when inner content has NO explicit height.
+#### Rule 3: Use layout systems intentionally
+- CSS grid is preferred for swatches, icon sets, mockup grids, type specimens, and contact sheets.
+- Flexbox is fine for compact rows and centered stacks.
+- Use absolute positioning for full-bleed editorial pages where overlap and crop are intentional.
+- Give repeated tiles fixed dimensions so badges, labels, and icons cannot resize the layout.
 
-**For shapes (logo mockups, hang tags, circles, labels)**: never use `vertical-align:middle`. Always use explicit `padding-top`:
-```
-padding-top = (shape_height - estimated_content_height) / 2
-```
+#### Rule 4: Text containers must wrap naturally
+- Text cards, sidebars, and copy columns must have an explicit readable width. Reserve at least `320px` for body copy via `min-width:320px`, grid `minmax(320px, ...)`, or an equivalent fixed px floor. You may use `ch` only as a `max-width` line-length cap, never as the width floor. Never let a right-column card collapse until each line becomes one word.
+- In flex/grid layouts, set `min-width:0` on text children so copy wraps inside its assigned track, and separately give the track/card a real width floor (`width`, `flex-basis`, or grid track minmax).
+- Body-copy containers should include `box-sizing:border-box; overflow-wrap:break-word; word-break:normal; hyphens:none;`.
+- Never use `word-break:break-all`, `overflow-wrap:anywhere`, or a narrow absolute-positioned card squeezed by an illustration/phone mockup for readable prose.
+- If an illustration, phone, seal, swatch, or decorative element sits near a copy card, the card owns a clean rectangle above it in z-order and geometry. Do not depend on the visual QA pass to catch preventable overlap.
 
-#### Rule 3: `position:absolute` is unreliable
-Inside fixed-height shapes, `position:absolute` does not render reliably — elements appear in document flow. Replace with table rows or `padding-top`.
-
-#### Rule 4: Image rules
+#### Rule 5: Image rules
 - Always explicit px dimensions: `style="width:300px;height:400px;object-fit:cover;display:block;"`
-- Never `height:100%` or `width:100%` — WeasyPrint cannot resolve percentage heights
+- Avoid percentage heights unless the parent has an explicit pixel height
 - Never `opacity:` on any `<img>` — images always at full opacity
-- Never text/overlay on images — put captions in an adjacent column or block
+- Never body text/labels/rules on images — put captions in an adjacent column or block. Masthead brand boards may overlay wordmark/tagline/issue metadata on a full-bleed photo only when the type sits on intentional negative space or a contrast scrim and passes contrast QA.
+- Contrast QA for masthead overlays means the masthead text remains readable in the full-page PNG preview and the `mcp__pika__analyze_media` board QA result does not flag low contrast, muddy overlay, or unreadable type. If uncertain, run a targeted follow-up prompt: "CONTRAST: PASS or FAIL. Is the masthead wordmark/tagline/issue metadata readable against the photo at full-page size without hiding the photo subject?"
 - Never duplicate an image src across the deck — each file appears at most once
-- Compress to under 150KB before render
+- Use `object-position` deliberately and verify the crop in PNG previews
 
-#### Rule 5: Text contrast thresholds on dark backgrounds
+#### Rule 6: Text contrast thresholds on dark backgrounds
 On graphite (#2E2E2E) or any dark background:
 - Body text minimum: `rgba(248,243,236,.7)`
 - Sub-descriptions minimum: `rgba(248,243,236,.55)`
 - Decorative / ghost text minimum: `rgba(248,243,236,.45)` — below this, remove the element entirely
 - `.3` opacity on dark = invisible. Never use for any visible text.
 
-#### Rule 6: Page overflow prevention
+#### Rule 7: Page overflow prevention
 - Every page is 850px tall. All content MUST fit.
 - If a page has a headline >60px AND more than 3 body paragraphs, it will overflow. Cut or split.
 - Never more than ~220 words of body text on a single page.
 - Padding: 64px top/bottom max on content pages. Don't stack multiple padded sections.
 
-#### Rule 6b: Content must not bleed into the footer (Chrome --print-to-pdf path)
-When the brand guidelines deck is rendered via Chrome `--print-to-pdf` (not WeasyPrint), the footer is typically `position: absolute; bottom: 18px` and the main content is in normal flow. If main content extends past the available content height, it visually overlaps the footer text — Monica caught this on the koalacore Voice page (2026-05-22).
+#### Rule 8: Good-looking layout prevention
+- Passing render QA is not enough. A page can have no clipped text and still be bad if it looks crowded, muddy, or amateur.
+- Body copy, labels, and load-bearing informational text must never collide with swatches, icons, photos, decorative rules, grain, seals, or background imagery. If an element sits on top of body copy, the page fails even when the text technically remains inside its box. Masthead boards may overlay wordmark/tagline/issue metadata on a full-bleed photo only when the type sits on intentional negative space or a contrast scrim and passes contrast QA; body copy still gets its own clean reading area.
+- Body copy on brand boards and guidelines must be readable at the full-page screenshot size. Use 18px minimum for body copy, 14px minimum for labels, and 10px minimum only for decorative metadata that is not load-bearing.
+- Decorative microtype is optional. If small labels, faux archival notations, issue numbers, or specimen marks make the page noisy, remove them before reducing the real content.
+- Keep one primary visual focal point per page while required board content stays secondary and grouped. If the viewer's eye has to choose between a huge wordmark, a dense paragraph block, six swatches, a seal, a photo, and a pull quote at once, simplify hierarchy and grouping; do not drop required content.
+- Do not use a one-note dark brown/green/slate page unless the brief specifically demands it. Add contrast through scale, image light, accent color, or negative space; do not let the whole page collapse into one muddy value range.
+- Empty placeholders are a hard fail. Website/social/app mockups are optional on brand boards; do not add them unless they contain real content. If a website hero, grid, story template, image slot, or app mockup is included, either render the real content or remove/redesign the slot. Flat color rectangles in a Digital/Social mockup count as empty placeholders unless the section is explicitly a palette specimen.
 
-**Mandate for Chrome `--print-to-pdf` page builds:**
-- `.content` (the main page area between header and footer) MUST have an explicit `height: calc(850px - HEADER_HEIGHT - FOOTER_HEIGHT)` (or a similar max-height) AND `overflow: hidden` as a safety net.
-- This way, even if a content block grows unexpectedly, the layout clips at the content boundary instead of bleeding into the footer.
-- Treat it as a guardrail, not a target — the goal is still to fit content within the available height. But the overflow:hidden prevents accidental overlap when content density is hard to predict.
-
-#### Rule 7: Vertical centering critical gotcha
+#### Rule 9: Vertical centering critical gotcha
 When using `<table><tr><td style="vertical-align:middle;">` to center, the inner content div **must NOT have explicit height**. If the inner div has `height:782px` (same as td), the td has nothing to center → appears top-aligned. Set `height` only on the outer `<td>`, never on the inner content div.
 
 ### Reusable Templates
@@ -348,74 +281,77 @@ When using `<table><tr><td style="vertical-align:middle;">` to center, the inner
   <table style="width:1200px;height:782px;border-collapse:collapse;table-layout:fixed;">
     <tr>
       <td style="width:480px;height:782px;vertical-align:top;padding:0;overflow:hidden;">
-        <img src="file:///..." style="width:480px;height:782px;object-fit:cover;display:block;">
+        <img src="https://..." style="width:480px;height:782px;object-fit:cover;display:block;">
       </td>
-      <td style="width:720px;height:782px;vertical-align:middle;padding:52px;background:#2E2E2E;">
+      <td style="width:720px;height:782px;vertical-align:middle;padding:52px;background:#2E2E2E;box-sizing:border-box;min-width:0;overflow-wrap:break-word;word-break:normal;hyphens:none;">
         <!-- right column text content -->
+        <div style="max-width:560px;min-width:320px;box-sizing:border-box;overflow-wrap:break-word;word-break:normal;hyphens:none;">
+          <!-- body copy goes here -->
+        </div>
       </td>
     </tr>
   </table>
 </div>
 ```
 
-**Full-bleed lifestyle grid (page 10):**
+**Full-bleed lifestyle grid (page 11):**
 ```html
 <table style="width:1200px;height:782px;border-collapse:collapse;table-layout:fixed;">
   <tr>
-    <td style="width:300px;height:782px;padding:0;overflow:hidden;"><img src="file:///..." style="width:300px;height:782px;object-fit:cover;display:block;"></td>
-    <td style="width:300px;height:782px;padding:0;overflow:hidden;"><img src="file:///..." style="width:300px;height:782px;object-fit:cover;display:block;"></td>
-    <td style="width:300px;height:782px;padding:0;overflow:hidden;"><img src="file:///..." style="width:300px;height:782px;object-fit:cover;display:block;"></td>
-    <td style="width:300px;height:782px;padding:0;overflow:hidden;"><img src="file:///..." style="width:300px;height:782px;object-fit:cover;display:block;"></td>
+    <td style="width:300px;height:782px;padding:0;overflow:hidden;"><img src="https://..." style="width:300px;height:782px;object-fit:cover;display:block;"></td>
+    <td style="width:300px;height:782px;padding:0;overflow:hidden;"><img src="https://..." style="width:300px;height:782px;object-fit:cover;display:block;"></td>
+    <td style="width:300px;height:782px;padding:0;overflow:hidden;"><img src="https://..." style="width:300px;height:782px;object-fit:cover;display:block;"></td>
+    <td style="width:300px;height:782px;padding:0;overflow:hidden;"><img src="https://..." style="width:300px;height:782px;object-fit:cover;display:block;"></td>
   </tr>
 </table>
 ```
 
-**Touchpoints 2×2 grid (page 11):**
+This grid is image-only. If captions or labels are needed, put them in adjacent Rule-4 text containers; do not overlay body copy on the photos.
+
+**Touchpoints 2×2 grid (page 12):**
 ```html
 <table style="width:1200px;height:782px;border-collapse:collapse;table-layout:fixed;">
   <tr>
-    <td style="width:599px;height:390px;padding:0;overflow:hidden;"><img src="file:///..." style="width:599px;height:390px;object-fit:cover;display:block;"></td>
+    <td style="width:599px;height:390px;padding:0;overflow:hidden;"><img src="https://..." style="width:599px;height:390px;object-fit:cover;display:block;"></td>
     <td style="width:1px;background:#fff;"></td>
-    <td style="width:600px;height:390px;padding:0;overflow:hidden;"><img src="file:///..." style="width:600px;height:390px;object-fit:cover;display:block;"></td>
+    <td style="width:600px;height:390px;padding:0;overflow:hidden;"><img src="https://..." style="width:600px;height:390px;object-fit:cover;display:block;"></td>
   </tr>
   <tr><td colspan="3" style="height:2px;background:#fff;padding:0;"></td></tr>
   <tr>
-    <td style="width:599px;height:390px;padding:0;overflow:hidden;"><img src="file:///..." style="width:599px;height:390px;object-fit:cover;display:block;"></td>
+    <td style="width:599px;height:390px;padding:0;overflow:hidden;"><img src="https://..." style="width:599px;height:390px;object-fit:cover;display:block;"></td>
     <td style="width:1px;background:#fff;"></td>
-    <td style="width:600px;height:390px;padding:0;overflow:hidden;"><img src="file:///..." style="width:600px;height:390px;object-fit:cover;display:block;"></td>
+    <td style="width:600px;height:390px;padding:0;overflow:hidden;"><img src="https://..." style="width:600px;height:390px;object-fit:cover;display:block;"></td>
   </tr>
 </table>
 ```
 
+This touchpoints grid is image-only. If a label is required, use a separate caption strip or adjacent Rule-4 text container; do not place readable prose inside the image cells.
+
 ### Page-Specific Notes
-
-**Page 1 (Cover) — must make the product unambiguous.** The cover hero photo + subtitle together must answer "what is this?" with zero ambiguity. For digital products (apps, services, software): the hero photo must show the product IN USE — a phone or device displaying the actual result of using the product, OR a person in the moment of using it. NEVER use a representational object (a charm, a token, a packaging mockup, a logo-shaped artifact) as the cover hero — it makes the brand look like it sells that object instead of the actual product. The cover subtitle should communicate what the thing IS in the brand's voice — clarity through content, never robotic templates.
-
-**Page 2 (Strategy) — product clarity sentence required, in brand voice.** Within the first 80 words of the Strategy page, the reader must understand what the product literally IS. Communicated in the brand's tone, not a robotic format. "Koalacore is an app that…" is robotic; "It's an app. You pick a photo. We drop a koala in. The end." is on-brand. Either form works — what's required is that a reader who lands on this page knows what the product is by the end of the opening paragraph. NEVER substitute "what we believe" or "what we stand for" for "what we are."
 
 **Page 4 — Logo applications:** Left half (~420px) = large logo mark centered with generous whitespace. Right half (~780px) = 5 CSS mockups in a 2-row grid (3 top, 2 bottom), `gap:32px`, each cell min 160×180px. Don't flex-wrap — use proper grid.
 
 **Page 5 — Logo Don'ts:** 5 violation tiles in a row, each with the wrong-usage logo + a small ✗ label + a one-line caption explaining the violation.
 
-**Page 9 — Photography Rules:** Left 2/3 (~780px) = 3 example images in a grid with explicit pixel dimensions. Right 1/3 (~420px) = sidebar of 4-5 specific rules (surface, light, propping, editing, mood). Small label caps + body text.
+**Page 10 — Photography Rules:** Left 2/3 (~780px) = 3 example images in a grid with explicit pixel dimensions. Right 1/3 (~420px) = sidebar of 4-5 specific rules (surface, light, propping, editing, mood). Small label caps + body text.
 
-**Page 11 — Touchpoints:** The page **must show real generated photos** of the brand in context. Never substitute CSS vector mockups. Generate the 4 images before building HTML. For physical product brands: hang tag, woven label macro, kraft mailer, flat lay. For digital brands: phone showing app, laptop showing site, sticker, tote bag. For service brands: business card in hand, signage, branded notebook, swag.
+**Page 12 — Touchpoints:** The page **must show real generated photos** of the brand in context. Never substitute CSS vector mockups. Generate the 4 images before building HTML. For physical product brands: hang tag, woven label macro, kraft mailer, flat lay. For digital brands: phone in hand showing app, laptop on desk showing site, sticker on water bottle, tote bag in a real scene. For service brands: business card in hand, signage, branded notebook, swag.
 
-**Page 12 — Brand Applications (CSS mockups):** Each mockup is a small physical-object representation rendered in CSS. Use explicit `padding-top` centering — never `vertical-align:middle` inside fixed-height shapes.
+**Page 13 — Brand Applications (CSS mockups):** Each mockup is a small physical-object representation rendered in CSS. Use fixed dimensions and verify the visual center in PNG previews.
 
-| Shape | Dimensions | Suggested padding-top |
+| Shape | Dimensions | Suggested centering |
 |---|---|---|
-| Hang tag | 120×168px | ~31px in body row |
-| Woven label | 200×80px | ~13px |
-| Avatar circle | 100×100px | ~22px |
-| Sticker rounded square | 100×100px | ~18px |
-| Business card | 200×120px | ~35px |
+| Hang tag | 120×168px | CSS grid/flex center, then visual QA |
+| Woven label | 200×80px | CSS grid/flex center, then visual QA |
+| Avatar circle | 100×100px | CSS grid/flex center, then visual QA |
+| Sticker rounded square | 100×100px | CSS grid/flex center, then visual QA |
+| Business card | 200×120px | CSS grid/flex center, then visual QA |
 
 ### Image hard constraints
 
 - **No opacity on images.** Never `opacity:` on any `<img>` — full brightness always.
-- **No text on images.** No `position:absolute` to overlay text/elements on images. Captions go in an adjacent column.
-- **No gradient overlays.** No `background:linear-gradient(...)` divs positioned over images.
+- **No body text on images.** Body copy, captions, labels, and rules never overlay images. Captions go in an adjacent column. Masthead brand boards may overlay the wordmark/tagline/issue metadata on a full-bleed photo only when the type sits on intentional negative space or a contrast scrim and passes contrast QA.
+- **No gradient overlays on ordinary content images.** Do not use decorative gradient overlays on photos. Masthead covers may use one controlled linear scrim/gradient mask behind wordmark/tagline/issue metadata text to preserve contrast: strongest stop <= 50% opacity, one edge direction only, max scrim height <= 40% of image height, and no product/detail/focal subject hidden under the scrim.
 - **No duplicate images.** Each image file appears at most once across the deck. If you run out, replace with typographic or color design elements (large CG italic quote, big page number, color field) — never reuse.
 - **Remove all price stickers / shelf labels / tags** from products before use. If source has a Goodwill sticker or similar, regenerate clean.
 - **Header logo on every page uses the brand's actual logo font/style** — never a generic fallback.
@@ -423,105 +359,86 @@ When using `<table><tr><td style="vertical-align:middle;">` to center, the inner
 
 ---
 
-## Step 4 — Render PDF Locally
+## Step 4 — Render PDF
 
-**Preferred: Chrome headless.** Chrome handles modern CSS, flexbox, grid, and `@font-face file://` font declarations reliably when run locally. Use it when available:
+Render with Pika MCP `html_to_pdf`.
 
-```bash
-CHROME="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
-WS="${BUILD_A_BRAND_WS:-$HOME/build-a-brand-workspace}"
-"$CHROME" --headless --disable-gpu --no-sandbox --hide-scrollbars \
-  --virtual-time-budget=8000 --no-pdf-header-footer \
-  --print-to-pdf="$WS/guidelines.pdf" \
-  "file://$WS/guidelines.html"
+Preferred single-HTML mode:
+
+```
+html_to_pdf(
+  html: guidelines_html,
+  format: "pdf",
+  mode: "async",
+  wait_for: "domcontentloaded",
+  pdf_options: {
+    paper_size: { width: 1200, height: 850, unit: "px" },
+    margins: { top: 0, right: 0, bottom: 0, left: 0 },
+    print_background: true
+  }
+)
 ```
 
-**Fallback: WeasyPrint.** Use this only when Chrome is unavailable or the HTML was written to the table-only constraints above:
+Use `body_pages` + `shared_head` only when keeping each page as a separate body fragment is cleaner. In that mode the server renders pages in parallel and merges them; do not expect CSS counters or script state to cross page boundaries.
 
-```python
-import weasyprint, warnings, os
-warnings.filterwarnings('ignore')
+Example completed PDF response:
 
-WS = os.environ.get('BUILD_A_BRAND_WS') or os.path.expanduser('~/build-a-brand-workspace')
-pdf = weasyprint.HTML(filename=f'{WS}/guidelines.html',
-                       base_url=f'file://{WS}/').write_pdf()
-open(f'{WS}/guidelines.pdf', 'wb').write(pdf)
-print(f'guidelines: {os.path.getsize(f"{WS}/guidelines.pdf")//1024}KB')
 ```
-
-Use the Python API, not the CLI — CLI has font resolution issues.
-Pick one engine and stick with it for the whole 14–16-page build.
+{"status":"completed","file_url":"https://cdn.pika.art/v2/files/agent/b4ab5d48-443b-4ee2-ab9d-c1690d19ff72/5ce95210-47f9-4f8a-98bb-12d986bfa71e.pdf","format":"pdf","page_count":1,"byte_size":6279}
+```
 
 ---
 
-## Verify Every Page (Mandatory — sub-step within Step 3 guidelines build)
+## Step 5 — Verify Every Page (Mandatory)
 
-Before delivery, screenshot every page and verify against the QA checklist.
+Before delivery, render PNG previews and verify against the QA checklist. For full-deck QA, either call `html_to_pdf(format:"png", ...)` when page raster output is desired, or call `html_to_png` per page/body fragment.
 
-```python
-# Screenshot every page — run this after every render
-import fitz, os
-WS = os.environ.get('BUILD_A_BRAND_WS') or os.path.expanduser('~/build-a-brand-workspace')
-doc = fitz.open(f'{WS}/guidelines.pdf')
-for i in range(len(doc)):
-    doc[i].get_pixmap(matrix=fitz.Matrix(1.8,1.8)).save(f'{WS}/qa_p{i+1}.png')
-print(f'{len(doc)} pages — now read each one')
+### Full-Deck Visual QA
+
+Run **full-deck visual QA** on every final guidelines page, not only the 3-page brand-board preview. Use `mcp__pika__analyze_media` page-by-page / per-page on the final PNG previews before delivering the PDF.
+
+The prompt must start: "Answer with PASS or FAIL on the first line, then explain." Ask it to check for clipped text, accidental overlay, text/image collisions, missing image slots, empty placeholders, bad crops, rounded-frame crop damage, broken image loads, unreadable font fallback, weak hierarchy, and muddy one-note pages. Fix every captured FAIL before delivery. If the tool is unavailable or returns an ambiguous first line, halt with a manual-review warning instead of shipping silently.
+
+```
+html_to_png(
+  html: page_html,
+  format: "png",
+  mode: "sync",
+  wait_for: "domcontentloaded",
+  raster_options: {
+    viewport_px: { width: 1200, height: 850 },
+    device_scale: 1
+  }
+)
 ```
 
-```python
-# Corner-sample verification — catches blank columns
-import fitz, os
-WS = os.environ.get('BUILD_A_BRAND_WS') or os.path.expanduser('~/build-a-brand-workspace')
-doc = fitz.open(f'{WS}/guidelines.pdf')
-for i, page in enumerate(doc):
-    pix = page.get_pixmap(matrix=fitz.Matrix(1,1))
-    w, h = pix.width, pix.height
-    s = pix.samples
-    def px(x,y): return (s[(y*w+x)*3], s[(y*w+x)*3+1], s[(y*w+x)*3+2])
-    corners = [px(10,10), px(w-10,10), px(10,h-10), px(w-10,h-10)]
-    print(f'P{i+1}: {corners}')
-    # white (255,255,255) corner on a dark page = blank column bug
+Example completed PNG response:
+
+```
+{"status":"completed","file_url":"https://cdn.pika.art/v2/files/agent/4d944981-9897-40b6-9e37-533c2a90b541/5a863672-0835-4901-87a8-df8933d69cd4.png","format":"png","page_count":1,"byte_size":3806}
 ```
 
 ### Pre-Send QA Checklist
 
 Read every screenshot. Verify every item. If any check fails, fix it. No exceptions. Never ask the user to spot problems the agent should have caught.
 
-**Three-pass QA is mandatory for multi-page brand guidelines (Step 3). Glancing at the full-page PNG is NOT zoom-reading — it's pass 1.**
-1. **Render-every-page pass** — render EVERY page in the 14–16-page deck to PNG individually (not just one or two). Open and READ each PNG full-size. If ANY page is blank, has overlapping text, missing content, or wrong rendering, fix and re-render that page before continuing. A blank page in the deliverable is a hard ship-block. **Each page is verified individually before the merge.**
-2. **Thumbnail pass** — full-page screenshots to catch layout-level issues (blank columns, missing content, wrong colors). The 1200×850 PNG read at standard screen size is the thumbnail pass. Do NOT confuse this with zoom-reading.
-3. **Zoom pass — MANDATORY CROP-AND-READ, NOT GLANCE.** Use PIL to crop the rendered PNG into 800×800 regions around every text-bearing area: page title, subtitle, every section header, every body block, every card pull-quote, every label, every hex code, every footer. **Read each crop individually.** This is the only way to catch borderline contrast, shade/3D font issues, footer overlap with content, and text-wrap failures — those issues all compress out of view at thumbnail scale. If you find yourself ready to ship without having opened named `zoom-{page}-{region}.png` files, you HAVEN'T done the zoom pass. Go back. (The agent has shipped twice claiming to have zoom-read when really it only glanced at the full PNG. The rule is now: zoom-read = generate crops + Read each crop file. No shortcut.)
+**Two-pass QA is mandatory:**
+1. **Thumbnail pass** — full-page screenshots to catch layout-level issues (blank columns, missing content, wrong colors).
+2. **Zoom pass** — crop and read 800×800px regions around every small UI element: pill markers, badges, avatars, captions, swatches, logo lockups, type specimens, business cards, app icons. Thumbnail screenshots compress all detail-level mistakes out of view. Without a zoom pass you WILL ship visible alignment, centering, or sizing flaws.
 
-**Specifically zoom-read (crop into 800×800 and Read each):**
-- Cover hero copy + subtitle
-- Every page's top breadcrumb header (the brand wordmark at small scale)
-- Every page's footer band (look for footer-text overlapping page content)
-- Every "pull" or display-pull-quote block on every page
-- Every card title + body on cards with saturated backgrounds (pink cards especially)
-- Every text-on-photo region
-- Every swatch label + hex code
-- Every IG grid quote tile
-- Every small mockup label (app icon caption, splash subtitle, etc.)
-
-**Contrast gate — every text/background pair must be verifiably legible.** Before delivery, audit every text-on-color combination across all pages. Auto-fails: pink text on pink background, lime text on cream background, dark text on dark photo, any small text whose color is within 25% luminance of its container background. When in doubt, run the pair through a contrast checker (4.5:1 minimum for body text, 3:1 for large display type). If even one text block fails contrast — fix it. Pink-on-pink is the most common failure; resolve by either (a) darkening the text to a deep accent, (b) lightening the background to cream, or (c) putting a contrasting card behind the text.
-
-**Complex fills (chrome / holographic / multi-stop gradients) only at hero scale.** Multi-stop chrome / holographic / iridescent gradients on display type read clean at hero scale (60px+) but **muddy at small scale** (under ~24px) — the gradient stops compress into smudge and the type becomes hard to read. When a type style appears at multiple scales in the system (e.g. the brand wordmark on the cover hero AND in the small page-header breadcrumb), use the complex fill ONLY at hero scale, and switch to a solid color (with optional stroke) at small scale. Document both versions on the Logo page so the system has the right tool at every size.
-
-**Same rule for shaded / 3D / decorative display fonts** — `BungeeShade`, `Honk`, `Bungee Inline`, `Bungee Outline`, `Workbench`, `Tilt Prism`, any font with built-in shadow / 3D / chrome / outline detail baked into the glyph design. These fonts have visible "shade" or "3D depth" portions inside each letter; at small/medium scale (under ~40px) those portions compress into mud, AND when used on a saturated background, the shade portion can render as a color that blends INTO the background — creating an apparent contrast failure where parts of letters disappear (pink BungeeShade on pink reads as pink-on-pink even when the letter face is cream). **Use shaded display fonts ONLY at hero scale (40px+) AND prefer cream/black backgrounds at any scale.** At smaller scales OR on saturated brand backgrounds, switch to the brand's flat sans (Onest Black, Plus Jakarta 900, etc.) for the same visual hierarchy with clean contrast.
-
-**Test before shipping:** if the brand has a chunky display font (BungeeShade, Honk, etc.) and you're using it under 40px or on a hot-color background, render the page and zoom in on the letterforms. If you can see the shade/3D detail picking up the background color in any portion of any letter — switch to flat sans.
-
-**Zoom-read every text-containing region, not just logos.** Specifically: numbered/lettered pill markers, button states, favicon-size logo renderings, color-swatch hex labels, type specimens, business card layouts, single-character badges, **hero taglines, decorative strips, callout banners, brand-name headers, voice-sample blocks, and any badge/sticker with text.** Anywhere text sits in a fixed-width container is a wrap risk — verify it stayed on the line you intended. A trailing word, comma, or star alone on its own line is a layout failure.
-
-**Logo lockup centering check.** When a generated logo sits inside a circular or rounded frame: confirm the symbol is visually centered, not pushed to a corner by `object-fit: cover` revealing an off-center source comp. If the source image has a strong asymmetric mass (e.g. ears on top, body below), `object-fit: cover` will cut it badly. Use `object-fit: contain` on a transparent PNG, or remove the frame and let the source image's own composition speak.
-
-**gpt-image-2 transparent-background caveat.** When generating logos with "transparent background" in the prompt, gpt-image-2 frequently outputs a literal painted checker pattern or near-white pixels in the "transparent" areas — NOT true alpha=0 transparency. Before placing on a colored card, **verify true transparency**: sample corner pixels with PIL and confirm `alpha == 0`. If not, either (a) key out the near-white pixels with PIL to true transparent, or (b) regenerate with a solid color background that matches the surface you'll place the logo on.
+Specifically zoom on: numbered/lettered pill markers, button states, favicon-size logo renderings, color-swatch labels, type specimens, business card layouts, and any badge that contains a single character. These are the highest-risk regions for centering bugs.
 
 | Check | What to look for |
 |---|---|
 | Fonts loaded | Headlines render in the chosen font, not a system fallback (Times, Arial) |
 | No blank columns | Every column has content — no white/solid blocks where text should be |
-| No text on images | No overlaid headlines, labels, or divs sitting on top of any image |
+| No empty placeholders | Optional website heroes, grids, story templates, app mockups, image slots, and cards contain real content or are redesigned away. Flat color blocks in Digital/Social mockups count as empty unless they are explicitly palette specimens |
+| No text/image collisions | Body copy, captions, labels, and rules do not sit on top of images. Masthead wordmark/tagline/issue metadata overlays are allowed only with deliberate negative space or a contrast scrim and must pass contrast QA |
+| No text collisions | Text does not overlap or sit underneath icons, swatches, seals, decorative lines, photos, phone mockups, or other graphic elements |
+| No clipped or occluded text | Text is not cut off by its own container, page edge, rounded shape, sibling graphic, or z-index layer |
+| Board looks good, not just valid | Thumbnail read has one focal point, clear hierarchy, enough negative space, and no muddy one-note palette |
+| analyze_media PASS | For brand board PNG previews and every final guidelines page, run `mcp__pika__analyze_media` per `SKILL.md` Board quality gate and the full-deck visual QA above. Every FAIL or ambiguous first line must be fixed before delivery. If the tool is unavailable, halt with a manual-review warning |
+| Load-bearing copy is readable | Body copy is readable in the full-page PNG; do not hide key content in 10px decorative microtype |
 | **No baked-in text in generated images** | **Open each generated image and look for ANY text — magazine titles, watermarks, brand names, captions, headers. If you see any, regenerate with stronger no-text guardrails.** |
 | **Subjects survive their crop** | **For every generated image used in a layout: is the intended subject visible after the CSS crop? No forehead-only portraits, no hand-only kitchen scenes. If the subject got cut off by `object-fit:cover`, `object-position`, or a rounded/arched frame, fix the layout or regenerate the image.** |
 | **Rounded shapes don't eat content** | **Any `border-radius` ≥ ½ the element width creates a dome that crops content underneath. If the photo's subject sits in the top portion of the source, a dome top will hide it. Soften the radius or reposition the subject.** |
@@ -531,11 +448,11 @@ Read every screenshot. Verify every item. If any check fails, fix it. No excepti
 | Text contrast | All text on dark (#2E2E2E) backgrounds at sufficient opacity |
 | Decorative text legible | Ghost / watermark text at ≥ .45 opacity — if lower, remove entirely |
 | Images load | No broken images — every img has explicit px width+height |
-| Page count = 14–16, conditionally correct | Non-digital/single-medium = 14; digital/single-medium = 15; non-digital/hybrid = 15; digital/hybrid = 16; no blank extras |
+| Page count = 15 (or 16 hybrid) | Right number of pages, no blank extras |
 | Touchpoints are real photos | Page 12 shows generated photographs, not CSS vector boxes |
 | Diverse cast | Lifestyle grid (page 11) shows racial diversity across subjects |
 | Icons consistent | Page 8 icons all use the same stroke weight + corner style + line caps |
-| Imagery medium matches brand | Page 10 reflects the brand's medium (photo / illustration / hybrid) — don't ship Photography Rules for an illustration brand |
+| Imagery medium matches brand | Imagery Rules page (page 10) reflects the brand's medium (photo / illustration / hybrid) — don't ship Photography Rules for an illustration brand |
 | No concept clichés | No hourglass-for-time / lightbulb-for-ideas / handshake-for-trust etc. — apply the three cheesiness tests |
 
 Only deliver after all checks pass.
@@ -544,20 +461,17 @@ Only deliver after all checks pass.
 
 ## Step 6 — Deliver
 
-Save the final PDF to `~/Desktop/[brand-slug]-brand-guidelines.pdf` and send the local path in a single message. Do not upload or host the PDF unless the user explicitly asks for a hosted copy.
-
-```bash
-cp "$WS/guidelines.pdf" "$HOME/Desktop/[brand-slug]-brand-guidelines.pdf"
-```
+Return the `file_url` from `html_to_pdf`. Also save a local copy when practical so the brand-kit zip can include `brand-guidelines.pdf`; the CDN URL remains the canonical deliverable.
 
 Reply shape:
 
 ```
 **[BRAND NAME] — brand guidelines**
-Saved to: ~/Desktop/[brand-slug]-brand-guidelines.pdf ([actual page count] pages · 1200×850 · ~5MB)
+PDF: https://cdn.pika.art/...
+Local copy: ~/Desktop/[brand-slug]-brand-guidelines.pdf (15 pages · 1200×850)
 ```
 
-If the user is not on a Mac, save to the project working directory and emit that path instead. Never attach the PDF as a file in the chat — link by path only.
+If a local copy is not practical, the CDN URL is still the canonical deliverable. Do not use `upload_asset` for PDFs; `html_to_pdf` already returns the PDF URL.
 
 Done.
 
@@ -613,15 +527,7 @@ Default to photography when:
 
 ## Icons Page — Structure & Rules
 
-**⚠️ Conditional page — only build this for DIGITAL brands.** Skip entirely if the brand is a physical product, restaurant, fashion line, service business, or any non-software brand. For those, a UI icon system is irrelevant noise — the page would feel forced.
-
-**Include the Icons page if the brand is:** an app, a web tool, a SaaS product, a software platform, a digital community, a website-as-product, or anything where users interact via UI.
-
-**Skip the Icons page if the brand is:** a physical product, fashion, food/beverage, restaurant, hospitality, service business, consultancy, agency, or any brand whose surfaces are mostly physical / printed / packaging-driven.
-
-If you're not sure, ask the user in Step 1: "Is this a digital product?" (this question should already be in your intake).
-
-When included, page 8 defines the brand's UI icon system.
+Page 8 defines the brand's UI icon system. Every digital brand needs one — even non-tech brands benefit from consistent icons for navigation, social, and product surfaces.
 
 ### Page layout
 
@@ -702,18 +608,18 @@ Each SVG with `stroke="currentColor"` so it inherits color from the application 
 
 ## Imagery Rules Page — Adapts per Brand
 
-Page 9 of the guidelines defines the brand's imagery rules. **Its title and content adapt to whatever medium the brand actually uses** — don't ship a "Photography Rules" page for an illustration-led brand and don't ship "Illustration Rules" for a brand that lives in photos.
+Page 10 of the guidelines defines the brand's imagery rules. **Its title and content adapt to whatever medium the brand actually uses** — don't ship a "Photography Rules" page for an illustration-led brand and don't ship "Illustration Rules" for a brand that lives in photos.
 
 ### How to decide which page(s) to build
 
 Look at the chosen identity option's specs (set in Step 3) and the lifestyle world you've defined:
 
-| Brand visual medium | Page 9 setup |
+| Brand visual medium | Page 10 setup |
 |---|---|
-| All photography (no illustration anywhere) | Page 9 = Photography Rules (single page) |
-| All illustration (no photography anywhere) | Page 9 = Illustration Rules (single page) |
-| Hybrid — both matter equally in the brand world | Page 9a = Photography Rules, Page 9b = Illustration Rules (two pages → guidelines totals 15) |
-| Hybrid — one medium dominates but the other appears occasionally | Page 9 = the dominant medium's rules, with a short "minor medium" callout block at the bottom |
+| All photography (no illustration anywhere) | Page 10 = Photography Rules (single page) |
+| All illustration (no photography anywhere) | Page 10 = Illustration Rules (single page) |
+| Hybrid — both matter equally in the brand world | Page 10a = Photography Rules, Page 10b = Illustration Rules (two pages → guidelines totals 16) |
+| Hybrid — one medium dominates but the other appears occasionally | Page 10 = the dominant medium's rules, with a short "minor medium" callout block at the bottom |
 
 ### Photography Rules page structure
 
@@ -739,9 +645,9 @@ If the brand uses illustration:
 - **One example illustration** filling 2/3 of the page (real generated illustration in the brand's style)
 - **Reference brands' illustration** — 2-3 brands whose illustration style is close (e.g. "like Notion's homepage illustrations but a notch more grown-up")
 
-### Visual World page (page 10) also adapts
+### Visual World page (page 11) also adapts
 
-The 4-image lifestyle grid on page 10 should match the brand's medium mix:
+The 4-image lifestyle grid on page 11 should match the brand's medium mix:
 - All-photo brand → 4 photos
 - All-illustration brand → 4 illustrations (varied scenes, not 4 of the same composition)
 - Hybrid → mix of photos and illustrations in the proportions that match the brand world (e.g. 3 photos + 1 illustration if photography dominates)
@@ -808,18 +714,6 @@ After generating, ask: *"If I saw this image without knowing the brand, would I 
 
 ---
 
-## Photography Must Show the Product IN USE — never a representational object
-
-**For the full guidelines PDF (Step 3), the hero photography on the Cover, Photography Direction, Touchpoints, and Application pages must show the product being USED, not a representational object that stands in for the product.** This is the single most common reason a brand reads as "selling a thing it doesn't actually sell." A keychain charm shown on the cover of an app brand makes the brand look like it sells keychains. A coffee bag mockup for a streaming service makes it look like the brand sells coffee. A bottle photo for a software brand makes it look like the brand sells bottles.
-
-**For digital products (apps, web services, SaaS):** hero photography must show the actual experience of using the product — selfies/photos taken with the app, screen captures of the result, people in the moment of using it (phone in hand showing the actual UI/result, video calls showing the feature in action, etc.). The brand's *symbol* can be a stylized heart-with-ears or any abstract mark — that's logo language. But brand *photography* must show the product itself, not the symbol.
-
-**For physical products:** the product itself in real use — being worn, eaten, used, lived with. Not just unboxing or packshot.
-
-**For services:** the moment of being served, the artifact produced, or the relationship in action.
-
-**The keychain test:** ask yourself, "if a stranger saw this cover photo with no other context, would they correctly guess what we sell?" If the photo is of a physical-looking representational object that ISN'T the product, the answer is no — they'd guess the brand sells that object. Re-shoot.
-
 ## Photography Must Occupy Distinct Visual Territories
 
 Each of the 3 mood images on the brand board must show a **genuinely different visual territory** — not three variations on the same subject. If all 3 images are "engineer at desk with laptop" with slightly different color grading, the photography has failed. The user reads three identical concepts and concludes the directions aren't really different.
@@ -851,119 +745,11 @@ Each prompt should be **structurally different**: different subject, different s
 
 ---
 
-## Brand Board Layout — Differentiate per Option (Step 2 of main skill)
+## Brand Board Layout — Differentiate per Option (Step 3 Preview)
 
-**Critical rule for the 3-page brand board PDF built in Step 2:** do NOT use the same template for all 3 boards recolored. Each board's layout must physically embody its option's design philosophy. If you can swap colors and fonts and the layouts feel identical, the board has failed — viewers read the differences as cosmetic, not structural.
-
-### Mandatory layout discipline — what makes a board NOT sloppy
-
-The boards have repeatedly come back with overlapping type, mis-aligned elements, and broken hierarchy. The fixes below are non-negotiable.
-
-1. **Plan the grid before writing CSS.** Sketch a 12-column × 12-row grid mentally for each board. Place each piece of content (wordmark, palette, type specimen, mood image, voice quote, brand story, references) into specific grid cells. Two pieces of content can NEVER occupy the same cell.
-
-2. **Build a content inventory per board, with measured space allocations.** Example: "Wordmark = top-left 6 cols × 3 rows. Palette = top-right 6 cols × 2 rows. Mood image = middle 12 cols × 5 rows. Type specimen = bottom-left 6 cols × 2 rows. Voice quote + brand story = bottom-right 6 cols × 2 rows." If the sum of allocations exceeds 144 cells, cut content — don't squeeze.
-
-3. **No text on top of text. Ever.** A headline overlapping a swatch label, a wordmark drifting into a voice quote, a tagline crashing into the brand story — all forbidden. Reserve a buffer (min 32px) around every text block.
-
-4. **No text on top of busy parts of images.** Text overlaid on a mood image is allowed ONLY if the image area under the text is a flat color (e.g., a sky, a fade gradient zone). If text sits on a textured/detailed photo area, it becomes illegible. Either move the text into a flat zone, add a solid color band behind it, or lift the text out of the photo entirely.
-
-5. **Render and READ each board PNG before delivering.** This is mandatory, not optional. Pipeline:
-   ```bash
-   for i in 01 02 03; do
-     "$CHROME" --headless --disable-gpu --no-sandbox --hide-scrollbars \
-       --window-size=1200,850 \
-       --screenshot="$WS/boards/qa-$i.png" "file://$WS/boards/$i-"*.html
-   done
-   ```
-   Then open each PNG and check: (a) no overlapping text, (b) no text on busy image regions, (c) every required content block visible, (d) layout matches the brand's design philosophy, not a template. If any check fails — fix the HTML and re-render, don't ship.
-
-6. **One element per board has visual priority.** Decide before building which element is the loudest: usually the wordmark, sometimes the mood image, occasionally a giant pull quote. Everything else sizes down from that. If two elements are competing visually, the board reads as cluttered.
-
-7. **Whitespace is content.** A board with 30% empty space, intentionally placed, reads as confident. A board with content crammed into every corner reads as sloppy.
-
-### The differentiation rule
+**Critical rule for the 3-page brand board preview built in Step 3 of the main skill:** do NOT use the same template for all 3 boards recolored. Each board's layout must physically embody its option's design philosophy. If you can swap colors and fonts and the layouts feel identical, the board has failed — viewers read the differences as cosmetic, not structural.
 
 Each brand board must answer: *what would this brand's actual hero page look like?* Build the answer.
-
-### Unified aesthetic briefs STILL require structural divergence
-
-When the user gives a unified aesthetic brief — one era ("Y2K"), one mood ("nostalgic"), one set of references ("Tamagotchi + PowerPuff + Bratz") — the easy failure mode is to deliver 3 variations of the same energy: all bright, all maximalist, all cartoon-y. **This is wrong.** A unified brief doesn't mean a unified output. The references the user lists are usually pointing at *sub-territories within the era*, not at a single shared visual. Pull them apart.
-
-**Test before building:** when you read the brief, ask "are these references actually the same thing?" Tamagotchi is sparse 90s LCD mono. PowerPuff is loud 2001 cartoon outline. Bratz is glossy 2003 fashion editorial. These are three different visual languages from the same decade — each board should live in ONE of them, not blend all three into a single bright stew.
-
-**The 3 boards must diverge across at least 4 of these dimensions** (not just color palette):
-
-- **Density** — sparse breathing room / medium / dense maximalist
-- **Color saturation** — muted/desaturated / mid / neon-bright
-- **Color temperature** — warm cream-and-pink / cool blue-and-mint / monochrome / high-contrast neutrals
-- **Layout philosophy** — centered symmetric / asymmetric editorial / grid-based / full-bleed image
-- **Type energy** — quiet restrained / loud heavy display / technical mono / handwritten/script
-- **Composition focal point** — wordmark-dominant / image-dominant / quote-dominant / palette-dominant
-- **Photography subject scale** — macro detail / full scene / portrait / still life / abstract texture
-- **Photography mood** — quiet documentary / saturated cartoon / glossy editorial / lo-fi grainy
-- **Voice register** — deadpan / hype/loud / warm-poetic / technical
-- **Era within the era** — pick a specific year and pin the board to it (1998 LCD vs 2001 cartoon vs 2003 magazine)
-
-**Adjective audit before delivering:** write the top-3 primary adjectives for each of the 3 boards. If 2 boards share 2+ primary adjectives (e.g. board 1: bright/maximalist/cartoon, board 2: bright/maximalist/sticker-y), they're too similar — push at least one of them further. The point of 3 options is to give the user genuinely different takes on what their brand could be, not three saturations of the same take.
-
-### Divergence ≠ subtraction. Every board delivers on the brief.
-
-**The brief is non-negotiable.** Whatever character the user named — Y2K, kawaii, brutalist, art-deco, cottage-core, cyberpunk — every single one of the 3 boards must deliver on it at full intensity. Variety comes from sub-territories within the brief, not from departing from the brief. Never strip a board back to differentiate it from another; never make a board boring or generic to make it "different."
-
-When pushing the 3 boards into different sub-territories, the failure mode is interpreting "different from loud" as "quiet / muted / stripped back." Don't. Each board should MAXIMALLY express its own sub-territory's character — AND each board must deliver the brief's core aesthetic. If one territory is "minimal editorial within Y2K," it's still minimal-editorial-WITH-Y2K-character (chrome, holographic foil, glitter accents); it is NOT minimal-editorial-stripped-of-Y2K. If another is "lo-fi digital nostalgia within Y2K," it's still saturated-Tamagotchi-candy-and-LCD-greens; it is NOT dusty-cottage-cream.
-
-**The 3 boards should feel like 3 fun things, each delivering the brief**, not "one loud + two stripped." Differentiation is on STRUCTURE (density, layout, type energy, voice register, composition), and on SUB-TERRITORY (different reference points within the same era/mood) — not on amount-of-character. Three boards, each at 100% of its own thing AND 100% of the brief.
-
-**The trap to avoid:** "Board 2 is loud and saturated, so I'll make Board 1 muted and Board 3 minimal to differentiate." This sacrifices the brief for the sake of variety. The right pattern: "Board 2 is loud-PowerPuff-saturated, Board 1 is loud-Tamagotchi-candy-LCD, Board 3 is loud-Bratz-glossy-glittered-editorial." All three are still loud Y2K — they differ in *which Y2K* they live in.
-
-### Era palettes are specific — don't substitute "muted" for "era-appropriate"
-
-When the user names an era (Y2K, 90s, 80s, 60s, mid-century, art deco, etc.), the palette signatures of that era are non-negotiable. "Muted" is rarely the right answer; era-specific saturation profiles are. Research the era's actual palette before picking colors.
-
-**Y2K palette signatures** (early 2000s, 1998–2004):
-- iMac G3 gel colors: Bondi blue, tangerine, grape, lime, strawberry, blueberry — translucent saturated
-- Tamagotchi: candy pink, mint, lavender, butter yellow, pastel egg colors
-- Bratz / mall culture: hot magenta #FF2BB8, chrome silver, lime #C8FF32, butter yellow, baby blue
-- Holographic / iridescent: shifting rainbow on chrome base
-- Cyber: lime green on black, hot pink + cyan, chrome metallic
-- Frosted: white-on-cream with chrome accents
-- NOT Y2K: dusty mauve, muted putty, cottage cream, faded sage — those are 2010s rustic/cottage-core, NOT Y2K
-
-**90s grunge / 90s alt**: washed-out, desaturated, photocopied texture, off-register print
-**80s Memphis**: primary colors + black + cyan, geometric shapes, pastel accents
-**70s**: harvest gold, avocado, burnt orange, brown, mustard, warm earth tones
-**60s mod**: bold flat color blocks, op-art black/white, saturated psych
-**50s**: pastel mint, pink, baby blue, chrome + cream
-
-If you've shifted a palette to "muted" or "dusty" to differentiate it from a brighter board, you've likely left the era. The era is non-negotiable; the energy varies through density, composition, and texture instead.
-
-### Texture is era signal — but it must be AMBIENT, not a pattern
-
-A flat-vector board with no texture reads as generic 2020s vector, not as a specific era. But the opposite failure is just as bad: a board with a recognizable repeating motif (literal halftone dots, scattered glitter flakes, visible scanline rows) reads as a graphic element stamped onto the layout, not as authentic era-character. Both fail. The right answer is **ambient atmospheric texture**: subtle grain, soft noise, grainy gradient, faded VHS shimmer — texture that the user *feels* without recognizing it as a graphic motif.
-
-**Reference frame: VHS noise / film grain / paper grain / grainy gradient.** Not patterns. The user should look at the board, feel the era, and not be able to point at "the texture." If they can name what the texture is (halftone! glitter! scanlines!) it's too literal.
-
-**Always generate textures via `generate_image` with `provider="gpt-image-2"`, never via CSS gradients.** CSS halftone dot patterns, conic-gradient chrome, and repeating-linear-gradient scanlines are too clean — they read as a stylesheet, not as material. Generated textures have the small imperfections (real grain, soft gradient drift, atmospheric noise) that make a board read as authentic-retro. The only acceptable CSS-rendered "texture" is something that's also a UI element (e.g. a thin holographic strip used as a divider).
-
-**Pipeline for generating a texture:**
-1. `generate_image` with `provider="gpt-image-2"`, `quality="medium"`, aspect ratio 4:3 or 16:9 to cover full-canvas (not 1:1 — tileable patterns will repeat visibly).
-2. Prompt for **ambient grain / atmospheric noise**, NOT a pattern. Required prompt language: "subtle ambient grain," "atmospheric noise field," "grainy gradient," "soft film grain," "barely visible," "smooth not patterned," "NO recognizable motifs," "NO repeating elements," "NO visible patterns." Add the era's specific texture vocabulary as ATMOSPHERE not as object (e.g. "subtle VHS noise atmosphere" not "scanline pattern"; "ambient holographic shimmer" not "glitter flakes"; "soft newsprint paper grain" not "halftone dots").
-3. Download and place in `images/textures/`.
-4. Apply via CSS `background-image` on the **body** (full-board coverage), with `mix-blend-mode: overlay` or `multiply` or `screen`, at **low opacity (0.12–0.30 max)**. The texture should be felt across the whole board ambient-style, not stuck onto one card as a focal element.
-
-**Era-texture prompts as ATMOSPHERE, not pattern:**
-- **Y2K LCD/handheld** → "subtle VHS noise atmosphere with very faint horizontal screen-line drift, low-contrast warm vintage screen feel, NOT a scanline pattern"
-- **Y2K cartoon/comic** → "soft newsprint paper grain, ambient print noise, barely-visible warm-cream paper roughness, NOT halftone dots"
-- **Y2K glam/Bratz** → "subtle iridescent grainy gradient, ambient holographic shimmer atmosphere, soft pink/lime color drift, NOT glitter flakes or stars"
-- **Mid-century print** → "fine paper grain atmosphere, soft warm tonal noise"
-- **80s digital** → "subtle CRT phosphor glow atmosphere, faint color drift, NOT pixel grid"
-- **90s grunge** → "ambient Xerox roughness, soft photocopy grain drift, NOT visible dust spots"
-- **70s organic** → "warm paper grain, soft fiber atmosphere"
-- **Film/photography** → "fine silver-halide grain, atmospheric noise, NOT visible particles"
-
-**Application rule of thumb:** if a viewer can describe the texture as a noun ("halftone dots", "glitter flakes", "scanlines"), it's too literal. If they describe it as an atmosphere ("kind of grainy", "feels VHS-y", "soft retro feel"), it's right. The goal is era-character through ambience, not graphic elements through stamping.
-
-Don't ship a "retro" board with zero texture. And don't ship a "retro" board with literal pattern overlays — generate ambient grain, apply widely, keep subtle.
 
 ### Examples of differentiated layouts
 
@@ -973,21 +759,36 @@ Don't ship a "retro" board with zero texture. And don't ship a "retro" board wit
 
 **Editorial / literary essay** — Bone or cream full-bleed background. Massive italic display type centered with extreme whitespace. Photo as a small inset rectangle, not full-bleed. Pull-quote on the margin. Color swatches as a tiny ribbon at the bottom. Should feel like the opening page of a Frank Ocean visual essay or an Anthropic announcement.
 
-**Tech-doc / dev-tool aesthetic** — Monochrome grid. Tight type. Code-like layout with bracket marks or syntax highlighting. Mono font everywhere. Color swatches as inline `code` blocks with hex strings. Should feel like Linear's changelog or Stripe's docs.
+**Tech-doc / dev-tool aesthetic** — Monochrome grid. Tight type. Code-like layout with bracket marks or syntax highlighting. Mono font everywhere. Color swatches as inline `code` blocks with hex strings. Should feel like Stripe's docs or GitHub's changelog.
 
 ### Required content per board (regardless of layout)
 
 Every brand board page must include ALL of the following. The layout differentiation rule above does NOT mean cutting content — visually distinct layouts must still fit ALL the text. If a layout doesn't have room for the content, redesign the layout, don't drop content.
 
 - Brand wordmark (set in the brand's display font)
-- **A standalone logo symbol/mark — rendered inline as SVG (preferred) or generated PNG. NOT just typography.** The symbol must work as a favicon, app icon, social avatar.
+- **A standalone logo symbol/mark — preferably a generated PNG via `mcp__pika__generate_image` with `provider="gpt-image-2"` when SVG would look simplistic, generic, or illegible. SVG is allowed only if it is intentionally simple and passes small-size QA. NOT just typography.** The symbol must work as a favicon, app icon, social avatar, and exported asset on transparent background at 1024×1024+.
+- **A distinctive wordmark and any seal/badge treatment — custom letter spacing, ligature/cut/terminal detail, stamp geometry, or other ownable touch. Not just a Google Font in a circle, not a generic monogram seal, and not decorative filler.**
 - Tagline
 - Voice sample (one sentence in brand voice, quoted, with a "VOICE" label)
-- Brand story (2-3 sentences in brand voice)
-- **Lifestyle world description (1-2 sentences describing the brand's visual territory — where it visually lives, who's in the frame, time of day, color temperature)** — labeled "WORLD" or similar
+- Brand story (~35 words max, min 2 sentences, one compact paragraph in brand voice)
+- **Lifestyle world description (~22 words max, min 1 full sentence describing the brand's visual territory — where it visually lives, who's in the frame, time of day, color temperature)** — labeled "WORLD" or similar
 - Lifestyle mood image (generated via gpt-image-2 — see "Photography Must Occupy Distinct Visual Territories" rule below)
 - 4-color palette with hex codes + role labels
 - Display + body type specimens with named fonts
+
+### Content budgets per board
+
+The board is a visual decision aid, not the final brand book. Keep each board sharp enough to sell the direction at a glance:
+
+- Tagline: 8 words max.
+- Voice sample: 14 words max.
+- Brand story: 35 words max, min 2 sentences. Use one compact paragraph, not 2-3 full paragraphs.
+- World description: 22 words max, min 1 full sentence.
+- Palette: 4 colors max on the board. Full extended palettes belong in the final guidelines.
+- Type specimen: one display sample and one body sample. Do not add full hierarchy tables to boards.
+- Essential body copy: 18px minimum. If it needs to be smaller to fit, rewrite the copy.
+
+If all required content cannot fit within those budgets, the content is too verbose for a board. Rewrite it; do not shrink, stack, or layer it until it becomes technically present but visually bad.
 
 ### What NOT to do
 
@@ -996,6 +797,10 @@ Every brand board page must include ALL of the following. The layout differentia
 - Same type specimen "Aa" treatment on every page
 - Three different colors and three different fonts laid onto identical layouts
 - Wordmark with no separate symbol — the logo isn't complete without a mark
+- Dense archival/specimen styling where decorative rules, labels, swatches, and paragraphs intersect. If it looks like a broken certificate rather than a brand board, simplify.
+- Body copy crossing through color swatches, icons, seals, or decorative overlays. Text must own a clean reading area.
+- Empty mockup boxes or blank social grids. A placeholder reads as missing output, not restraint.
+- Full boards that are almost entirely one muddy value range. Use image light, accent color, or negative space to create hierarchy.
 - **Asymmetric rounded corners on color blocks** (e.g. only `border-top-left-radius` on a big shape) — these read as a clipping bug, not a design choice. If you want softness, use **symmetric** rounded corners (whole left edge rounded, or all four corners rounded), a **clean rectangular split**, or a deliberately organic shape via SVG/clip-path. Half-rounding a single corner of a big block looks like a mistake every time.
 - **Inline pill backgrounds on display text (40px+)** — they overlap into adjacent lines because line-height is usually tighter than the rendered character box. A `background: var(--color); padding: 0 12px; border-radius: 12px;` on big headline text WILL bleed into the line above or below. Two safer options:
   1. **Highlighter-underline gradient** (recommended): `background: linear-gradient(to bottom, transparent 0%, transparent 58%, var(--accent) 58%, var(--accent) 92%, transparent 92%); padding: 0 6px; -webkit-box-decoration-break: clone; box-decoration-break: clone;` — creates a marker-highlight band that only occupies the bottom of the line, never extends beyond.

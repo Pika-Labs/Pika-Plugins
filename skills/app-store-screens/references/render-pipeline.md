@@ -93,6 +93,13 @@ App Store Connect overlays its own chrome on screenshots in certain views. Keep 
 
 Visuals can live in the top/bottom 100px bands. Load-bearing headlines and product UI cannot.
 
+Strict text margin: text block bounding boxes for headlines, eyebrows, subheads,
+CTA text, labels, and any product UI must be fully inside y=180..2616. The top
+and bottom 100px bands are hard no-go zones; the extra 80px gives breathing room
+for status-bar chrome, App Store search-result cropping, and text ascenders. If
+a safe-zone audit finds load-bearing text with y < 180, or a block bottom past
+y=2616, reject and rerender.
+
 ## Device Compositing
 
 Preferred source:
@@ -210,7 +217,7 @@ Before handing files to the user, verify:
 - [ ] Every individual PNG is exactly 1290x2796.
 - [ ] Brand fonts loaded, not system fallbacks.
 - [ ] No black bleed at edges.
-- [ ] No load-bearing text in top/bottom 100px.
+- [ ] Safe-zone audit passes: no load-bearing text block bounding boxes at y < 180 or past y=2616; reject and rerender failures.
 - [ ] Device corners look consistent across all six.
 - [ ] First two screens are legible when viewed at 25%.
 - [ ] Contact sheet shows visual variety across the six.
