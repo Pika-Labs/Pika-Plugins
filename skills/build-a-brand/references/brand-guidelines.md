@@ -361,9 +361,32 @@ This touchpoints grid is image-only. If a label is required, use a separate capt
 
 ## Step 4 — Render PDF
 
-Render with Pika MCP `html_to_pdf`.
+Render the **entire deck in ONE `html_to_pdf` call**. Never render page-by-page and stitch the results together. Fifteen sequential calls blow the per-agent render quota, risk a mid-deck worker timeout that strands a `task_id` (the "Rendering… never finishes" failure), and force a local merge step that Cowork/Desktop clients have no tool to run. One call for the whole deck is mandatory.
 
-Preferred single-HTML mode:
+**Token anti-pattern — do NOT write each page's HTML to a file and `Read` it back before sending.** Pass the HTML you generate straight into the `html_to_pdf` call (as `body_pages` fragments or the single `html` string). Generated HTML already lives in context once as the tool-call argument; writing it to disk and reading it back makes the same large HTML count against context twice for no benefit. Build the fragments inline and call render once.
+
+**Preferred for the multi-page deck — `body_pages`:** pass each page as a body fragment in `body_pages` with a single `shared_head` (fonts, CSS variables, shared styles). The server renders the fragments and merges them into one PDF. Pages render in parallel, so do not rely on CSS counters or script state crossing page boundaries — bake any page numbers into each fragment.
+
+```
+html_to_pdf(
+  body_pages: [
+    { html: page1_body, page_number: 1 },
+    { html: page2_body, page_number: 2 },
+    ...                                    // all 15-16 pages in this one call
+  ],
+  shared_head: shared_head_html,           // <link>/<style>/@font-face shared by every page
+  format: "pdf",
+  mode: "async",
+  wait_for: "domcontentloaded",
+  pdf_options: {
+    paper_size: { width: 1200, height: 850, unit: "px" },
+    margins: { top: 0, right: 0, bottom: 0, left: 0 },
+    print_background: true
+  }
+)
+```
+
+**Single-HTML mode** — acceptable only when one self-contained HTML document with `@page` breaks is genuinely cleaner than fragments. Still ONE call for the whole deck:
 
 ```
 html_to_pdf(
@@ -379,8 +402,6 @@ html_to_pdf(
 )
 ```
 
-Use `body_pages` + `shared_head` only when keeping each page as a separate body fragment is cleaner. In that mode the server renders pages in parallel and merges them; do not expect CSS counters or script state to cross page boundaries.
-
 Example completed PDF response:
 
 ```
@@ -391,42 +412,64 @@ Example completed PDF response:
 
 ## Step 5 — Verify Every Page (Mandatory)
 
-Before delivery, render PNG previews and verify against the QA checklist. For full-deck QA, either call `html_to_pdf(format:"png", ...)` when page raster output is desired, or call `html_to_png` per page/body fragment.
+Before delivery, render one full-page preview per page and verify against the QA checklist. **Render QA previews as JPG** (`format: "jpg"`, `jpeg_quality: 90`), not PNG — the preview is read-only and lossy compression is fine for spotting layout/contrast defects, while JPG is much smaller to upload and to feed `analyze_media`, so QA is faster. (Lossless PNG is only needed for logo/symbol asset *export* in the brand kit, not for QA previews.) Call `html_to_png(format:"jpg", ...)` per page/body fragment.
 
 ### Full-Deck Visual QA
 
-Run **full-deck visual QA** on every final guidelines page, not only the 3-page brand-board preview. Use `mcp__pika__analyze_media` page-by-page / per-page on the final PNG previews before delivering the PDF.
+Run **full-deck visual QA** on every final guidelines page, not only the 3-page brand-board preview. Use `mcp__pika__analyze_media` page-by-page / per-page on the final JPG previews before delivering the PDF.
 
-The prompt must start: "Answer with PASS or FAIL on the first line, then explain." Ask it to check for clipped text, accidental overlay, text/image collisions, missing image slots, empty placeholders, bad crops, rounded-frame crop damage, broken image loads, unreadable font fallback, weak hierarchy, and muddy one-note pages. Fix every captured FAIL before delivery. If the tool is unavailable or returns an ambiguous first line, halt with a manual-review warning instead of shipping silently.
+Use this exact prompt (the contrast clause is load-bearing — without it the model rates low-contrast text "legible" and PASSes a defect the old per-element zoom pass used to catch):
+
+```
+Answer with PASS or FAIL on the first line, then explain. FAIL the page if ANY of these is present:
+(1) Low-contrast / hard-to-read text — text whose value is too close to its background: dark text on a dark or saturated field, light text on a light field, or a thin colored label/caption set against a similar-value background. Apply the dark-background contrast thresholds in Rule 6.
+(2) Clipped or cut-off text.
+(3) Text/image or text/graphic collisions — text overlapping icons, swatches, seals, photos, phone mockups, or decorative rules.
+(4) Missing image slots or empty placeholders (flat color blocks that are not explicitly palette specimens).
+(5) Bad crops or rounded-frame crop damage (subject cut off by object-fit/object-position or a dome-shaped radius).
+(6) Broken image loads.
+(7) System-font fallback (Times/Arial) instead of the brand font.
+(8) Weak hierarchy or a muddy one-note palette.
+List each issue with the page element it affects.
+```
+
+Fix every captured FAIL before delivery. Parse the verdict from the first line only (`/^\s*[`*]{0,2}(PASS|FAIL)\b/`); if the first line is PASS but the explanation describes a blocking contrast/collision/clipping/unreadable-text problem, treat it as FAIL. If the tool is unavailable or returns an ambiguous first line, halt with a manual-review warning instead of shipping silently.
 
 ```
 html_to_png(
   html: page_html,
-  format: "png",
+  format: "jpg",          // QA preview only — lossy is fine, smaller + faster than png
   mode: "sync",
   wait_for: "domcontentloaded",
   raster_options: {
     viewport_px: { width: 1200, height: 850 },
-    device_scale: 1
+    device_scale: 1,
+    jpeg_quality: 90
   }
 )
 ```
 
-Example completed PNG response:
+Example completed JPG response:
 
 ```
-{"status":"completed","file_url":"https://cdn.pika.art/v2/files/agent/4d944981-9897-40b6-9e37-533c2a90b541/5a863672-0835-4901-87a8-df8933d69cd4.png","format":"png","page_count":1,"byte_size":3806}
+{"status":"completed","file_url":"https://cdn.pika.art/v2/files/agent/4d944981-9897-40b6-9e37-533c2a90b541/5a863672-0835-4901-87a8-df8933d69cd4.jpg","format":"jpg","page_count":1,"byte_size":3806}
 ```
 
 ### Pre-Send QA Checklist
 
 Read every screenshot. Verify every item. If any check fails, fix it. No exceptions. Never ask the user to spot problems the agent should have caught.
 
-**Two-pass QA is mandatory:**
-1. **Thumbnail pass** — full-page screenshots to catch layout-level issues (blank columns, missing content, wrong colors).
-2. **Zoom pass** — crop and read 800×800px regions around every small UI element: pill markers, badges, avatars, captions, swatches, logo lockups, type specimens, business cards, app icons. Thumbnail screenshots compress all detail-level mistakes out of view. Without a zoom pass you WILL ship visible alignment, centering, or sizing flaws.
+**Cost rule — QA must scale with page count, not element count.** Read ONE full-page PNG per page (~15 reads for a 15-page deck). Do NOT crop-and-read every small element on every page by default — that balloons to 100+ image reads (~180k tokens) and can exhaust a whole Claude Pro session on QA alone. The full-page read plus `analyze_media` is the default; targeted zoom is the exception, not the rule.
 
-Specifically zoom on: numbered/lettered pill markers, button states, favicon-size logo renderings, color-swatch labels, type specimens, business card layouts, and any badge that contains a single character. These are the highest-risk regions for centering bugs.
+**Per-page QA (mandatory — one full-page read per page):**
+1. **Full-page pass** — read the full-page PNG for each page and verify it against the checklist below (blank columns, missing content, wrong colors, font fallback, text/image collisions, clipped text, weak hierarchy).
+2. **Delegate detail-level QA to `analyze_media`** — run `mcp__pika__analyze_media` on that same full-page PNG with the PASS/FAIL prompt from Full-Deck Visual QA above. Let the tool surface small-element defects (misalignment, low contrast, overflow, broken crops) server-side instead of reading extra crops into context. Fix every captured FAIL.
+
+**Targeted zoom — only when triggered.** Crop and read an 800×800px region ONLY for:
+- a specific element the full-page read or `analyze_media` flagged as suspect, OR
+- the few genuinely highest-risk spots, when the page contains them: a single-character pill/badge marker, a favicon-size (≤32px) logo rendering, or a business-card layout.
+
+Do not zoom every element on every page. Zoom the flagged ones. A clean full-page read + `analyze_media` PASS with no blocking explanation is sufficient to clear a page.
 
 | Check | What to look for |
 |---|---|
@@ -436,7 +479,7 @@ Specifically zoom on: numbered/lettered pill markers, button states, favicon-siz
 | No text/image collisions | Body copy, captions, labels, and rules do not sit on top of images. Masthead wordmark/tagline/issue metadata overlays are allowed only with deliberate negative space or a contrast scrim and must pass contrast QA |
 | No text collisions | Text does not overlap or sit underneath icons, swatches, seals, decorative lines, photos, phone mockups, or other graphic elements |
 | No clipped or occluded text | Text is not cut off by its own container, page edge, rounded shape, sibling graphic, or z-index layer |
-| Board looks good, not just valid | Thumbnail read has one focal point, clear hierarchy, enough negative space, and no muddy one-note palette |
+| Board looks good, not just valid | Full-page read has one focal point, clear hierarchy, enough negative space, and no muddy one-note palette |
 | analyze_media PASS | For brand board PNG previews and every final guidelines page, run `mcp__pika__analyze_media` per `SKILL.md` Board quality gate and the full-deck visual QA above. Every FAIL or ambiguous first line must be fixed before delivery. If the tool is unavailable, halt with a manual-review warning |
 | Load-bearing copy is readable | Body copy is readable in the full-page PNG; do not hide key content in 10px decorative microtype |
 | **No baked-in text in generated images** | **Open each generated image and look for ANY text — magazine titles, watermarks, brand names, captions, headers. If you see any, regenerate with stronger no-text guardrails.** |

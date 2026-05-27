@@ -256,52 +256,12 @@ result = generate_image(
 
 With the feature map (Stage 1) and arc (Stage 2) in hand, write the Seedance prompt. Every `@Image` description must reference the real UI content from the feature map — never write generic descriptions like "a mobile interface with controls."
 
-**Choose Template A or B by reading the app's screenshots — don't default to liquid glass.** Template B (liquid glass) fits apps where a lens/filter metaphor is apt (photography, camera apps). Everything else uses Template A. The accent color is always from the brand — read the icon and primary UI color, never invent one.
+**Choose the template by reading the app's screenshots — don't default to liquid glass.** Read exactly one of these based on the app's personality; the other never loads:
 
-### Template A — Cinematic Narrative (use for productivity, AI, creative, social, food, games)
+- **Template A — Cinematic Narrative** (default; productivity, AI, creative, social, food, games): read `references/template-a-cinematic.md`. The proven BEAT-structure template plus validated examples.
+- **Template B — Liquid Glass** (photography, camera, filter apps only, where a lens/filter metaphor is apt): read `references/liquid-glass.md`. Template B skeleton plus glass transformation vocabulary.
 
-This is the proven template. It uses the BEAT structure directly — Seedance responds to narrative beats and real UI content better than glass morphism instructions for most app categories.
-
-```
-[Aesthetic] cinematic ad. [2-word genre]: [specific visual quality]. Pure black background.
-
-BEAT 1 (Hook, 0–3s): [Camera action] — @Image1 is [exact UI description from Stage 1 feature map, as specific as possible, quoting actual UI text if visible]. [What happens — camera move + how the UI is framed or revealed].
-BEAT 2 (Build A, 3–8s): [Camera cuts to] — @Image2 is [exact UI description]. [What the beat reveals about the feature — show the output or the moment of delight].
-BEAT 3 (Build B / Reveal, 8–12s): [Camera sweeps to or pulls back] — @Image3 is [exact UI description]. [What the product overview or transformation moment shows].
-BEAT 4 (Logo, 12–15s): Hard cut to black — @Image[last] is the [brand] wordmark. It materializes whole in a burst of [accent color] light and holds for the final overlay.
-
-Style: [aesthetic-specific — e.g. "dark cinematic thriller, self-luminous UI on absolute black, electric blue accent"]. No text, no words rendered in motion.
-```
-
-**Validated examples:**
-- Cluely (AI meeting notetaker): `Dark cinematic thriller. Electric blue accent. BEAT 1: crash zoom on a floating meeting UI panel showing "Cluely is listening..." → BEAT 2: push-in on real-time transcript cards cascading → BEAT 3: pull-back reveals the full agent overlay, ghosted over a video call → BEAT 4: logo materializes whole in electric blue.`
-- Dipper (video editor): `Warm amber cinematic. Golden light. BEAT 1: macro close-up on timeline with edit chips glowing → BEAT 2: camera orbits a clip grid showing generated B-roll → BEAT 3: pull-back to the full editor, export bar active → BEAT 4: logo materializes in warm amber.`
-- Claude by Anthropic (AI assistant): `Dark cinematic intellectual thriller. Terracotta coral accent. BEAT 1: slow push-in on lifestyle shot of hand holding iPhone showing "* What are you thinking?" → BEAT 2: crash zoom into pure-black code screen with CSS :root variables and pixel-art robot → BEAT 3: orbital sweep around integrations result card "✓ 1 New Client Entry Created — BlueSky Logistics" → BEAT 4: pull-back on Japanese train ticket translation chat → BEAT 5: Claude asterisk icon materializes in warm coral burst.`
-
-### Template B — Liquid Glass (use for photography / filter apps)
-
-```
-[Arc type] motion-graphics ad. Glossy liquid glass design language. Pure black background.
-
-@Image1 is [exact UI description — e.g. "a 3D rotating grid of vintage camera bodies"].
-@Image2 is [exact UI description — e.g. "a Polaroid-style output card with a city street photo and aged border"].
-@Image3 is [exact UI description — e.g. "a VHS three-panel grid: city streets, a skate park, and a coastal sunset with retro timestamp overlays"].
-@Image[last] is the [brand] wordmark logo — final reveal only.
-
-BEAT 1 (Hook): [Camera action] on @Image1 — [transformation: choose from vocabulary below].
-BEAT 2 (Build): [Camera action] cuts to @Image2 — [transformation]. Hard cut to @Image3 — [transformation].
-BEAT 3 (Reveal): Pull-back reveals [what the full product view shows].
-BEAT 4 (Logo): Hard cut to black — @Image[last] materializes whole in a burst of [accent color] light and holds for the final overlay.
-
-Style: liquid glass morphism, Apple Vision Pro aesthetic, premium 3D depth, self-luminous forms on absolute black, [accent color] accent lighting. No text rendered in motion.
-```
-
-**Glass transformation vocabulary — vary per beat, never repeat:**
-- `liquifies at its edges, becoming translucent glass` — organic, no break
-- `dissolves into frosted glass panels suspended in void` — atmospheric, soft
-- `crystallizes outward, growing glass facets` — elegant, structural
-- `melts into a floating glass orb, light rippling across its surface` — fluid
-- `shatters into glass shards that reassemble mid-air` — dramatic (**use once maximum, not every beat**)
+The accent color is always from the brand — read the icon and primary UI color, never invent one.
 
 ### Rules for both templates
 
@@ -451,14 +411,7 @@ Use specific camera language — Seedance responds to it:
 
 Alternate fast cuts with slower drifts — pure rapid cuts feel chaotic, pure slow drifts feel boring.
 
-### Glass Transformation Vocabulary
-
-Be specific about what turns to glass and how:
-
-- `"The [element] liquefies at its edges, becoming translucent glass with #cfc3ff light refracting through the border"`
-- `"The entire UI panel shatters into glass shards that reassemble mid-air"`
-- `"The icon melts into a floating glass orb, light rippling across its surface"`
-- `"The text fields dissolve into frosted glass panels suspended in black void"`
+(Glass transformation vocabulary lives in `references/liquid-glass.md` — only relevant on the Template B path.)
 
 ### Device Framing
 
