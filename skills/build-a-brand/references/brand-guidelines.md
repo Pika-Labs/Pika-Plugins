@@ -82,6 +82,8 @@ Generated image URLs can be used directly in MCP-rendered HTML. Keep page images
 
 **Diversity rule:** All lifestyle images with people must show a mixed cast across the 4-image grid: Black, Asian, Latina, South Asian, Middle Eastern, or mixed-race subjects. Vary body types. Never default to white/light-skinned subjects.
 
+**Personal / creator brand — use the user's real likeness (mandatory).** When the brand IS a specific person (creator, founder, personal media kit) and the user supplied their own photos, every slot where the subject represents that person — cover hero, masthead, portrait, "about" shots — must use the user's actual uploaded photos, not a generated stand-in. NEVER generate a different AI person and pass it off as the user; a "random AI girl who isn't me" on the cover is an automatic FAIL. The diversity rule above applies only to anonymous lifestyle/contextual imagery, not to the named subject. If the user did not provide a usable photo for a slot that needs their face, leave it as a clearly-labeled placeholder and ask for the photo — do not substitute a generated person.
+
 ---
 
 ## Image Generation — Hard Rules (Read Before Every Prompt)
@@ -237,6 +239,8 @@ The renderer is server-side Chromium. Flexbox, grid, absolute positioning, and C
 - Never `opacity:` on any `<img>` — images always at full opacity
 - Never body text/labels/rules on images — put captions in an adjacent column or block. Masthead brand boards may overlay wordmark/tagline/issue metadata on a full-bleed photo only when the type sits on intentional negative space or a contrast scrim and passes contrast QA.
 - Contrast QA for masthead overlays means the masthead text remains readable in the full-page PNG preview and the `mcp__pika__analyze_media` board QA result does not flag low contrast, muddy overlay, or unreadable type. If uncertain, run a targeted follow-up prompt: "CONTRAST: PASS or FAIL. Is the masthead wordmark/tagline/issue metadata readable against the photo at full-page size without hiding the photo subject?"
+- **Face-safe placement (mandatory, not optional).** No overlay element — wordmark, tagline, issue/edition tag, logo symbol, seal, stat numbers, swatch strip, or scrim — may sit over the subject's face. Decide the face's location in the cropped photo first, then place every overlay in the negative space clear of it (sky, wall, table, blurred background, an empty margin band). If the photo's subject is centered and there is no clear negative space for the type, regenerate the photo with the subject pushed to one third so the opposite third is empty, or switch to a layout where type sits in a solid side panel instead of over the photo. A logo lockup landing on a chin/cheek/forehead is an automatic FAIL even if contrast is fine.
+- **Overlay alignment (mandatory).** Masthead overlay elements align to one shared grid, not eyeballed positions. Anchor the wordmark, tagline, and metadata to a common left (or center) edge with consistent margins; set a single edge inset (e.g. 64px) used by all overlaid elements. A bottom stat/swatch strip uses an evenly-distributed row (`display:flex; justify-content:space-between` or a `grid-template-columns:repeat(N,1fr)`) with each cell's label and number sharing one baseline — never numbers floating at different heights or uneven gaps. The logo symbol sits on the same margin line as the wordmark, not at an arbitrary offset.
 - Never duplicate an image src across the deck — each file appears at most once
 - Use `object-position` deliberately and verify the crop in PNG previews
 
@@ -485,6 +489,9 @@ Do not zoom every element on every page. Zoom the flagged ones. A clean full-pag
 | **No baked-in text in generated images** | **Open each generated image and look for ANY text — magazine titles, watermarks, brand names, captions, headers. If you see any, regenerate with stronger no-text guardrails.** |
 | **Subjects survive their crop** | **For every generated image used in a layout: is the intended subject visible after the CSS crop? No forehead-only portraits, no hand-only kitchen scenes. If the subject got cut off by `object-fit:cover`, `object-position`, or a rounded/arched frame, fix the layout or regenerate the image.** |
 | **Rounded shapes don't eat content** | **Any `border-radius` ≥ ½ the element width creates a dome that crops content underneath. If the photo's subject sits in the top portion of the source, a dome top will hide it. Soften the radius or reposition the subject.** |
+| **No overlay covers a face** | **On every masthead/cover/photo-with-overlay page: is the subject's face fully clear of the wordmark, tagline, logo symbol, seal, stat numbers, swatch strip, and scrim? A logo or word landing on the chin/cheek/forehead is a FAIL — move overlays into the negative space or regenerate the photo with the subject off-center.** |
+| **Overlay elements aligned** | **Masthead wordmark, tagline, metadata, logo, and any stat/swatch strip share one margin grid and consistent baselines — no numbers at different heights, no uneven gaps, no element floating off the shared edge.** |
+| **Named subject is the real user** | **For a personal/creator brand: every face that represents the user is the user's actual uploaded photo, not a generated stand-in. A different AI person on the cover or portrait pages is a FAIL.** |
 | No duplicate images | Each image file used at most once across the deck |
 | No opacity on images | No `opacity:` on any `<img>` — images always full brightness |
 | Logo shapes centered | Content visually centered in hang tags, circles, labels — not top-aligned |
@@ -796,7 +803,7 @@ Each brand board must answer: *what would this brand's actual hero page look lik
 
 ### Examples of differentiated layouts
 
-**Magazine-cover brand** — Full-bleed photo as background covering the entire page. Massive wordmark overlaid in display type. Tagline overlaid in small text. Issue/edition tag in corner ("Vol. 01 / Cover Story"). Bottom-margin strip showing color swatches and typography credit, like a magazine masthead. Whole page should look like a Bloomberg Businessweek or NYT Magazine cover.
+**Magazine-cover brand** — Full-bleed photo as background covering the entire page. Massive wordmark overlaid in display type. Tagline overlaid in small text. Issue/edition tag in corner ("Vol. 01 / Cover Story"). Bottom-margin strip showing color swatches and typography credit, like a magazine masthead. Whole page should look like a Bloomberg Businessweek or NYT Magazine cover. Compose so the face sits in one third and the wordmark/logo/stat strip live in the empty opposite region — type and logo must never land on the face, and all overlaid elements align to one shared margin and baseline (see Rule 5: face-safe placement + overlay alignment).
 
 **Soft consumer-brand homepage hero** — Asymmetric split with a curved or rounded shape break between colored side and cream side. Big rounded type on one half, photo with rounded corners on the other. Color swatches presented as soft circles, not squares. Lots of breathing room. Should feel like the hero of bumble.com or pika.me.
 

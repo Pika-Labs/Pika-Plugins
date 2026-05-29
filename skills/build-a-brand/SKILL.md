@@ -12,6 +12,7 @@ description: >
 argument-hint: <idea-or-url-or-reference-brands> [photos=<paths-or-urls>] [refresh=<existing-brand>] [--quick] [--config <path>]
 required-capabilities:
   - mcp__pika__generate_image
+  - mcp__pika__remove_background
   - mcp__pika__html_to_pdf
   - mcp__pika__html_to_png
   - mcp__pika__analyze_media
@@ -170,7 +171,7 @@ After presenting all 3 in text, **build a 3-page brand board PDF** (one page per
 
 **Each option must include:**
 - **Wordmark** in the brand's display font — use the user's existing wordmark if they have one they like; propose a new one if they need a logo or don't like their current one. A new wordmark must have custom letter treatment: adjusted spacing, ligature, cut, terminal, case, underline, or other ownable detail. It is not just a Google Font typed in a color.
-- **Symbol/mark** — a standalone graphic that lives without the wordmark. Use the user's existing symbol if they have one they like; propose a new one otherwise. Even if the user keeps their wordmark, propose a symbol if they don't have one — favicons and app icons need a non-typographic mark. For new symbols, default to a generated PNG via `mcp__pika__generate_image` with `provider="gpt-image-2"` when visual quality, texture, detail, or originality matters. Ask for a clean isolated mark on transparent background, no baked-in letters, no watermark, no mockup, centered in a square. Use inline SVG only if the mark is intentionally simple, can be drawn cleanly by hand, and passes small-size QA. Must work at 16×16 AND 512×512.
+- **Symbol/mark** — a standalone graphic that lives without the wordmark. Use the user's existing symbol if they have one they like; propose a new one otherwise. Even if the user keeps their wordmark, propose a symbol if they don't have one — favicons and app icons need a non-typographic mark. For new symbols, default to a generated PNG via `mcp__pika__generate_image` with `provider="gpt-image-2"` when visual quality, texture, detail, or originality matters. Ask for a clean isolated mark on transparent background, no baked-in letters, no watermark, no mockup, centered in a square. After generating, run the PNG through `mcp__pika__remove_background` with `mode="logo"` to guarantee a real transparent background before compositing it onto any colored or photo background — generated symbols often come back with a baked-in white background that becomes a white box at composite time. (Background removal strips only the outer background; design any interior negative space to be open at generation time, since the cleanup pass won't carve it out.) Use inline SVG only if the mark is intentionally simple, can be drawn cleanly by hand, and passes small-size QA. Must work at 16×16 AND 512×512.
 - **Seal / badge** — if the option uses a seal, stamp, badge, or monogram, it must be readable and ownable at small and medium sizes. It cannot be a generic circular font lockup, clip-art crest, or low-contrast decorative filler.
 - Tagline (8 words max)
 - Voice sample with visible "VOICE" label (one quoted sentence, 14 words max)
