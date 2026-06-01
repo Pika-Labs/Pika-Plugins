@@ -3,6 +3,12 @@
 All notable changes to the Pika Claude Code plugin are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Fixed
+
+- **Kling re-roll guidance** — `/pika:app-sizzle`, `/pika:baseball-trend`, `/pika:kiss-cam`, `/pika:podcast`, and `/pika:ugc-ads` now document that Kling v3-omni has no seed and that completed quality re-renders must change the payload (prompt, negative prompt, first-frame still, spoken lines, or act wording) instead of submitting identical params that can dedupe back to the same job/asset.
+
 ## [1.4.0] — 2026-05-22
 
 ### Added — four new curated skills

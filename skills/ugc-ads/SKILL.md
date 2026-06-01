@@ -178,6 +178,14 @@ For `provider=kling`: convert the multi-beat prose into `shots: [{prompt, durati
 
 If the call returns `{ task_id, status: "queued" }`, poll `task_status(task_id)` in a tight loop (no Bash, no sleep) until terminal (`completed | failed | cancelled`). On `completed`, capture `result.url` → `video_url` and proceed to step 8.
 
+**Kling variation rule (AGNT-583):** Kling v3-omni has no `seed` parameter, and a completed call with the same prompt, references, shots, and params can dedupe back to the same job/asset. Do not submit an identical Kling payload when the goal is a new take or quality correction; change the payload in a targeted way before re-rendering.
+
+- Lip-sync/dialogue issue: rewrite the affected `Says: "..."` line or split it differently across its 3s shot.
+- Screen/product issue: adjust the screen-close-up shot wording, screenshot reference, or `<<<image_2>>>` placement.
+- Motion/pacing issue: change the affected shot's body-language/action wording while keeping the five-shot structure.
+
+If the original request failed before producing a usable output or task handle, retrying the same payload is transport recovery, not a variation re-roll.
+
 **7b. On rejection — auto-cartoonize the avatar**
 
 If 7a returns `422 content_policy_violation` on `image_urls` / `reference_images` (seedance + fal-queue moderation flags portraits that read as too photorealistic — even some Pixar-style 3D avatars get flagged), restyle the avatar in-place:

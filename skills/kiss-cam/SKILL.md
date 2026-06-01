@@ -153,7 +153,15 @@ The working framing keeps the style-preservation lock but specifies subtle, rest
 
 Save the returned video URL as `state.kisscam_video_url`. If generation completes asynchronously, follow the MCP tool's returned status handle. Client-layer timeouts can orphan the upstream task with no recovery handle, so re-run from scratch on timeout.
 
-**On failure**: re-run kling — don't switch video engines. Seedance's two-stage likeness gate (same as the `baseball-trend` sibling) makes it unusable here. If the still itself is the issue (use the Step 1 self-check criteria — text spelling, scoreboard, likeness — to decide), re-run Step 1.
+**Kling variation rule (AGNT-583):** Kling v3-omni has no `seed` parameter, and a completed call with the same prompt, references, and params can dedupe back to the same job/asset. Do not submit an identical Kling payload when the goal is a new take or quality correction; change the payload in a targeted way before re-rendering Step 2.
+
+- Audio/timing issue: rewrite the PA announcer lines or adjust the beat timing words.
+- Scoreboard/text motion: add the observed drift term to `negative_prompt` or strengthen the locked-Jumbotron sentence.
+- Over-acting, lip-sync, or identity drift: add one concrete correction to the animation block or `negative_prompt`; if the still itself is the issue, re-run Step 1 using the self-check criteria.
+
+If the original request failed before producing a usable output or task handle, retrying the same payload is transport recovery, not a variation re-roll.
+
+**On completed-output failure**: keep Kling as the video engine, but apply the variation rule above before re-rendering. Seedance's two-stage likeness gate (same as the `baseball-trend` sibling) makes it unusable here.
 
 ## Step 3 — Deliver
 
@@ -168,7 +176,7 @@ One-line summary: *"Kiss Cam moment at MSG — 15s, 16:9, 1080p, Kling v3-omni, 
 - **Step 3 — download + emit markers:** ~5–10s
 - **Total wall-clock per take:** ~4–6 minutes
 
-If a re-roll is needed at Step 1 the budget restarts there; at Step 2 only the video stage repeats.
+If a re-roll is needed at Step 1 the budget restarts there; at Step 2 only the video stage repeats, with a changed Kling payload when the prior output completed.
 
 ## Load-bearing phrases (keep verbatim)
 
@@ -209,7 +217,7 @@ Don't edit these without a re-validation pass — they're empirical behavior dep
 
 **Step 2 — Kling, no Seedance.** Seedance has a two-stage `partner_validation_failed` 422 gate (same as the `baseball-trend` sibling skill): an input-side gate that rejects references with recognizable real people, and an output-side gate that rejects AFTER generation if the produced clip contains recognizable-looking faces. Every Kiss Cam shot has a packed-arena crowd full of faces, so the output-side gate is unavoidable here. Kling is the only engine that lands this recipe.
 
-**Kling trade-offs**: 2500-char `prompt` cap (recipe above is pre-trimmed to ~2400 chars; re-inflating it can trigger prompt-length errors), no `seed` param (re-rolls are non-reproducible — to re-roll just call again).
+**Kling trade-offs**: 2500-char `prompt` cap (recipe above is pre-trimmed to ~2400 chars; re-inflating it can trigger prompt-length errors), no `seed` param. Variation is payload-driven: if a completed render needs a new take, change the prompt, negative prompt, first-frame still, or spoken lines before re-rendering.
 
 ## Failure cheat sheet
 
@@ -217,11 +225,11 @@ Don't edit these without a re-validation pass — they're empirical behavior dep
 |---|---|
 | `moderation_blocked` on Step 1 | gpt-image-2 safety gate (often female/female subject pairings + "kiss cam" wording). Re-roll the same call; do NOT swap providers — alternatives produce softer likeness and softer LED detail |
 | Kling prompt error: prompt > 2500 chars | Re-inflated audio or aesthetic section in the Kling prompt. Cut from the audio or aesthetic block; never from the animation timeline |
-| Scoreboard, "Kiss Cam" text, or graphics animate mid-clip | `prompt_adherence` not set to `strict`, or `negative_prompt` missing entries like "scoreboard changing" / "Kiss Cam text changing". Verify both params; re-run Step 2 |
-| Subject identity drifts after ~8s | Reference still face crop too small — not enough facial pixels for Kling to lock. Re-roll Step 1 with a tighter face crop on the subjects |
+| Scoreboard, "Kiss Cam" text, or graphics animate mid-clip | `prompt_adherence` not set to `strict`, or `negative_prompt` missing entries like "scoreboard changing" / "Kiss Cam text changing". Verify both params, change the Step 2 payload with the missing anchor, then re-render |
+| Subject identity drifts after ~8s | Reference still face crop too small — not enough facial pixels for Kling to lock. Change the Step 2 payload with a stronger identity/style lock; if drift persists, re-roll Step 1 with a tighter face crop on the subjects |
 | Subject gets redrawn in a different style (photoreal → illustrated, or vice versa) | Style-preservation lock weakened, or a specific style label (Pixar / anime / etc.) crept into either prompt. Restore the "preserve exact likeness AND visual style" anchor; remove any style label |
-| PA announcer mispronounces a word or misses the kiss beat | Native audio is one take per Kling generation. Re-run Step 2 — no prompt-level fix |
-| One of the on-screen subjects lip-syncs / mouths the PA announcer's dialogue | Kling defaults to attributing any quoted dialogue on the audio track to a visible face in frame — without an explicit off-screen anchor, it picks a subject and animates their mouth to the words. Verify the audio block is framed as `Audio (non-diegetic / OFF-SCREEN only — Subject A and Subject B stay SILENT throughout, mouths closed...)` and the `negative_prompt` contains `subjects lip-syncing PA announcer dialogue, characters mouthing the announcer lines, on-screen lip-sync`; re-run Step 2 |
+| PA announcer mispronounces a word or misses the kiss beat | Native audio is one take per Kling generation. Change the Step 2 payload with alternate PA wording or timing, then re-render |
+| One of the on-screen subjects lip-syncs / mouths the PA announcer's dialogue | Kling defaults to attributing any quoted dialogue on the audio track to a visible face in frame — without an explicit off-screen anchor, it picks a subject and animates their mouth to the words. Verify the audio block is framed as `Audio (non-diegetic / OFF-SCREEN only — Subject A and Subject B stay SILENT throughout, mouths closed...)` and the `negative_prompt` contains `subjects lip-syncing PA announcer dialogue, characters mouthing the announcer lines, on-screen lip-sync`; change the Step 2 payload with the missing off-screen/lip-sync anchor, then re-render |
 | Subjects mug at camera / over-act / theatrical expressions / cartoon reactions | Animation block prescribes a loaded list of simultaneous micro-expressions, or timeline beats use exaggerated descriptors ("huge smile", "shy excited wiggle", "eyes widen"). Restore the `subtle, restrained, true-to-life motion` framing in the animation block; strip emotion adjectives from the timeline; verify `exaggerated acting / theatrical expressions / over-acting / mugging at camera / cartoon reactions` are in the `negative_prompt` |
 | Kiss lands on cheek / forehead / head instead of lips | Timeline beat softened away from `gentle kiss on the lips`. Restore the verbatim lip-kiss line in the 7-11s beat; the trend is a lip kiss, not a peck on the head |
 | Seedance attempted instead of Kling | Wrong engine chosen. Switch to `kling` — Seedance's two-stage likeness gate makes it unusable here (see "Engine choice") |

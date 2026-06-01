@@ -127,6 +127,14 @@ Constraints: Preserve identity strongly. Keep him seated behind home plate throu
 
 Save the returned video URL as `state.broadcast_video_url`. If generation completes asynchronously, follow the MCP tool's returned status handle until the video reaches a terminal state.
 
+**Kling variation rule (AGNT-583):** Kling v3-omni has no `seed` parameter, and a completed call with the same prompt, references, and params can dedupe back to the same job/asset. Do not submit an identical Kling payload when the goal is a new take or quality correction; change the payload in a targeted way before re-rendering Step 2.
+
+- Audio/name issue: rewrite the announcer sample lines, add a phonetic hint for `${username}`, or change the commentary phrasing.
+- Scorebug/chyron motion: add the observed drift term to `negative_prompt` or strengthen the pixel-lock sentence.
+- Identity/motion issue: add one concrete correction to the action block, or re-run Step 1 with a tighter still crop if the first frame is the weak link.
+
+If the original request failed before producing a usable output or task handle, retrying the same payload is transport recovery, not a variation re-roll.
+
 ### Step 3 — Deliver
 
 Return both Pika CDN URLs: the still image URL and the final video URL. If the host client requires local media markers, create the local preview outside this skill after confirming both CDN URLs are reachable.
@@ -153,7 +161,7 @@ The output-side gate is unavoidable for this trend regardless of subject, so See
 
 **Kling caveat — recognizable celebrities are blocked too.** Kling has its own content-moderation gate that fires on celebrity references (validated 2026-05-13: a Michael Jordan reference + "Ke Wang" chyron returned `task_status: failed, task_status_msg: "Failure to pass the risk control system"` at submit-time). This is correct behavior — the trend illusion only works with a non-public-figure reference where the chyron name + face are coherent. If a user supplies a celebrity photo, surface the gate to them and ask for a non-celebrity reference instead.
 
-**Kling trade-offs**: 2500-char `prompt` cap (recipe above is pre-trimmed), no `seed` param (re-rolls are non-reproducible — to re-roll just call again).
+**Kling trade-offs**: 2500-char `prompt` cap (recipe above is pre-trimmed), no `seed` param. Variation is payload-driven: if a completed render needs a new take, change the prompt, negative prompt, first-frame still, or spoken lines before re-rendering.
 
 ## Runtime expectations
 
@@ -172,8 +180,8 @@ Typical run time is 4-7 minutes:
 |---|---|---|
 | Chyron pops in mid-clip (~4–5s flash) | Chyron not baked into the still | Re-run Step 1; verify chyron is visible in `state.broadcast_still_url` before Step 2 |
 | Scorebug animates / morphs mid-clip | `prompt_adherence` not `strict`, or `negative_prompt` was trimmed | Restore strict adherence and the full negative_prompt |
-| Identity drift late in the clip (face changes after ~10s) | Reference image too small / Kling losing the face | Re-run Step 2; if drift persists, re-run Step 1 with a tighter face crop on the still (more facial pixels = stronger lock) |
-| Username mispronounced by announcers | Native audio is one take | Re-run Step 2 |
+| Identity drift late in the clip (face changes after ~10s) | Reference image too small / Kling losing the face | Change the Step 2 payload with a stronger identity-lock sentence; if drift persists, re-run Step 1 with a tighter face crop on the still (more facial pixels = stronger lock) |
+| Username mispronounced by announcers | Native audio is one take | Change the Step 2 payload with phonetic spelling or alternate announcer phrasing, then re-render |
 | Seedance `partner_validation_failed` 422 | Tried Seedance instead of Kling | Use Kling only — see engine-choice section above |
 | Kling `task_status: failed` with `task_status_msg: "Failure to pass the risk control system"` | Reference photo is a recognizable celebrity / public figure | Ask the user for a non-celebrity reference. Kling correctly blocks impersonation patterns (celebrity face + fake-event chyron) |
 | `generate_image` 400 `invalid_image_file` from `openai v1/images/edits` | Reference is an iPhone HEIC-derived JPEG with heavy EXIF and/or extreme aspect ratio (e.g. 2316×3088) | Re-encode the reference before upload: `convert in.jpg -strip -auto-orient -resize 1536x1536\> out.png`, then upload the cleaned PNG |

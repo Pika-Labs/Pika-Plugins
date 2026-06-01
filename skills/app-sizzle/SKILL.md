@@ -328,6 +328,14 @@ Seedance constraints: skip `fast=True` because it caps at 720p; skip `negative_p
 
 Kling constraint: use `quality_mode="pro"` for 1080p; Kling rejects `resolution=`.
 
+**Kling variation rule (AGNT-583):** Kling v3-omni has no `seed` parameter, and a completed call with the same prompt, references, and params can dedupe back to the same job/asset. Do not submit an identical Kling payload when the goal is a new take or quality correction; change the payload in a targeted way before re-rendering the Kling fallback.
+
+- Motion/arc issue: rewrite the affected beat, app-screen emphasis, or top-level summary prompt.
+- Reference-read issue: reorder or remove the weak reference, or change the `<<<image_N>>>` mention in the prompt.
+- Audio issue: change the spoken/audio direction or run the fallback with `sound=False` if generated audio is the unstable part.
+
+The queued/handoff recovery below is transport recovery for a stalled task. It is the one place where retrying the same Kling payload is intentional; do it only after the original task is cancelled or terminal.
+
 ### Kling queued/handoff recovery
 
 Kling fallback is async. If `generate_reference_video(provider="kling")` returns a `task_id`, follow the task until terminal.
@@ -488,6 +496,7 @@ Seedance is the default because it handles polished motion-graphics references a
 | Seedance timeout such as `seedance timed out after ...` | Provider queue saturation or tail latency exceeded the tool budget | Run the Kling fallback; do not keep retrying Seedance unless the user explicitly asks to wait |
 | Seedance `partner_validation_failed` on video | Screen content includes recording UI, celebrity faces, or similar moderation triggers | Switch to `provider="kling"` and convert tokens to `<<<image_N>>>` |
 | Faces in screenshots trigger content policy | Screenshot includes real people | Crop faces out before upload, or use Kling |
+| Completed Kling fallback needs a better take | Kling has no seed; identical completed payloads can dedupe to the same asset | Change the Kling prompt, references, beat wording, or audio setting before re-rendering |
 | 6+ reference images reduce quality | The model blends too many refs | Keep to 3-5 references, roughly one per 3 seconds |
 | Prompt tail ignored | Prompt exceeds about 200 words | Trim to the beat structure and the concrete UI details |
 | Text in output is garbled | Video model is asked to render new text | Keep text as existing reference-image content; overlay any new branding in post |

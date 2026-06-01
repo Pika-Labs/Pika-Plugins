@@ -136,6 +136,14 @@ Each act: one `generate_reference_video` call (`kling-v3-omni`, `duration=15`, `
 - MCU-A 5s: `<<<voice_1>>> '<HOST_A line>'`
 - MCU-B 5s: `<<<voice_2>>> '<HOST_B line>'`
 
+**Kling variation rule (AGNT-583):** Kling v3-omni has no `seed` parameter, and a completed call with the same prompt, references, voice IDs, and params can dedupe back to the same job/asset. Do not submit an identical Kling payload when the goal is a new take or quality correction; change the payload in a targeted way before re-rendering an act.
+
+- Dialogue issue: rewrite the affected host line, add phonetic spelling, or split the sentence differently across the same 5s slot.
+- Host/voice drift: add one concrete host-position or voice-token correction to that act's prompt.
+- Timing issue: adjust the shot wording or emotional beat for that act.
+
+If the original request failed before producing a usable output or task handle, retrying the same payload is transport recovery, not a variation re-roll.
+
 Emotional beats per act:
 - Act 1: A excited, B skeptical
 - Act 2: A gesturing/explaining, B questioning
