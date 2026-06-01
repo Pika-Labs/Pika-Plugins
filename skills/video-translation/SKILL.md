@@ -13,6 +13,7 @@ required-capabilities:
   - mcp__claude_ai_pika__extract_audio_from_video
   - mcp__claude_ai_pika__transcribe_audio
   - mcp__claude_ai_pika__clone_voice
+  - mcp__claude_ai_pika__dub_video
   - mcp__claude_ai_pika__generate_speech
   - mcp__claude_ai_pika__edit_audio_replace
   - mcp__claude_ai_pika__edit_audio_stitch
@@ -28,17 +29,16 @@ Translate and dub a video into another language using the original speaker's clo
 
 ## Fast path — one-shot dub (preferred when available)
 
-`mcp__claude_ai_pika__generate_speech` with `mode=dub` translates AND dubs a video in a single worker call. It preserves each speaker's voice server-side (no separate clone step), keeps the original background music / SFX bed under the translated voice, and returns a fully A/V-synced **video** — so it also avoids the duration-drift handling the manual chain needs. It collapses manual Steps 1–6 into one call:
+`mcp__claude_ai_pika__dub_video` translates AND dubs a video in a single worker call. It preserves each speaker's voice server-side (no separate clone step), keeps the original background music / SFX bed under the translated voice (set `drop_background_audio=true` to keep only the translated speech), and returns a fully A/V-synced **video** — so it also avoids the duration-drift handling the manual chain needs. It collapses manual Steps 1–6 into one call:
 
 ```
-generate_speech(mode="dub", provider="elevenlabs",
-                source_video_url=<video_url>, target_language=<iso>,
-                source_language="auto")
+dub_video(source_video_url=<video_url>, target_language=<iso>,
+          source_language="auto")
 ```
 
-`mode=dub` is worker-backed: if the response comes back as `{task_id, status}`, poll `task_status` until `completed`, then read the dubbed video from the result (`video_url` for a video source). For `--with-lipsync`, extract the audio from the dubbed video and run `mcp__claude_ai_pika__edit_lipsync` on it; then Step 7 captions.
+`mcp__claude_ai_pika__dub_video` is worker-backed: if the response comes back as `{task_id, status}`, poll `task_status` until `completed`, then read the dubbed video from the result (`video_url` for a video source; `audio_url` for an audio source). For `--with-lipsync`, extract the audio from the dubbed video and run `mcp__claude_ai_pika__edit_lipsync` on it; then Step 7 captions.
 
-**Try the fast path first.** Fall back to the manual chain below when: `mode=dub` returns an output-validation error (dub support may not be live on that deployment yet), the caller needs the intermediate transcript/translation for review, the caller wants a **translate-only** result with no background music (the manual chain drops the original track — see Behavior defaults), or finer per-step control is required. The manual chain is fully documented below as the fallback.
+**Try the fast path first.** Fall back to the manual chain below when: `mcp__claude_ai_pika__dub_video` returns an error (dub support may not be live on that deployment yet), the caller needs the intermediate transcript/translation for review, the caller wants a **translate-only** result with no background music (the fast path's `drop_background_audio=true` also drops it, but the manual chain gives finer control — see Behavior defaults), or finer per-step control is required. The manual chain is fully documented below as the fallback.
 
 ## Behavior defaults
 
@@ -132,7 +132,7 @@ Call `mcp__claude_ai_pika__generate_speech` with:
 - `text` — `translated_transcript.text` (the full translated body). **Cap: 10000 chars.** If the translated text exceeds 10k, split it on segment boundaries, synthesize each chunk separately, then join the chunk audios back-to-back in order with `mcp__claude_ai_pika__edit_audio_stitch` (it takes timed `clips` with `start_s`/`end_s` — lay the chunks end to end; this is the audio stitcher, not the video-concat tool). The stitched track feeds Step 6. A single oversized `text` hard-fails the call.
 - `voice_id` — `cloned_voice_id` (from Step 4 — MUST be an ElevenLabs voice ID since Step 4 cloned via ElevenLabs)
 - `provider` — `"elevenlabs"` (aligns with the clone provider; cross-provider voice IDs don't work)
-- `language` — target-language BCP-47 tag (e.g. `es`). (For `text_to_speech` mode the param is `language`; `target_language` is only for `mode=dub`.)
+- `language` — target-language BCP-47 tag (e.g. `es`). (In `mcp__claude_ai_pika__generate_speech` the param is `language`; the `target_language` param belongs to the `mcp__claude_ai_pika__dub_video` fast path.)
 - `expected_duration_s` — the source video duration (optional), so the response returns `drift_seconds` / `drift_pct`. If you don't have the duration handy, omit it — drift reporting is just skipped.
 
 **Duration drift is expected**: target languages like Spanish run ~20–35% longer than English, so the TTS will usually overrun the source. Read `drift_pct` from the response. If the audio is longer than the video, Step 6 handles it via `duration_policy` (freeze-frame pad). Only re-synthesize at a faster pace if drift is extreme (>40%) or the user needs a hard length match.
