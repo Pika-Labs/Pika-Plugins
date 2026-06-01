@@ -1,10 +1,26 @@
 # Brand Guidelines — Build Guide
 
-The brand guidelines PDF is the primary (and only) deliverable of this skill. 15 pages (16 if the imagery page splits into separate photo + illustration pages), rendered through Pika MCP `html_to_pdf`, delivered as a single PDF via CDN link.
+In full brand book mode, the brand guidelines PDF is the primary visual deliverable of this skill. It is 14-16 pages depending on brand type, rendered locally with Chrome headless or WeasyPrint, and delivered as a local PDF path. Quick brand mode has its own 3-page deliverable in `SKILL.md`; do not treat that quick PDF as a condensed or partial version of these full guidelines.
 
-This guide is the technical playbook: page layouts, image generation, font rules, MCP render contract, QA checklist. All non-negotiable.
+This guide is the technical playbook: page layouts, image generation, font rules, local render contract, QA checklist. All non-negotiable.
 
-## Page Structure (15 pages — all mandatory; 16 if hybrid imagery split)
+## Execution Model — Local First
+
+Keep deterministic production local:
+- **Local:** workspace setup, downloaded fonts, compressed image files, transparent-background cleanup, favicon tests, HTML/CSS builds, PDF rendering, preview screenshots, visual QA, logo asset assembly, and kit packaging.
+- **Cloud:** `gpt-image-2` image generation for symbols, photography, illustration, and textures; URL/source research when the brief requires it.
+
+Do not upload PDFs by default. Save PDFs and zips to `~/Desktop` on Mac, or the project working directory if Desktop is unavailable. Only create a hosted/CDN copy when the user explicitly asks.
+
+## Page Structure (14-16 pages depending on brand)
+
+**Page count is conditional:**
+- **14 pages** — non-digital brand (product, restaurant, fashion, service) with single-medium imagery. Icons page skipped.
+- **15 pages** — digital brand (app/web/SaaS) with single-medium imagery. Icons page included.
+- **15 pages** — non-digital brand with hybrid imagery. Imagery splits to 2 pages; Icons skipped.
+- **16 pages** — digital brand with hybrid imagery. Both Icons + split-Imagery present.
+
+Renumber pages contiguously based on what's included. Do not leave gaps.
 
 1. **Cover** — Full-bleed brand-specific layout. Brand name + tagline + hero mood image.
 2. **Strategy & Positioning** — Direction, positioning statement, audience segments (primary segment, secondary segment(s), and anchor persona), 3-4 reference brands with "borrow this" notes.
@@ -13,7 +29,7 @@ This guide is the technical playbook: page layouts, image generation, font rules
 5. **Logo Don'ts** — Misuse rendered in CSS with ✗ labels.
 6. **Color** — Swatches with hex+RGB+CMYK, full-bleed color columns (not floating swatches).
 7. **Typography** — Full hierarchy with px sizes, display/body specimens, usage rules.
-8. **Icons** — 8-12 essential UI icons in brand's geometric style + stroke/corner/grid rules + library recommendation. See "Icons Page — Structure & Rules" section.
+8. **Icons** *(digital brands only)* — 8-12 essential UI icons in brand's geometric style + stroke/corner/grid rules + library recommendation. Skip this page entirely for non-digital brands and renumber subsequent pages.
 9. **Voice & Tone** — Adjectives + actual brand copy examples by context.
 10. **Imagery Rules** — adapts to the brand's primary medium (see "Imagery Rules Page — Adapts per Brand" section below):
     - Photography-led brand → Photography Rules (subject / light / cast / treatment / forbidden) + 1 example photo
@@ -27,17 +43,16 @@ This guide is the technical playbook: page layouts, image generation, font rules
 
 ---
 
-## Step 0 — Render Inputs
+## Step 0 — Workspace Setup
 
-Server-side Chromium cannot read local `file://` paths. Every asset referenced by the HTML must be one of:
+Images and fonts live in a persistent workspace path. `/tmp` is wiped between sessions on many systems, so don't put assets there.
 
-- HTTPS URL returned by Pika tools (`generate_image`, `upload_asset`, `html_to_png`, etc.)
-- Public HTTPS raw asset URL
-- Inline `data:` URI (best for small SVGs and font subsets)
+```bash
+WS="${BUILD_A_BRAND_WS:-$HOME/build-a-brand-workspace}"
+mkdir -p "$WS/fonts" "$WS/images"
+```
 
-For local source files, call `upload_asset` first and use the returned `public_url` in HTML. `upload_asset` does not accept font files or PDFs, so fonts should use public HTTPS raw URLs or inline `data:font/...` sources.
-
-Build the final guidelines as one HTML string or as `body_pages` fragments plus `shared_head`. You may keep local working copies for debugging and kit export, but local paths must not appear in render HTML.
+Use `$WS/images/lifestyle1.jpg` etc., and `file://$WS/images/lifestyle1.jpg` in HTML after resolving `$WS` to an absolute path. Build the final guidelines as a local HTML file or one generated HTML string; local paths are expected because rendering is local.
 
 ---
 
@@ -63,7 +78,18 @@ Before generating or placing those images, write a short **crop plan** and **pre
   physical or digital context. CSS color blocks, flat vector mockups, and
   captioned boxes are not substitutes for touchpoint photography.
 
-Generated image URLs can be used directly in MCP-rendered HTML. Keep page images reasonably sized: request the smallest image that survives the target crop, avoid duplicating the same source across pages, and use CSS `object-fit` / `object-position` explicitly. If a user provides a huge local image, upload it only after resizing or replacing it with a Pika-generated/hosted equivalent; extremely large assets slow the server renderer.
+Download generated image outputs into `$WS/images`, then compress before using in PDFs:
+
+```python
+from PIL import Image
+img = Image.open(path)
+img.thumbnail((1200, 1200), Image.LANCZOS)
+img.save(path, 'JPEG', quality=68, optimize=True)
+```
+
+Target under 150KB per page image where practical. Keep page images reasonably sized, avoid duplicating the same source across pages, and use CSS `object-fit` / `object-position` explicitly.
+
+This is load-bearing for reliability: full-size gpt-image-2 PNGs are often 1.5-2.5MB each. Embedding them directly can inflate a guidelines PDF into tens of MB and trigger `ASSET_FETCH_TIMEOUT` while local/remote renderers fetch page images. For photographic page imagery, down-raster/downsample to the slot size and write JPEG files targeting about 85-180KB. Keep PNG only where transparency is required for logo/symbol assets.
 
 **Photography prompt template (lifestyle):**
 ```
@@ -82,8 +108,6 @@ Generated image URLs can be used directly in MCP-rendered HTML. Keep page images
 
 **Diversity rule:** All lifestyle images with people must show a mixed cast across the 4-image grid: Black, Asian, Latina, South Asian, Middle Eastern, or mixed-race subjects. Vary body types. Never default to white/light-skinned subjects.
 
-**Personal / creator brand — use the user's real likeness (mandatory).** When the brand IS a specific person (creator, founder, personal media kit) and the user supplied their own photos, every slot where the subject represents that person — cover hero, masthead, portrait, "about" shots — must use the user's actual uploaded photos, not a generated stand-in. NEVER generate a different AI person and pass it off as the user; a "random AI girl who isn't me" on the cover is an automatic FAIL. The diversity rule above applies only to anonymous lifestyle/contextual imagery, not to the named subject. If the user did not provide a usable photo for a slot that needs their face, leave it as a clearly-labeled placeholder and ask for the photo — do not substitute a generated person.
-
 ---
 
 ## Image Generation — Hard Rules (Read Before Every Prompt)
@@ -92,7 +116,7 @@ These are the failure modes that have burned us before. Apply EVERY prompt.
 
 ### 0. Default provider: gpt-image-2
 
-**Every `generate_image` call must pass `provider="gpt-image-2"` unless monica explicitly names a different model.** This is a global preference, not a per-skill rule. Don't default to `nano-banana-pro` (Gemini) — it has worse instruction-following for our brand work and bakes in text more aggressively. Use gpt-image-2 with `quality="medium"` for the default balance of speed and fidelity.
+**Every `generate_image` call must pass `provider="gpt-image-2"` unless the user explicitly names a different model.** This is a global preference, not a per-skill rule. Don't default to `nano-banana-pro` (Gemini) — it has worse instruction-following for our brand work and bakes in text more aggressively. Use gpt-image-2 with `quality="medium"` for the default balance of speed and fidelity.
 
 ### 1. Never let text bake into the image
 
@@ -116,7 +140,18 @@ Before writing the prompt, decide WHERE this photo will appear in the layout and
 
 Specify the subject's position in the prompt explicitly: "subject centered in frame, face occupying middle 50% of the image vertically."
 
-### 3. Verify by screenshot BEFORE delivering
+### 3. Logos: generate a high-res symbol via gpt-image-2, ship as transparent PNG (no tracing)
+
+Hand-coded SVG symbols often look amateur. But also: don't trace a generated symbol to SVG. Keep the symbol as a high-resolution transparent PNG. Only the wordmark gets vectorized in the brand kit.
+
+1. Generate the symbol via `generate_image` with `provider="gpt-image-2"`, `quality="high"` when final, 1:1 aspect ratio, 1024x1024 minimum. The symbol can be flat, dimensional, painted, photographic, gradient-rich, chrome, holographic, or hand-drawn when that style fits the brand.
+2. Add the no-text guardrail: "absolutely no text, no letters, no typography, no words, no characters anywhere in the image."
+3. The generated symbol must be conceptually linked to the brand, unique, recognizable at 16x16, no more than 3 dominant colors, high res for the shipped version, text-free, and true transparent background. If it fails any of these, regenerate.
+4. Save as transparent PNG, verified with PIL. If gpt-image-2 paints near-white pixels in the "transparent" area, key them out or regenerate.
+5. The wordmark is always real text in a Google Font or commercial font, never baked into a generated image. Convert the wordmark to text-as-paths SVG only when packaging the brand kit.
+6. Lockup composition is measured and fixed: symbol size, wordmark size, gap, and alignment do not drift across color variants.
+
+### 4. Verify by screenshot BEFORE delivering
 
 After rendering ANY PDF or board, screenshot every page and read every screenshot. The QA checklist at the bottom of this doc is mandatory. Never deliver based on assumption that the layout worked. Specifically check:
 
@@ -174,23 +209,58 @@ If the brand's display font could appear on any random SaaS site without anyone 
 - Bold condensed headline → lightweight sans (DM Sans, Lato Light, Inter)
 - Geometric sans headline → same family lighter weight, or Inter
 
-### Font loading in MCP renders
+### Download fonts to the local workspace
 
-Use `@font-face` with server-reachable sources:
+Store font files under the same local workspace as the HTML and images, then reference them with absolute `file://` URLs. Prefer direct WOFF2 font-file downloads from `fonts.gstatic.com` or other direct font-file sources.
+
+```bash
+WS="${BUILD_A_BRAND_WS:-$HOME/build-a-brand-workspace}"
+mkdir -p "$WS/fonts"
+curl -sL "https://fonts.gstatic.com/s/playfairdisplay/v40/nuFiD-vYSZviVYUb_rj3ij__anPXDTzYgA.woff2" -o "$WS/fonts/PlayfairDisplay.woff2"
+curl -sL "https://fonts.gstatic.com/s/inter/v20/UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa1ZL7.woff2" -o "$WS/fonts/Inter.woff2"
+```
+
+Use `@font-face` with local file sources:
 
 ```css
 @font-face {
-  font-family: 'SyneBrand';
-  src: url('https://github.com/google/fonts/raw/main/ofl/syne/Syne%5Bwght%5D.ttf') format('truetype');
-  font-weight: 300 900;
+  font-family: 'BrandDisplay';
+  src: url('file:///Users/name/build-a-brand-workspace/fonts/PlayfairDisplay.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
 }
 @font-face {
-  font-family: 'KarlaBrand';
-  src: url('data:font/ttf;base64,...') format('truetype');
+  font-family: 'BrandBody';
+  src: url('file:///Users/name/build-a-brand-workspace/fonts/Inter.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
 }
 ```
 
-Avoid `@import` and `<link>` because the renderer prefetches explicit asset URLs more reliably than CSS import chains. Give each brand face a unique family name. Render one page with `html_to_png` before the full PDF; if the type falls back to Times/Arial, fix the font source.
+**Font loading rules:**
+
+- Use absolute `file://` URLs in rendered HTML so local Chrome and WeasyPrint resolve the same files.
+- Keep one local `fonts/` folder per project and copy every chosen font into it before rendering.
+- Do not use `@import` for render-critical type; explicit `@font-face` rules are easier to QA and reproduce.
+- Do not put a Google Fonts CSS URL such as `https://fonts.googleapis.com/css2?...` inside `@font-face src`; that URL returns CSS, not a font file.
+
+Render one page locally before the full PDF; if the type falls back to Times/Arial, fix the font source before continuing.
+
+### Font fallback for non-Latin brand names
+
+When rendering CSS for a brand board, quick PDF, or full guidelines deck, every `font-family` chain must include CJK and broad-script fallbacks. Chromium applies per-glyph fallback: Latin characters use the first available brand font, while CJK, Arabic, Cyrillic, and other missing glyphs resolve to the matching Noto family instead of tofu boxes.
+
+```css
+/* Body / sans-serif chains */
+font-family: 'BrandBody', 'Inter', 'Noto Sans SC', 'Noto Sans TC', 'Noto Sans JP', 'Noto Sans KR', 'Noto Sans Arabic', system-ui, sans-serif;
+
+/* Display / serif chains */
+font-family: 'BrandDisplay', 'Bodoni Moda', 'Fraunces', 'Noto Serif SC', 'Noto Serif TC', 'Noto Serif JP', 'Noto Serif KR', 'Noto Sans Arabic', serif;
+```
+
+Load the Noto fallback faces with the same local strategy as brand fonts: download the relevant Noto files into `$WS/fonts`, then reference them through absolute `file://` URLs in `@font-face`. This fallback belongs in shared CSS for every page, not only the page containing the brand name.
 
 ---
 
@@ -204,9 +274,9 @@ Write fresh HTML for the chosen identity. Never copy old deck HTML — always wr
 .page { width: 1200px; height: 850px; overflow: hidden; page-break-after: always; display: block; }
 ```
 
-### MCP Chromium Render Rules — Read Before Writing a Single Div
+### Local Render Rules — Read Before Writing a Single Div
 
-The renderer is server-side Chromium. Flexbox, grid, absolute positioning, and CSS transforms are supported. Keep fixed-format pages explicit so QA is deterministic:
+Local Chrome headless and WeasyPrint support flexbox, grid, absolute positioning, and CSS transforms well enough for these fixed-format pages. Keep page geometry explicit so QA is deterministic:
 
 #### Rule 1: Every page is a fixed canvas
 - Use `@page { size: 1200px 850px; margin: 0; }`.
@@ -214,11 +284,11 @@ The renderer is server-side Chromium. Flexbox, grid, absolute positioning, and C
 - Use explicit pixel dimensions for key regions. Flex/grid are fine, but don't let page height be content-driven.
 - Avoid viewport units (`vh`, `vw`) inside pages; they couple layout to the browser window rather than the page box.
 
-#### Rule 2: Use server-reachable assets only
-- No `file://` URLs.
-- Local images must be uploaded via `upload_asset` first.
-- Small SVGs and font subsets can be inlined as `data:` URIs.
-- External HTTPS assets are server-fetched and inlined by the renderer. If an asset is private or blocks server requests, upload/replace it.
+#### Rule 2: Use local assets deliberately
+- Use absolute `file://` URLs for local fonts, generated images, user-provided source images, and assembled logo assets.
+- Download generated image outputs into `$WS/images` before placing them in HTML.
+- Small SVGs and font subsets can be inlined as `data:` URIs when it improves portability.
+- Avoid hotlinking external HTTPS assets in final render HTML; download, compress, and reference the local copy.
 
 #### Rule 3: Use layout systems intentionally
 - CSS grid is preferred for swatches, icon sets, mockup grids, type specimens, and contact sheets.
@@ -238,9 +308,7 @@ The renderer is server-side Chromium. Flexbox, grid, absolute positioning, and C
 - Avoid percentage heights unless the parent has an explicit pixel height
 - Never `opacity:` on any `<img>` — images always at full opacity
 - Never body text/labels/rules on images — put captions in an adjacent column or block. Masthead brand boards may overlay wordmark/tagline/issue metadata on a full-bleed photo only when the type sits on intentional negative space or a contrast scrim and passes contrast QA.
-- Contrast QA for masthead overlays means the masthead text remains readable in the full-page PNG preview and the `mcp__pika__analyze_media` board QA result does not flag low contrast, muddy overlay, or unreadable type. If uncertain, run a targeted follow-up prompt: "CONTRAST: PASS or FAIL. Is the masthead wordmark/tagline/issue metadata readable against the photo at full-page size without hiding the photo subject?"
-- **Face-safe placement (mandatory, not optional).** No overlay element — wordmark, tagline, issue/edition tag, logo symbol, seal, stat numbers, swatch strip, or scrim — may sit over the subject's face. Decide the face's location in the cropped photo first, then place every overlay in the negative space clear of it (sky, wall, table, blurred background, an empty margin band). If the photo's subject is centered and there is no clear negative space for the type, regenerate the photo with the subject pushed to one third so the opposite third is empty, or switch to a layout where type sits in a solid side panel instead of over the photo. A logo lockup landing on a chin/cheek/forehead is an automatic FAIL even if contrast is fine.
-- **Overlay alignment (mandatory).** Masthead overlay elements align to one shared grid, not eyeballed positions. Anchor the wordmark, tagline, and metadata to a common left (or center) edge with consistent margins; set a single edge inset (e.g. 64px) used by all overlaid elements. A bottom stat/swatch strip uses an evenly-distributed row (`display:flex; justify-content:space-between` or a `grid-template-columns:repeat(N,1fr)`) with each cell's label and number sharing one baseline — never numbers floating at different heights or uneven gaps. The logo symbol sits on the same margin line as the wordmark, not at an arbitrary offset.
+- Contrast QA for masthead overlays means the masthead text remains readable in the full-page PNG preview. If uncertain, render a local crop or full-page screenshot and judge the masthead wordmark/tagline/issue metadata at actual preview size before continuing.
 - Never duplicate an image src across the deck — each file appears at most once
 - Use `object-position` deliberately and verify the crop in PNG previews
 
@@ -363,117 +431,65 @@ This touchpoints grid is image-only. If a label is required, use a separate capt
 
 ---
 
-## Step 4 — Render PDF
+## Step 4 — Render PDF Locally
 
-Render the **entire deck in ONE `html_to_pdf` call**. Never render page-by-page and stitch the results together. Fifteen sequential calls blow the per-agent render quota, risk a mid-deck worker timeout that strands a `task_id` (the "Rendering… never finishes" failure), and force a local merge step that Cowork/Desktop clients have no tool to run. One call for the whole deck is mandatory.
+**Preferred: Chrome headless.** Chrome handles modern CSS, flexbox, grid, and `@font-face file://` font declarations reliably when run locally. Use it when available:
 
-**Token anti-pattern — do NOT write each page's HTML to a file and `Read` it back before sending.** Pass the HTML you generate straight into the `html_to_pdf` call (as `body_pages` fragments or the single `html` string). Generated HTML already lives in context once as the tool-call argument; writing it to disk and reading it back makes the same large HTML count against context twice for no benefit. Build the fragments inline and call render once.
-
-**Preferred for the multi-page deck — `body_pages`:** pass each page as a body fragment in `body_pages` with a single `shared_head` (fonts, CSS variables, shared styles). The server renders the fragments and merges them into one PDF. Pages render in parallel, so do not rely on CSS counters or script state crossing page boundaries — bake any page numbers into each fragment.
-
-```
-html_to_pdf(
-  body_pages: [
-    { html: page1_body, page_number: 1 },
-    { html: page2_body, page_number: 2 },
-    ...                                    // all 15-16 pages in this one call
-  ],
-  shared_head: shared_head_html,           // <link>/<style>/@font-face shared by every page
-  format: "pdf",
-  mode: "async",
-  wait_for: "domcontentloaded",
-  pdf_options: {
-    paper_size: { width: 1200, height: 850, unit: "px" },
-    margins: { top: 0, right: 0, bottom: 0, left: 0 },
-    print_background: true
-  }
-)
+```bash
+CHROME="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+WS="${BUILD_A_BRAND_WS:-$HOME/build-a-brand-workspace}"
+"$CHROME" --headless --disable-gpu --no-sandbox --hide-scrollbars \
+  --virtual-time-budget=8000 --no-pdf-header-footer \
+  --print-to-pdf="$WS/guidelines.pdf" \
+  "file://$WS/guidelines.html"
 ```
 
-**Single-HTML mode** — acceptable only when one self-contained HTML document with `@page` breaks is genuinely cleaner than fragments. Still ONE call for the whole deck:
+**Fallback: WeasyPrint.** Use this only when Chrome is unavailable or the HTML was written to the table-safe constraints:
 
-```
-html_to_pdf(
-  html: guidelines_html,
-  format: "pdf",
-  mode: "async",
-  wait_for: "domcontentloaded",
-  pdf_options: {
-    paper_size: { width: 1200, height: 850, unit: "px" },
-    margins: { top: 0, right: 0, bottom: 0, left: 0 },
-    print_background: true
-  }
-)
+```python
+import weasyprint, warnings, os
+warnings.filterwarnings('ignore')
+WS = os.environ.get('BUILD_A_BRAND_WS') or os.path.expanduser('~/build-a-brand-workspace')
+pdf = weasyprint.HTML(filename=f'{WS}/guidelines.html', base_url=f'file://{WS}/').write_pdf()
+open(f'{WS}/guidelines.pdf', 'wb').write(pdf)
 ```
 
-Example completed PDF response:
-
-```
-{"status":"completed","file_url":"https://cdn.pika.art/v2/files/agent/b4ab5d48-443b-4ee2-ab9d-c1690d19ff72/5ce95210-47f9-4f8a-98bb-12d986bfa71e.pdf","format":"pdf","page_count":1,"byte_size":6279}
-```
+Pick one engine and stick with it for the whole 14-16-page build.
 
 ---
 
 ## Step 5 — Verify Every Page (Mandatory)
 
-Before delivery, render one full-page preview per page and verify against the QA checklist. **Render QA previews as JPG** (`format: "jpg"`, `jpeg_quality: 90`), not PNG — the preview is read-only and lossy compression is fine for spotting layout/contrast defects, while JPG is much smaller to upload and to feed `analyze_media`, so QA is faster. (Lossless PNG is only needed for logo/symbol asset *export* in the brand kit, not for QA previews.) Call `html_to_png(format:"jpg", ...)` per page/body fragment.
+Before delivery, render one full-page preview per page and verify against the QA checklist. JPG previews are fine for layout/contrast QA; PNG is required only for logo/symbol asset export.
 
-### Full-Deck Visual QA
+For PDF-to-preview QA, use PyMuPDF:
 
-Run **full-deck visual QA** on every final guidelines page, not only the 3-page brand-board preview. Use `mcp__pika__analyze_media` page-by-page / per-page on the final JPG previews before delivering the PDF.
-
-Use this exact prompt (the contrast clause is load-bearing — without it the model rates low-contrast text "legible" and PASSes a defect the old per-element zoom pass used to catch):
-
-```
-Answer with PASS or FAIL on the first line, then explain. FAIL the page if ANY of these is present:
-(1) Low-contrast / hard-to-read text — text whose value is too close to its background: dark text on a dark or saturated field, light text on a light field, or a thin colored label/caption set against a similar-value background. Apply the dark-background contrast thresholds in Rule 6.
-(2) Clipped or cut-off text.
-(3) Text/image or text/graphic collisions — text overlapping icons, swatches, seals, photos, phone mockups, or decorative rules.
-(4) Missing image slots or empty placeholders (flat color blocks that are not explicitly palette specimens).
-(5) Bad crops or rounded-frame crop damage (subject cut off by object-fit/object-position or a dome-shaped radius).
-(6) Broken image loads.
-(7) System-font fallback (Times/Arial) instead of the brand font.
-(8) Weak hierarchy or a muddy one-note palette.
-List each issue with the page element it affects.
-```
-
-Fix every captured FAIL before delivery. Parse the verdict from the first line only (`/^\s*[`*]{0,2}(PASS|FAIL)\b/`); if the first line is PASS but the explanation describes a blocking contrast/collision/clipping/unreadable-text problem, treat it as FAIL. If the tool is unavailable or returns an ambiguous first line, halt with a manual-review warning instead of shipping silently.
-
-```
-html_to_png(
-  html: page_html,
-  format: "jpg",          // QA preview only — lossy is fine, smaller + faster than png
-  mode: "sync",
-  wait_for: "domcontentloaded",
-  raster_options: {
-    viewport_px: { width: 1200, height: 850 },
-    device_scale: 1,
-    jpeg_quality: 90
-  }
-)
-```
-
-Example completed JPG response:
-
-```
-{"status":"completed","file_url":"https://cdn.pika.art/v2/files/agent/4d944981-9897-40b6-9e37-533c2a90b541/5a863672-0835-4901-87a8-df8933d69cd4.jpg","format":"jpg","page_count":1,"byte_size":3806}
+```python
+import fitz, os
+WS = os.environ.get('BUILD_A_BRAND_WS') or os.path.expanduser('~/build-a-brand-workspace')
+doc = fitz.open(f'{WS}/guidelines.pdf')
+for i in range(len(doc)):
+    doc[i].get_pixmap(matrix=fitz.Matrix(1.8, 1.8)).save(f'{WS}/qa_p{i+1}.png')
+print(f'{len(doc)} pages — now read each one')
 ```
 
 ### Pre-Send QA Checklist
 
 Read every screenshot. Verify every item. If any check fails, fix it. No exceptions. Never ask the user to spot problems the agent should have caught.
 
-**Cost rule — QA must scale with page count, not element count.** Read ONE full-page PNG per page (~15 reads for a 15-page deck). Do NOT crop-and-read every small element on every page by default — that balloons to 100+ image reads (~180k tokens) and can exhaust a whole Claude Pro session on QA alone. The full-page read plus `analyze_media` is the default; targeted zoom is the exception, not the rule.
+**Cost rule — QA must scale with page count, not element count.** Read ONE full-page preview per page (14-16 reads). Do NOT crop-and-read every small element on every page by default. The full-page read is the default; targeted zoom is the exception, not the rule.
+
+**Full-deck visual QA:** every final guidelines page must receive a local full-page preview read before delivery. Record PASS or FAIL per page, fix every captured fail, and do not deliver the PDF until all included pages are clean or the user explicitly accepts a documented `degraded` quality warning.
 
 **Per-page QA (mandatory — one full-page read per page):**
 1. **Full-page pass** — read the full-page PNG for each page and verify it against the checklist below (blank columns, missing content, wrong colors, font fallback, text/image collisions, clipped text, weak hierarchy).
-2. **Delegate detail-level QA to `analyze_media`** — run `mcp__pika__analyze_media` on that same full-page PNG with the PASS/FAIL prompt from Full-Deck Visual QA above. Let the tool surface small-element defects (misalignment, low contrast, overflow, broken crops) server-side instead of reading extra crops into context. Fix every captured FAIL.
+2. **Target detail-level QA only where needed** — use local crops for flagged defects or the few highest-risk elements. Fix every captured FAIL.
 
 **Targeted zoom — only when triggered.** Crop and read an 800×800px region ONLY for:
-- a specific element the full-page read or `analyze_media` flagged as suspect, OR
+- a specific element the full-page read flagged as suspect, OR
 - the few genuinely highest-risk spots, when the page contains them: a single-character pill/badge marker, a favicon-size (≤32px) logo rendering, or a business-card layout.
 
-Do not zoom every element on every page. Zoom the flagged ones. A clean full-page read + `analyze_media` PASS with no blocking explanation is sufficient to clear a page.
+Do not zoom every element on every page. Zoom the flagged ones. A clean full-page read with no blocking defects is sufficient to clear a page.
 
 | Check | What to look for |
 |---|---|
@@ -484,21 +500,17 @@ Do not zoom every element on every page. Zoom the flagged ones. A clean full-pag
 | No text collisions | Text does not overlap or sit underneath icons, swatches, seals, decorative lines, photos, phone mockups, or other graphic elements |
 | No clipped or occluded text | Text is not cut off by its own container, page edge, rounded shape, sibling graphic, or z-index layer |
 | Board looks good, not just valid | Full-page read has one focal point, clear hierarchy, enough negative space, and no muddy one-note palette |
-| analyze_media PASS | For brand board PNG previews and every final guidelines page, run `mcp__pika__analyze_media` per `SKILL.md` Board quality gate and the full-deck visual QA above. Every FAIL or ambiguous first line must be fixed before delivery. If the tool is unavailable, halt with a manual-review warning |
 | Load-bearing copy is readable | Body copy is readable in the full-page PNG; do not hide key content in 10px decorative microtype |
 | **No baked-in text in generated images** | **Open each generated image and look for ANY text — magazine titles, watermarks, brand names, captions, headers. If you see any, regenerate with stronger no-text guardrails.** |
 | **Subjects survive their crop** | **For every generated image used in a layout: is the intended subject visible after the CSS crop? No forehead-only portraits, no hand-only kitchen scenes. If the subject got cut off by `object-fit:cover`, `object-position`, or a rounded/arched frame, fix the layout or regenerate the image.** |
 | **Rounded shapes don't eat content** | **Any `border-radius` ≥ ½ the element width creates a dome that crops content underneath. If the photo's subject sits in the top portion of the source, a dome top will hide it. Soften the radius or reposition the subject.** |
-| **No overlay covers a face** | **On every masthead/cover/photo-with-overlay page: is the subject's face fully clear of the wordmark, tagline, logo symbol, seal, stat numbers, swatch strip, and scrim? A logo or word landing on the chin/cheek/forehead is a FAIL — move overlays into the negative space or regenerate the photo with the subject off-center.** |
-| **Overlay elements aligned** | **Masthead wordmark, tagline, metadata, logo, and any stat/swatch strip share one margin grid and consistent baselines — no numbers at different heights, no uneven gaps, no element floating off the shared edge.** |
-| **Named subject is the real user** | **For a personal/creator brand: every face that represents the user is the user's actual uploaded photo, not a generated stand-in. A different AI person on the cover or portrait pages is a FAIL.** |
 | No duplicate images | Each image file used at most once across the deck |
 | No opacity on images | No `opacity:` on any `<img>` — images always full brightness |
 | Logo shapes centered | Content visually centered in hang tags, circles, labels — not top-aligned |
 | Text contrast | All text on dark (#2E2E2E) backgrounds at sufficient opacity |
 | Decorative text legible | Ghost / watermark text at ≥ .45 opacity — if lower, remove entirely |
 | Images load | No broken images — every img has explicit px width+height |
-| Page count = 15 (or 16 hybrid) | Right number of pages, no blank extras |
+| Page count = 14-16, conditionally correct | Non-digital/single-medium = 14; digital/single-medium = 15; non-digital/hybrid = 15; digital/hybrid = 16; no blank extras |
 | Touchpoints are real photos | Page 12 shows generated photographs, not CSS vector boxes |
 | Diverse cast | Lifestyle grid (page 11) shows racial diversity across subjects |
 | Icons consistent | Page 8 icons all use the same stroke weight + corner style + line caps |
@@ -511,17 +523,16 @@ Only deliver after all checks pass.
 
 ## Step 6 — Deliver
 
-Return the `file_url` from `html_to_pdf`. Also save a local copy when practical so the brand-kit zip can include `brand-guidelines.pdf`; the CDN URL remains the canonical deliverable.
+Save the final PDF to `~/Desktop/[brand-slug]-brand-guidelines.pdf` and send the local path in a single message. Do not upload or host the PDF unless the user explicitly asks for a hosted copy.
 
 Reply shape:
 
 ```
 **[BRAND NAME] — brand guidelines**
-PDF: https://cdn.pika.art/...
-Local copy: ~/Desktop/[brand-slug]-brand-guidelines.pdf (15 pages · 1200×850)
+Saved to: ~/Desktop/[brand-slug]-brand-guidelines.pdf ([actual page count] pages · 1200×850)
 ```
 
-If a local copy is not practical, the CDN URL is still the canonical deliverable. Do not use `upload_asset` for PDFs; `html_to_pdf` already returns the PDF URL.
+If the user is not on a Mac, save to the project working directory and emit that path instead. Never attach the PDF as a file in the chat; link by path.
 
 Done.
 
@@ -803,7 +814,7 @@ Each brand board must answer: *what would this brand's actual hero page look lik
 
 ### Examples of differentiated layouts
 
-**Magazine-cover brand** — Full-bleed photo as background covering the entire page. Massive wordmark overlaid in display type. Tagline overlaid in small text. Issue/edition tag in corner ("Vol. 01 / Cover Story"). Bottom-margin strip showing color swatches and typography credit, like a magazine masthead. Whole page should look like a Bloomberg Businessweek or NYT Magazine cover. Compose so the face sits in one third and the wordmark/logo/stat strip live in the empty opposite region — type and logo must never land on the face, and all overlaid elements align to one shared margin and baseline (see Rule 5: face-safe placement + overlay alignment).
+**Magazine-cover brand** — Full-bleed photo as background covering the entire page. Massive wordmark overlaid in display type. Tagline overlaid in small text. Issue/edition tag in corner ("Vol. 01 / Cover Story"). Bottom-margin strip showing color swatches and typography credit, like a magazine masthead. Whole page should look like a Bloomberg Businessweek or NYT Magazine cover.
 
 **Soft consumer-brand homepage hero** — Asymmetric split with a curved or rounded shape break between colored side and cream side. Big rounded type on one half, photo with rounded corners on the other. Color swatches presented as soft circles, not squares. Lots of breathing room. Should feel like the hero of bumble.com or pika.me.
 
@@ -816,7 +827,7 @@ Each brand board must answer: *what would this brand's actual hero page look lik
 Every brand board page must include ALL of the following. The layout differentiation rule above does NOT mean cutting content — visually distinct layouts must still fit ALL the text. If a layout doesn't have room for the content, redesign the layout, don't drop content.
 
 - Brand wordmark (set in the brand's display font)
-- **A standalone logo symbol/mark — preferably a generated PNG via `mcp__pika__generate_image` with `provider="gpt-image-2"` when SVG would look simplistic, generic, or illegible. SVG is allowed only if it is intentionally simple and passes small-size QA. NOT just typography.** The symbol must work as a favicon, app icon, social avatar, and exported asset on transparent background at 1024×1024+.
+- **A standalone logo symbol/mark — generated as a transparent PNG via `mcp__claude_ai_pika__generate_image` with `provider="gpt-image-2"` when new. Do not trace the generated symbol to SVG and do not claim it is vector. NOT just typography.** The symbol must work as a favicon, app icon, social avatar, and exported asset on transparent background at 1024×1024+.
 - **A distinctive wordmark and any seal/badge treatment — custom letter spacing, ligature/cut/terminal detail, stamp geometry, or other ownable touch. Not just a Google Font in a circle, not a generic monogram seal, and not decorative filler.**
 - Tagline
 - Voice sample (one sentence in brand voice, quoted, with a "VOICE" label)

@@ -16,7 +16,37 @@ A two-call pika pipeline: spectator-POV Jumbotron still (`gpt-image-2`) → 15-s
 
 ## Prerequisites
 
-pika MCP available in the host. Tool name prefix varies by mount point — use whatever the host exposes. Tools needed: asset upload, image generation, reference-video generation, and async status follow-up when a generation does not complete inline.
+pika MCP available in the host. Tool name prefix varies by mount point — use whatever the host exposes. Tools needed: identity balance, asset upload, image generation, reference-video generation, and async status follow-up when a generation does not complete inline.
+
+## Cost transparency gate
+
+Before any paid MCP call, call `mcp__claude_ai_pika__identity_balance({verbose: true})` once. Surface the current balance, recent burn rate, and remaining runway, then gate the run with this exact message:
+
+> Estimated cost: about 1,500-3,500 credits (~$15-$35) for the GPT-image-2 Jumbotron still, one or two Kling v3-omni pro 15s renders (includes one Step 2 re-render), and post-flight analyze_media QA. This exceeds $5, so Reply `proceed` to continue or `cancel` to stop.
+
+Do not call any paid MCP tool until the user replies `proceed`. If the user replies `cancel`, stop without generating. This is the only yes/no gate; after `proceed`, the pipeline runs end-to-end.
+
+## Pre-generation wall-clock guard
+
+Start a timer at skill start once both subject reference URLs are resolved and the cost gate has passed. The first paid generation call is Step 1 `generate_image`, and it must be invoked within 5 minutes of skill start. If you have not invoked `generate_image` within 5 minutes of skill start, stop before any paid generation call and report `failed_pre_generation_timeout` with what you have so far: subject URL status, upload status, cost-gate status, Step 1 prompt readiness, and the exact blocker. Do not keep refining the Jumbotron prompt, camera language, or style-lock wording.
+
+Print a single-line progress checkpoint after each prep stage and right before the paid generation call:
+- `Stage 1/3 done — subject references resolved and uploaded.`
+- `Stage 2/3 done — cost gate passed, locking the Jumbotron still prompt.`
+- `Stage 3/3 done — still prompt locked, calling GPT-image-2 now.`
+
+Prompt and still-check wording iteration is maximum 2 passes before Step 1. After the max 2 passes, ship what you have to `generate_image`; do not continue polishing scoreboard details, arena atmosphere, or kiss-cam graphic language.
+
+## Long-running task_status polling
+
+When any long-running generation call returns a `task_id` with or without an initial status, including `{task_id}`, `{task_id, status: "queued"}`, or an initial `queued`, `running`, or `processing` status, record the task id and start time immediately.
+
+- Call `mcp__claude_ai_pika__task_status({task_id})` in a tight loop until terminal (`completed | failed | cancelled`). No manual sleep and no Bash polling; the worker holds each status call open.
+- Emit ONE visible progress line every 60s while status is `queued`, `running`, or `processing`: `Seedance i2v queued for {N}m {S}s... still processing`. Replace the provider/stage label when polling GPT-image-2 or Kling tasks.
+- On `completed`, unwrap the returned result URL and continue.
+- On `failed` or `cancelled`, surface failure to the user with `task_id`, status, and the last status message.
+- After 15 min total from the original submit, call `mcp__claude_ai_pika__task_cancel({task_id})` if the task is still non-terminal, then surface failure to the user. If cancel reports the task is already terminal, call status once more and report that terminal result.
+- Do not submit a duplicate request while the original task is still `queued`, `running`, or `processing`.
 
 ## Stage 0 — Intake
 
@@ -32,17 +62,19 @@ If one photo is already present, ask only for the missing photo. Running before 
 - **Subject A reference photo** *(required)* — local path or https URL. Save as `state.subject_a_url`.
 - **Subject B reference photo** *(required)* — local path or https URL. Save as `state.subject_b_url`.
 
-For each: if already an `https://…` URL, use it as-is. If local path → `mcp__pika__upload_asset` → PUT bytes to `presigned_url` → use `public_url`. On Claude Desktop, pasted inline images don't reach MCP — ask once for a URL or a `.zip` attachment instead (this is the one allowed clarifier; once both URLs are in, the "no further yes/no gates" rule below applies).
+For each: if already an `https://…` URL, use it as-is. If local path → `mcp__claude_ai_pika__upload_asset` → PUT bytes to `presigned_url` → use `public_url`. On Claude Desktop, pasted inline images don't reach MCP — ask once for a URL or a `.zip` attachment instead (this is the one allowed clarifier; once both URLs are in, only the cost gate remains).
 
 Either subject can be in any visual style — photoreal human, 3D rendered character, designer toy, illustrated avatar, sculpted figurine, etc. The recipe preserves whatever style the reference uses; do not redraw in a different style. **No names are used anywhere** — the Kiss Cam graphic does not have a chyron with names. Just two subjects caught on the Jumbotron.
 
-Confirm back in one line ("Generating a Madison Square Garden Kiss Cam moment for these two…") and start. **No further yes/no gates after this point** — the pipeline runs end-to-end.
+Run the Cost transparency gate, then confirm back in one line ("Generating a Madison Square Garden Kiss Cam moment for these two…") and start. **No further yes/no gates after the cost gate** — the pipeline runs end-to-end.
 
 ## Step 1 — Spectator-POV Jumbotron still (`generate_image`, gpt-image-2)
 
 The kiss cam graphic + scoreboard + retro frame get baked into the still at frame 0 — load-bearing, so Kling treats the entire decorative UI as pixel-locked burned-in UI in Step 2 instead of animating it mid-clip.
 
-**Why gpt-image-2 (and no fallback):** sharper LED panel detail (scoreboard numerals, kiss cam typography, retro decorative edges) and stronger reference-likeness lock than alternative providers; the LED-sharpness + likeness combo is what sells the trend. On a `moderation_blocked` response, re-roll the same call instead of swapping providers — alternatives produced softer likeness and softer LED detail in earlier trials. We call gpt-image-2 at 1K 16:9 (1792×1024); the 2K/4K variants (AGNT-336) don't help here since Kling pro outputs 1080p downstream.
+**Why gpt-image-2 (and no fallback):** sharper LED panel detail (scoreboard numerals, kiss cam typography, retro decorative edges) and stronger reference-likeness lock than alternative providers; the LED-sharpness + likeness combo is what sells the trend. On a `moderation_blocked` response, re-roll the same call instead of swapping providers — alternatives produced softer likeness and softer LED detail in earlier trials. We call gpt-image-2 at 1K 16:9 (1792×1024); higher-resolution variants don't help here since Kling pro outputs 1080p downstream.
+
+Retry budget: Step 1 gpt-image-2 still generation gets at most 3 total attempts, including moderation hits and self-check re-rolls. `moderation_blocked` counts against this Step 1 cap. Track `state.step1_attempt_count` before every paid still call.
 
 **Why a Jumbotron-POV phone shot (and not a TV broadcast overlay):** the first iteration produced a TV broadcast cutaway with a pink-heart kiss cam graphic on the feed — user feedback was "the kiss cam graphics is ugly, look how real kiss cam moments look in real videos." Real viral kiss-cam clips online are virtually all spectator phone shots OF the Jumbotron (Obama-era USA Basketball kiss cam, Sarah Hyland / Wells Adams kiss cam, etc.). The Jumbotron-shot framing hits the aesthetic users actually associate with "real kiss cam" — retro red border + sparkly hearts + cursive Kiss Cam script + adjacent LED scoreboard panels + arena darkness + fans filming with phones.
 
@@ -73,7 +105,7 @@ Phone-camera aesthetic: slight motion blur, mild handheld imperfection, slightly
 
 **Call params:**
 
-- `provider`: `gpt-image-2` (load-bearing — sharpest LED detail and strongest reference-likeness lock; no fallback provider, re-roll the same call on moderation hits)
+- `provider`: `gpt-image-2` (load-bearing — sharpest LED detail and strongest reference-likeness lock; no fallback provider, re-roll the same call on moderation hits only while Step 1 budget remains)
 - `reference_images`: `[state.subject_a_url, state.subject_b_url]` *(order matters — Subject A must be index 0, Subject B index 1; the prompt's "FIRST / SECOND reference image" refers to array index)*
 - `aspect_ratio`: `16:9`
 - `quality`: `medium` *(default for speed; `high` is now exposed but ~2 min/call — use only when fidelity matters)*
@@ -85,9 +117,9 @@ The reference images carry all identity + style information; the prompt only add
 
 Save the returned URL as `state.kisscam_still_url`.
 
-**Agent-side self-check before Step 2**: visually inspect — if the "Kiss Cam" text is misspelled, the scoreboard looks wrong, or either subject's likeness drifted, re-roll Step 1. Everything downstream pixel-locks to this image. This is the agent's own check — do not ask the user.
+**Agent-side self-check before Step 2**: visually inspect — if the "Kiss Cam" text is misspelled, the scoreboard looks wrong, or either subject's likeness drifted, re-roll Step 1 within the Step 1 cap. Everything downstream pixel-locks to this image. This is the agent's own check — do not ask the user.
 
-**On failure** (`moderation_blocked` from gpt-image-2 — often female/female subject pairings + "kiss cam" wording): re-roll the same call. Do NOT swap providers — alternatives produce softer likeness and softer LED detail.
+**On failure** (`moderation_blocked` from gpt-image-2 — often female/female subject pairings + "kiss cam" wording): re-roll the same call only while Step 1 budget remains. Do NOT swap providers — alternatives produce softer likeness and softer LED detail.
 
 ## Step 2 — In-arena kiss cam clip (`generate_reference_video`, kling-v3-omni)
 
@@ -151,15 +183,35 @@ Aesthetic: real spectator phone-shot, noisy darks, slightly blown LED, subtle mo
 
 The working framing keeps the style-preservation lock but specifies subtle, restrained, true-to-life motion at the level of someone actually caught on a stadium camera — paired with `exaggerated acting / theatrical expressions / over-acting / mugging at camera / cartoon reactions` in the `negative_prompt` to suppress regression toward the third-iteration failure mode.
 
-Save the returned video URL as `state.kisscam_video_url`. If generation completes asynchronously, follow the MCP tool's returned status handle. Client-layer timeouts can orphan the upstream task with no recovery handle, so re-run from scratch on timeout.
+Save the returned video URL as `state.kisscam_video_url`. If generation completes asynchronously, follow the MCP tool's returned status handle. Client-layer timeouts can create an orphaned upstream task when no `task_id` reaches the agent; do not submit a duplicate. Surface the timeout and the orphaned upstream task risk to the user, then wait for a recoverable task handle or explicit operator confirmation before any rerun.
 
-**On failure**: re-run kling — don't switch video engines. Seedance's two-stage likeness gate (same as the `baseball-trend` sibling) makes it unusable here. If the still itself is the issue (use the Step 1 self-check criteria — text spelling, scoreboard, likeness — to decide), re-run Step 1.
+Step 2 Kling video generation gets at most 2 total attempts (initial render + one targeted re-render for text/scoreboard animation, identity drift, kiss timing, PA timing, or lip-sync artifacts). Track `state.step2_attempt_count`.
+
+**On failure**: re-run kling within the Step 2 cap — don't switch video engines. Seedance's two-stage likeness gate (same as the `baseball-trend` sibling) makes it unusable here. If the still itself is the issue (use the Step 1 self-check criteria — text spelling, scoreboard, likeness — to decide), re-run Step 1 only if Step 1 budget remains. After either cap is exhausted, stop and ask for safer references or permission to deliver the best attempt; include the best still/video URL and the failing check.
 
 ## Step 3 — Deliver
 
 Return both Pika CDN URLs: the still image URL and the final video URL. If the host client requires local media markers, create the local preview outside this skill after confirming both CDN URLs are reachable.
 
 One-line summary: *"Kiss Cam moment at MSG — 15s, 16:9, 1080p, Kling v3-omni, native PA-announcer commentary and crowd reaction."*
+
+## Post-flight quality gate
+
+Before declaring success, call `mcp__claude_ai_pika__analyze_media` on `state.kisscam_video_url` and ask for a structured verdict:
+
+```
+Return JSON only: {
+  "verdict": "clean" | "degraded" | "catastrophic",
+  "observations": string[],
+  "quality_warning": string | null,
+  "re_roll_suggestion": string | null
+}
+Check that both faces stay consistent with their references, the kiss action completes as a brief natural lip kiss, Kiss Cam text / scoreboard styling stays readable, and neither visible subject lip-syncs the off-screen PA audio.
+```
+
+- If `verdict` is `clean`, return the still URL and final video URL normally.
+- If `verdict` is `degraded`, return the URLs plus the `quality_warning` so the user can review before publishing.
+- If `verdict` is `catastrophic`, do not call the run complete; surface the verdict and `re_roll_suggestion` instead of declaring success.
 
 ## Runtime expectations
 
@@ -205,7 +257,7 @@ Don't edit these without a re-validation pass — they're empirical behavior dep
 
 ## Engine choice: gpt-image-2 + Kling-only
 
-**Step 1 — gpt-image-2, no fallback.** Empirically sharpest LED panel detail (scoreboard numerals, kiss cam typography, retro decorative edges) and strongest reference-likeness lock — the combo is what sells the trend. On a `moderation_blocked` response, re-roll the same call rather than swapping providers; alternatives produced softer likeness and softer LED detail in earlier trials.
+**Step 1 — gpt-image-2, no fallback.** Empirically sharpest LED panel detail (scoreboard numerals, kiss cam typography, retro decorative edges) and strongest reference-likeness lock — the combo is what sells the trend. On a `moderation_blocked` response, re-roll the same call rather than swapping providers while Step 1 budget remains; alternatives produced softer likeness and softer LED detail in earlier trials.
 
 **Step 2 — Kling, no Seedance.** Seedance has a two-stage `partner_validation_failed` 422 gate (same as the `baseball-trend` sibling skill): an input-side gate that rejects references with recognizable real people, and an output-side gate that rejects AFTER generation if the produced clip contains recognizable-looking faces. Every Kiss Cam shot has a packed-arena crowd full of faces, so the output-side gate is unavoidable here. Kling is the only engine that lands this recipe.
 
@@ -215,17 +267,17 @@ Don't edit these without a re-validation pass — they're empirical behavior dep
 
 | Symptom | Fix |
 |---|---|
-| `moderation_blocked` on Step 1 | gpt-image-2 safety gate (often female/female subject pairings + "kiss cam" wording). Re-roll the same call; do NOT swap providers — alternatives produce softer likeness and softer LED detail |
+| `moderation_blocked` on Step 1 | gpt-image-2 safety gate (often female/female subject pairings + "kiss cam" wording). Re-roll the same call within the Step 1 retry budget; do NOT swap providers — alternatives produce softer likeness and softer LED detail |
 | Kling prompt error: prompt > 2500 chars | Re-inflated audio or aesthetic section in the Kling prompt. Cut from the audio or aesthetic block; never from the animation timeline |
-| Scoreboard, "Kiss Cam" text, or graphics animate mid-clip | `prompt_adherence` not set to `strict`, or `negative_prompt` missing entries like "scoreboard changing" / "Kiss Cam text changing". Verify both params; re-run Step 2 |
-| Subject identity drifts after ~8s | Reference still face crop too small — not enough facial pixels for Kling to lock. Re-roll Step 1 with a tighter face crop on the subjects |
+| Scoreboard, "Kiss Cam" text, or graphics animate mid-clip | `prompt_adherence` not set to `strict`, or `negative_prompt` missing entries like "scoreboard changing" / "Kiss Cam text changing". Verify both params; re-run Step 2 within the Step 2 retry budget |
+| Subject identity drifts after ~8s | Reference still face crop too small — not enough facial pixels for Kling to lock. Re-roll Step 1 with a tighter face crop on the subjects only if Step 1 budget remains |
 | Subject gets redrawn in a different style (photoreal → illustrated, or vice versa) | Style-preservation lock weakened, or a specific style label (Pixar / anime / etc.) crept into either prompt. Restore the "preserve exact likeness AND visual style" anchor; remove any style label |
-| PA announcer mispronounces a word or misses the kiss beat | Native audio is one take per Kling generation. Re-run Step 2 — no prompt-level fix |
-| One of the on-screen subjects lip-syncs / mouths the PA announcer's dialogue | Kling defaults to attributing any quoted dialogue on the audio track to a visible face in frame — without an explicit off-screen anchor, it picks a subject and animates their mouth to the words. Verify the audio block is framed as `Audio (non-diegetic / OFF-SCREEN only — Subject A and Subject B stay SILENT throughout, mouths closed...)` and the `negative_prompt` contains `subjects lip-syncing PA announcer dialogue, characters mouthing the announcer lines, on-screen lip-sync`; re-run Step 2 |
+| PA announcer mispronounces a word or misses the kiss beat | Native audio is one take per Kling generation. Re-run Step 2 within the Step 2 retry budget — no prompt-level fix |
+| One of the on-screen subjects lip-syncs / mouths the PA announcer's dialogue | Kling defaults to attributing any quoted dialogue on the audio track to a visible face in frame — without an explicit off-screen anchor, it picks a subject and animates their mouth to the words. Verify the audio block is framed as `Audio (non-diegetic / OFF-SCREEN only — Subject A and Subject B stay SILENT throughout, mouths closed...)` and the `negative_prompt` contains `subjects lip-syncing PA announcer dialogue, characters mouthing the announcer lines, on-screen lip-sync`; re-run Step 2 within the Step 2 retry budget |
 | Subjects mug at camera / over-act / theatrical expressions / cartoon reactions | Animation block prescribes a loaded list of simultaneous micro-expressions, or timeline beats use exaggerated descriptors ("huge smile", "shy excited wiggle", "eyes widen"). Restore the `subtle, restrained, true-to-life motion` framing in the animation block; strip emotion adjectives from the timeline; verify `exaggerated acting / theatrical expressions / over-acting / mugging at camera / cartoon reactions` are in the `negative_prompt` |
 | Kiss lands on cheek / forehead / head instead of lips | Timeline beat softened away from `gentle kiss on the lips`. Restore the verbatim lip-kiss line in the 7-11s beat; the trend is a lip kiss, not a peck on the head |
 | Seedance attempted instead of Kling | Wrong engine chosen. Switch to `kling` — Seedance's two-stage likeness gate makes it unusable here (see "Engine choice") |
-| Step 2 times out with no `task_id` returned | Client-layer timeout orphaned the upstream task — no recovery handle. Re-run Step 2 from scratch |
+| Step 2 times out with no `task_id` returned | Client-layer timeout orphaned the upstream task — no recovery handle. Do not submit a duplicate. Surface the orphaned upstream task risk and wait for a recoverable task handle or explicit operator confirmation before any rerun |
 
 ## What not to do
 
@@ -237,7 +289,7 @@ Don't edit these without a re-validation pass — they're empirical behavior dep
 - **Don't soften the kiss to forehead / cheek / "kiss on top of the head".** The trend is a lip kiss — keep the verbatim `gentle kiss on the lips — brief, sweet, natural, not staged` beat.
 - **Don't write the audio block as bare quoted dialogue without an OFF-SCREEN anchor.** Kling defaults to attributing any quoted speech to a visible face and will lip-sync the announcer lines onto Subject A or B. Always frame the audio block with `Audio (non-diegetic / OFF-SCREEN only — Subject A and Subject B stay SILENT throughout, mouths closed, never lip-sync any dialogue below)` and add the anti-lip-sync terms to `negative_prompt`.
 - **Don't gender either subject** in the narrative or PA dialogue. Use "Subject A / Subject B", "they/them", or descriptions without pronouns.
-- **Don't swap providers on moderation hits** — re-roll the same `gpt-image-2` call.
+- **Don't swap providers on moderation hits** — re-roll the same `gpt-image-2` call only while Step 1 budget remains.
 - **Don't try Seedance.**
 - **Don't generate music.** Native PA announcer + crowd ambient IS the soundtrack.
 - **Don't run a post-processing layer** (`add_captions`, `generate_music`, `edit_concat`, `edit_text_overlay`, `edit_pip`, any `edit_*`). Kling burns the scorebug + chyron + native commentary directly; anything added afterward breaks the kiss-cam illusion.

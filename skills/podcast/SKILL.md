@@ -28,12 +28,32 @@ argument-hint: <url-or-topic> [bg_img=] [host_a_img=] [host_b_img=] [voice_a=] [
 | `use_avatar` | off | Clone user's identity voice as Host A via `clone_voice` |
 | `aspect_ratio` | `16:9` | Output aspect ratio |
 
+## Cost transparency gate
+
+Before any paid MCP call, call `mcp__claude_ai_pika__identity_balance({verbose: true})` once. Surface the current balance, recent burn rate, and remaining runway, then gate the run with this exact message:
+
+> Estimated cost: about 6,000-9,000 credits (~$60-$90) for four Kling v3-omni pro 15s acts, optional missing-asset image generation, one act re-render, concat, and post-flight analyze_media QA. This exceeds $5, so Reply `proceed` to continue or `cancel` to stop.
+
+Do not call any paid MCP tool until the user replies `proceed`. If the user replies `cancel`, stop without generating. This is the only yes/no gate; after `proceed`, render the four acts and return the URL.
+
 ## Defaults — fire fast, no mid-flow confirmation
 
 - **Use the param-table defaults silently for voices.** `voice_a` defaults to the Kling preset `876341503281471517` and `voice_b` to `829837252279803904`. Do **not** ask "which voice?" or "should I clone yours?" before firing — only honor explicit overrides (`voice_a=`, `voice_b=`, `use_avatar`).
 - **Auto-generate any missing host portraits silently** (Step 1's archetype prompts). Do **not** ask "should I generate a host image?" — just generate.
-- **No "type yes to proceed" gates.** Submit → render the 4 acts → return URL. Account credit balance + provider failover are the canonical guardrails. The `--yes` flag is accepted as a no-op for backward compatibility.
+- **Only the cost transparency gate asks for `proceed`.** After `proceed`, submit → render the 4 acts → return URL. Account credit balance + provider failover are the canonical guardrails. The `--yes` flag is accepted as a no-op for backward compatibility.
 - **Topic-mode personas (Step 3)** — when the user names a real public figure, follow Step 4 (Real-person handling) silently: archetype portrait by default, no auto-generated photographic likeness, no question to the user about likeness rights.
+
+## Pre-generation wall-clock guard
+
+Start a timer at skill start once the podcast input is resolved and the cost gate has passed. The first paid generation call is `generate_image` for missing background/host assets. If all assets are already provided, the first paid generation call is `generate_reference_video`. The first paid generation call must be invoked within 5 minutes of skill start. If you have not invoked the first paid generation call within 5 minutes of skill start, stop before any paid generation call and report `failed_pre_generation_timeout` with what you have so far: input mode, asset status, voice status, URL capture/WebFetch status, script draft status, and the exact blocker. Do not keep refining host archetypes, factual grounding, jokes, or act wording.
+
+Print a single-line progress checkpoint after each prep stage and right before the paid generation call:
+- `Stage 1/4 done — input resolved and cost gate passed, locking missing-asset image prompts.`
+- `Stage 2/4 done — missing asset prompts ready, calling image generation now.` Use this right before the first paid `generate_image` call when any background or host image is missing. If all images are already provided, emit `Stage 2/4 done — assets and voices ready, collecting URL/topic facts.` instead and continue without image generation.
+- `Stage 3/4 done — script draft locked, preparing first act.`
+- `Stage 4/4 done — first act prompt ready, calling Kling now.`
+
+Missing-asset image prompt iteration is maximum 2 passes before the first `generate_image` call. After the max 2 passes, ship what you have to `generate_image`; do not continue polishing host archetypes, studio background details, or persona styling. Script and act-prompt iteration is maximum 2 passes before Kling. After the max 2 passes, ship what you have to `generate_reference_video`; do not continue polishing jokes, interruptions, persona framing, or camera wording.
 
 ## Local images on Claude Desktop
 
@@ -47,6 +67,17 @@ Claude Desktop can't pass inline-pasted images to MCP tools yet (Anthropic-side 
 When a local file arrives, convert it to a public URL with `upload_asset` and use the returned `public_url` as the parameter before Step 1. Already-hosted `https://...` URLs work as-is and skip this entirely.
 
 If the user names a real public figure without attaching anything, do NOT auto-generate their likeness — Step 4 (Real-person handling) uses an archetype portrait instead.
+
+## Long-running task_status polling
+
+When any long-running generation or edit call returns a `task_id` with or without an initial status, including `{task_id}`, `{task_id, status: "queued"}`, or an initial `queued`, `running`, or `processing` status, record the task id and start time immediately.
+
+- Call `mcp__claude_ai_pika__task_status({task_id})` in a tight loop until terminal (`completed | failed | cancelled`). No manual sleep and no Bash polling; the worker holds each status call open.
+- Emit ONE visible progress line every 60s while status is `queued`, `running`, or `processing`: `Seedance i2v queued for {N}m {S}s... still processing`. Replace the provider/stage label when polling Kling, image generation, clone voice, or concat tasks.
+- On `completed`, unwrap the returned result URL and continue.
+- On `failed` or `cancelled`, surface failure to the user with `task_id`, status, and the last status message.
+- After 15 min total from the original submit, call `mcp__claude_ai_pika__task_cancel({task_id})` if the task is still non-terminal, then surface failure to the user. If cancel reports the task is already terminal, call status once more and report that terminal result.
+- Do not submit a duplicate request while the original task is still `queued`, `running`, or `processing`.
 
 ## Steps
 
@@ -86,9 +117,11 @@ If the input mentions specific personas (Step 3), tune the archetype to match th
 Strip flags (`--yes`, `--no-captions`, etc.) and key=value parameters from `$ARGUMENTS`. Inspect what remains.
 
 **URL mode** — input contains a `https?://` URL:
-- Call `capture_website` on the URL.
-- Extract: product name, value prop, 2–3 specific features or facts, pricing, one jokeable detail.
-- Use these as the script's factual anchors.
+- Call `capture_website` on the URL for visual grounding only: product/page name, visible layout, screenshots, b-roll cues, and one jokeable visual detail.
+- Call `WebFetch` on the same URL and use its full-page text as the script source of truth. Do not rely on the screenshot alone for facts.
+- Extract from the combined inputs: product name, value prop, 2–3 specific features or facts, pricing, one jokeable detail, and any concrete quotes or claims.
+- For long-form pages (Wikipedia, docs, blog posts, or articles), scan the WebFetch full-page text for deep sections beyond the lede. When at least 3 substantive deep sections are present, the script must mention at least 3 distinct sections beyond the lede (for example architecture, training, hallucinations, limitations, deployment, or safety), not just the opening summary.
+- Use WebFetch text for factual anchors and `capture_website` for visuals. If they conflict, prefer WebFetch for factual claims and treat the screenshot as a visual reference.
 
 **Topic mode** — input is free-form prose (no URL):
 - Treat the whole input as the brief. Parse for:
@@ -110,11 +143,21 @@ If the parsed input names a specific real public figure as a host (e.g. "Elon Mu
 
 This guardrail keeps the skill creative ("I want a podcast where I argue with a tech CEO about Mars") without auto-generating deepfakes of named real people.
 
+### CJK / non-Latin handling
+
+Use this section when the URL, topic, product name, host name, quote, or required script detail includes Chinese, Japanese, Korean, Arabic, Devanagari, Cyrillic, accented Latin, emoji, or any other non-Latin text.
+
+- **Script preservation**: preserve user-supplied non-Latin characters exactly in the script state and in any factual recap. Do not romanize, transliterate, or translate product names, person names, slogans, or quoted phrases unless the user explicitly asks. If a pronunciation aid is useful, put it in nearby English prose, not as a replacement for the original characters.
+- **Kling voice IDs**: `voice_a=` and `voice_b=` must still be valid Kling voice IDs. For Chinese / Japanese / Korean dialogue, prefer a Kling voice ID or cloned voice sample known to speak that language; if no language-matched Kling voice is available, keep the original characters in the dialogue and surface that pronunciation may be accented instead of silently swapping to an unrelated TTS provider.
+- **Mixed-language dialogue**: keep each host's line short and unambiguous. Avoid asking Kling to pronounce long mixed-language paragraphs; split complex names or quotes across acts and keep surrounding English simple.
+- **Captions / font fallback**: this skill skips `add_captions` by default because podcast dialogue mistranscribes jargon. If the user explicitly asks for captions anyway, pass manual `subtitles[]` from the authored script rather than auto-transcribing, set `font: "noto-cjk"` for Chinese / Japanese / Korean, and preserve the original non-Latin text exactly.
+- **QA**: before delivery, include a one-line note in the final verdict when non-Latin text was present: whether original characters were preserved in the script and whether the selected voices were language-matched or best-effort.
+
 ### 5. Write script
 
 Write 4 acts × 2 lines (HOST_A / HOST_B). Each line ~10–12s of spoken dialogue.
 
-**Required (Matan rules — apply to both URL and topic modes):**
+**Required (apply to both URL and topic modes):**
 - One specific joke tied to a concrete detail (scraped fact in URL mode; topic-derived claim in topic mode)
 - One "wait, actually..." skeptic-flip moment
 - At least one mid-sentence interruption
@@ -128,9 +171,9 @@ Acts: Hook → Feature deep-dive → The Turn → Verdict
 
 ### 6. Generate video acts (subagent, sequential)
 
-Delegate to a subagent with all resolved assets and the script. The subagent runs acts 1→2→3→4 sequentially — do NOT parallelize.
+Delegate to a subagent with all resolved assets and the script. The subagent runs acts 1→2→3→4 sequentially — do NOT parallelize. The subagent must follow the Long-running task_status polling contract above and relay every 60s progress line back to the parent while it is waiting on Kling, image generation, voice clone, or concat tasks.
 
-Each act: one `generate_reference_video` call (`kling-v3-omni`, `duration=15`, `sound=true`). Pass `reference_images=[bg_img, host_a_img, host_b_img]` and `voice_ids=[voice_a, voice_b]`. Optional knobs (added by `pika-mcp-server` BACK-339, 2026-05-10): `quality_mode: "pro"` for higher-fidelity kling output (longer wall-clock; reserve for high-stakes renders), and `kling_model` to pin a specific kling family member if you need reproducibility across runs. Three shots:
+Each act: one `generate_reference_video` call (`kling-v3-omni`, `duration=15`, `sound=true`, `quality_mode: "pro"`). Pass `reference_images=[bg_img, host_a_img, host_b_img]`, `voice_ids=[voice_a, voice_b]`, and `quality_mode: "pro"` on every act; this must pass `quality_mode: "pro"` because the cost gate quotes the pro-tier 15s act cost. Optional knob: `kling_model` to pin a specific kling family member if you need reproducibility across runs. Three shots:
 
 - Wide 5s: both hosts, no voice token
 - MCU-A 5s: `<<<voice_1>>> '<HOST_A line>'`
@@ -142,11 +185,29 @@ Emotional beats per act:
 - Act 3: A firm, B surprised and reconsidering
 - Act 4: A satisfied, B conceding
 
-After act 4, subagent calls `edit_concat([act1, act2, act3, act4])` and returns the final video URL.
+After act 4, subagent calls `edit_concat([act1, act2, act3, act4])`, relays any async polling progress to the parent, and returns the final video URL. Keep the four act URLs in state so the post-flight quality gate can spend at most one targeted act re-render without regenerating clean acts.
 
 ### 7. Output
 
-Return the final video URL and a one-sentence verdict. **Do not call `add_captions`** — Whisper auto-transcription is unreliable on the domain-specific terms typical of podcast dialogue (product names, persona names, technical jargon). Native Kling Omni audio is the deliverable.
+Return the final video URL and a one-sentence verdict. **Do not call `add_captions` by default** — Whisper auto-transcription is unreliable on the domain-specific terms typical of podcast dialogue (product names, persona names, technical jargon). If the user explicitly asks for captions, pass manual `subtitles[]` from the authored script rather than auto-transcribing; for CJK / non-Latin text, follow the font and preservation guidance above. Native Kling Omni audio is the default deliverable.
+
+## Post-flight quality gate
+
+Before declaring success, call `mcp__claude_ai_pika__analyze_media` on the final video URL and ask for a structured verdict:
+
+```
+Return JSON only: {
+  "verdict": "clean" | "degraded" | "catastrophic",
+  "observations": string[],
+  "quality_warning": string | null,
+  "re_roll_suggestion": string | null
+}
+Check that Host A remains on the left, Host B remains on the right, product names / persona names / topic-specific terms are not visibly garbled, the four-act podcast structure is present, and there are no black frames or wrong-host shots.
+```
+
+- If `verdict` is `clean`, return the final URL and one-sentence verdict normally.
+- If `verdict` is `degraded`, return the final URL plus the `quality_warning` so the user can review before publishing.
+- If `verdict` is `catastrophic`, spend the one targeted act re-render budget only when the observations or `re_roll_suggestion` identifies a single bad act, wrong-host shot, black frame, or localized visual/audio failure. Re-render that act once with `quality_mode: "pro"`, re-concat the four acts, and run this analyze_media check one more time. Do not exceed the cost-gate range: if the second verdict is still `catastrophic`, or if the failure is not attributable to one act, do not call the podcast complete; surface the verdict and `re_roll_suggestion` instead of declaring success.
 
 ---
 
@@ -164,7 +225,7 @@ These anchors keep the podcast output coherent across URL and topic modes:
 | `4 acts × 15s each` | Overall structure | Keeps the concat predictable and avoids uneven act pacing. |
 | `Hook → Feature deep-dive → The Turn → Verdict` | Script structure | Gives the episode a conversational arc instead of four disconnected reactions. |
 | `wait, actually...` skeptic-flip moment | Script requirements | Creates the pivot that makes the podcast feel like a real exchange. |
-| `Do not call add_captions` | Output rule | Avoids low-quality burned captions on fast two-host dialogue with names and jargon. |
+| `Do not call add_captions` | Output rule | Avoids low-quality burned captions by default; explicit caption requests use manual `subtitles[]` and font fallback instead of auto-transcription. |
 
 ## Engine choice: Kling v3-omni for native two-host dialogue
 
@@ -172,14 +233,67 @@ Use Kling v3-omni for the four acts because it supports native dialogue with two
 
 ## Runtime expectations
 
-Typical wall-clock is 8-18 minutes:
+Typical wall-clock is 24-32 minutes for the full 4-act render: ~25 min realistic, ~32 min P95.
+The 4 acts run sequentially through Kling Omni; this is the dominant runtime and should not be described as parallel work.
+If the user or execution harness has a tight budget below 32 min, warn upfront that the full render may not finish and offer a 2-act / 30s fallback. Otherwise keep the normal no-confirmation flow.
 
 | Step | Wall clock | Notes |
 |---|---:|---|
 | Missing asset generation | 30-90s | Skipped for provided background/host refs |
 | URL/topic parse + script | 1-3 min | URL mode depends on page fetch quality |
-| Four Kling acts | 6-14 min | Runs sequentially to reduce host/voice drift |
+| Four Kling acts | 24-32 min | 4 × ~8 min sequential Kling Omni calls; dominant cost |
 | Concat + return | 30-90s | Final URL only; captions skipped by default |
+
+## Failure modes
+
+### Recovering from upstream 5xx on capture_website / clone_voice / generate_video / edit_concat
+
+If any MCP call returns:
+- `code: "provider_5xx"` AND `retry_class: "retry_after_backoff"`
+- Or HTTP 502 / 503 / 504 from any upstream provider (Kling, voice clone, capture, storage)
+
+Do this:
+1. Wait 5 seconds.
+2. Re-call the exact same MCP tool with the exact same arguments. Do not rewrite the script, change voices, change host refs, change act order, or resubmit a different prompt.
+3. If the retry also fails with 5xx, abort and surface to the user: "Provider returned a transient upstream error twice. Try again in 1-2 minutes; this usually clears on its own."
+
+Do not retry more than once. A 5xx is a transient outage, not evidence that the podcast topic, voices, or script are wrong.
+
+### Recovering from upstream 4xx / moderation_blocked
+
+If an upstream 4xx or `moderation_blocked` occurs on an optional `generate_image` helper, host asset, or Kling act:
+1. Do NOT retry the same input; moderation and most 4xx validation failures are deterministic.
+2. Use a fallback provider only if one is explicitly available for that stage. For the default Kling v3-omni two-host act path, no equivalent fallback provider exists; do not fake the podcast with unrelated captions or single-voice TTS.
+3. Surface to the user: "Provider declined this podcast input. Try a different host reference, less recognizable public figure/brand wording, or a safer topic angle."
+
+### Recovering from upstream 429 (rate limit)
+
+If any upstream returns HTTP 429 with a backoff hint:
+1. Wait the hinted backoff, or 30 seconds if no hint is provided.
+2. Re-call the exact same MCP tool with the exact same arguments.
+3. Do not retry more than once. If it still returns 429, abort and surface the rate-limit message.
+
+### `capture_website` returning empty / page-not-loaded
+
+If URL mode calls `capture_website` and it returns 200 but `action_bboxes` is empty or `recording_viewport` is 0x0:
+1. Do NOT retry `capture_website`; the page failed to render in the capture environment.
+2. If `WebFetch` returned usable full-page text, continue without retrying `capture_website`: use WebFetch for factual anchors and use a generic visual or generated visual instead of pretending the broken capture contains page details.
+3. If both capture and WebFetch fail to expose usable source material, surface: "Could not capture <url>. The page may be blocked / paywalled / require auth. Please provide a text brief or paste the source material instead."
+
+If the captured page is visibly only above-the-fold navigation with no article/content body, continue only if `WebFetch` returned enough full-page text to ground the script; in that case use the capture for visuals and WebFetch for facts. If both capture and WebFetch fail to expose usable source material, ask for pasted source material rather than hallucinating deep-page details.
+
+### `upload_asset` network / auth failure
+
+If `mcp__claude_ai_pika__upload_asset` fails while converting local host refs, voice samples, or source media to hosted URLs, do not continue with local filesystem paths. Retry once only for the 5xx or 429 classes above. For `auth_error`, unsupported MIME, network failure, or repeated upload failure, ask for a hosted URL or a supported replacement file.
+
+### Long-running `task_status` exceeding ceiling
+
+Each async MCP call returns either an inline result or `{task_id, status}` for polling. Use these ceilings before deciding a task is stuck:
+- Kling Omni act: 15 min per call
+- Voice clone: 5 min per call
+- Edit/concat: 5 min per call
+
+Use whichever is earlier: the provider's ceiling x 1.5 or any skill-specific hard polling cap, including the 15 min total cap in the Long-running task_status polling contract above. If `mcp__claude_ai_pika__task_status` returns `status: "processing"` or `status: "queued"` past that earlier limit, call `mcp__claude_ai_pika__task_cancel({task_id})` and surface: "Provider taking unusually long; aborting. Try again."
 
 ## Examples
 
