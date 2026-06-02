@@ -1,5 +1,5 @@
 ---
-name: video-translation
+name: language-swap
 description: >
   Translate and dub a video into another language. Extracts audio, transcribes, translates,
   clones the speaker's voice, generates TTS in the target language, and replaces the
@@ -13,7 +13,8 @@ required-capabilities:
   - mcp__claude_ai_pika__extract_audio_from_video
   - mcp__claude_ai_pika__transcribe_audio
   - mcp__claude_ai_pika__clone_voice
-  - mcp__claude_ai_pika__dub_video
+  - mcp__plugin_pika_pika__dub_video
+  - mcp__plugin_pika_pika__task_status
   - mcp__claude_ai_pika__generate_speech
   - mcp__claude_ai_pika__edit_audio_replace
   - mcp__claude_ai_pika__edit_audio_stitch
@@ -21,31 +22,35 @@ required-capabilities:
   - mcp__claude_ai_pika__edit_lipsync
 ---
 
-<!-- source-of-truth: pika-claude-plugin/skills/video-translation -->
+<!-- source-of-truth: pika-claude-plugin/skills/language-swap -->
 
-# /pika:video-translation
+# /pika:language-swap
 
 Translate and dub a video into another language using the original speaker's cloned voice. Pipeline: extract audio → transcribe → translate (in-prose) → clone voice → TTS in target language → replace audio track → burn target-language captions (optional lipsync).
 
 ## Fast path — one-shot dub (preferred when available)
 
-`mcp__claude_ai_pika__dub_video` translates AND dubs a video in a single worker call. It preserves each speaker's voice server-side (no separate clone step), keeps the original background music / SFX bed under the translated voice (set `drop_background_audio=true` to keep only the translated speech), and returns a fully A/V-synced **video** — so it also avoids the duration-drift handling the manual chain needs. It collapses manual Steps 1–6 into one call:
+In Claude plugin installs, the plugin MCP server exposes this new tool as `mcp__plugin_pika_pika__dub_video`. If your host exposes the same Pika server under a different local tool namespace, call that fully-qualified local tool shown in your tool list with the same arguments. Do not assume the Claude.ai connector prefix has this new tool; the connector surface may lag plugin-only tools.
+
+`mcp__plugin_pika_pika__dub_video` translates AND dubs a video in a single worker call. It preserves each speaker's voice server-side (no separate clone step), keeps the original background music / SFX bed under the translated voice (set `drop_background_audio=true` to keep only the translated speech), and returns a fully A/V-synced **video** — so it also avoids the duration-drift handling the manual chain needs. It collapses manual Steps 1–6 into one call:
+
+Fallback tools used: `mcp__plugin_pika_pika__dub_video`, `mcp__plugin_pika_pika__task_status`.
 
 ```
-dub_video(source_video_url=<video_url>, target_language=<iso>,
-          source_language="auto")
+mcp__plugin_pika_pika__dub_video(source_video_url=<video_url>, target_language=<language_code>,
+                                 source_language="auto")
 ```
 
-`mcp__claude_ai_pika__dub_video` is worker-backed: if the response comes back as `{task_id, status}`, poll `task_status` until `completed`, then read the dubbed video from the result (`video_url` for a video source; `audio_url` for an audio source). For `--with-lipsync`, extract the audio from the dubbed video and run `mcp__claude_ai_pika__edit_lipsync` on it; then Step 7 captions.
+`mcp__plugin_pika_pika__dub_video` is worker-backed: if the response comes back as `{task_id, status}`, poll `mcp__plugin_pika_pika__task_status` until `completed`, then read the dubbed video from the result (`video_url` for a video source; `audio_url` for an audio source). For `--with-lipsync` on a dubbed video, call `mcp__claude_ai_pika__edit_lipsync(video_url=<dubbed_video_url>)` with no `audio_url`; the lipsync worker uses the dubbed video's own embedded audio track. Do not call `extract_audio_from_video` just to feed the same dubbed video's audio back into `edit_lipsync`. Then run Step 7 captions.
 
-**Try the fast path first.** Fall back to the manual chain below when: `mcp__claude_ai_pika__dub_video` returns an error (dub support may not be live on that deployment yet), the caller needs the intermediate transcript/translation for review, the caller wants a **translate-only** result with no background music (the fast path's `drop_background_audio=true` also drops it, but the manual chain gives finer control — see Behavior defaults), or finer per-step control is required. The manual chain is fully documented below as the fallback.
+**Try the fast path first.** Fall back to the manual chain below when: `mcp__plugin_pika_pika__dub_video` returns an error (dub support may not be live on that deployment yet), the caller needs the intermediate transcript/translation for review, the caller wants a **translate-only** result with no background music (the fast path's `drop_background_audio=true` also drops it, but the manual chain gives finer control — see Behavior defaults), or finer per-step control is required. The manual chain is fully documented below as the fallback.
 
 ## Behavior defaults
 
-- **Default target language**: required via `--to <language>`. Examples: `Spanish`, `French`, `Japanese`, `zh-Hans`, `de`, `pt-BR`.
-- **Lipsync**: OFF by default. Enable with `--with-lipsync` to re-match the speaker's mouth to the translated audio via `mcp__claude_ai_pika__edit_lipsync` (fal sync-lipsync — takes a full video + the new audio track; it is the full-video lip-matcher, distinct from the portrait-image animator). Cost is meaningful (~$8/min on the sync-3 tier), which is why it's opt-in.
+- **Default target language**: required via `--to <language>`. Prefer language codes for the fast path: `es`, `fr`, `ja`, `de`, `pt-BR`, `zh-Hans`. `mcp__plugin_pika_pika__dub_video` accepts ISO/BCP-47-like tags and normalizes script subtags before calling ElevenLabs (for example `zh-Hans` → `zh`; `zh-Hant-TW` → `zh-TW`).
+- **Lipsync**: OFF by default. Enable with `--with-lipsync` to re-match the speaker's mouth to the translated audio via `mcp__claude_ai_pika__edit_lipsync` (fal sync-lipsync; it is the full-video lip-matcher, distinct from the portrait-image animator). For fast-path dubbed videos, omit `audio_url` so the worker syncs to the video's embedded translated audio. For the manual chain, keep passing `audio_url=<translated_audio_url>` because that separate audio is already available and avoids re-extracting it from the video. Cost is meaningful (~$8/min on the sync-3 tier), which is why it's opt-in.
 - **BGM / background music**: depends on the path. The **fast-path dub preserves** the original music / SFX bed under the translated voice by default. The **manual chain is translate-only** — Step 6 (`mcp__claude_ai_pika__edit_audio_replace`) replaces the whole original track, dropping background music and SFX. So: default (keep BGM) → prefer the fast path; `--no-bgm` (translate-only, no music) → run the manual chain, which is already BGM-free.
-- **70+ languages supported** via the underlying TTS providers (ElevenLabs default).
+- **Language coverage**: if language support is questioned or a language-related upstream error occurs, consult `references/language-coverage.md`. Do not proactively surface provider-specific language-list details in normal user replies.
 
 ## State variables produced and consumed
 
@@ -72,7 +77,7 @@ Optional:
 
 If `--to` is missing, STOP and prompt the user.
 
-Outputs: `video_url`, `target_language`, `with_lipsync` (boolean), `no_bgm` (boolean — when true, route to the manual chain for a translate-only result; see Behavior defaults).
+Outputs: `video_url`, `target_language`, `with_lipsync` (boolean), `no_bgm` (boolean — when true, route to the manual chain for a translate-only result; see Behavior defaults). For `mcp__plugin_pika_pika__dub_video`, pass target/source language codes in the same ISO/BCP-47-like shape described above.
 
 ## Step 1 — Extract audio (state: `original_audio_url`)
 
@@ -132,7 +137,7 @@ Call `mcp__claude_ai_pika__generate_speech` with:
 - `text` — `translated_transcript.text` (the full translated body). **Cap: 10000 chars.** If the translated text exceeds 10k, split it on segment boundaries, synthesize each chunk separately, then join the chunk audios back-to-back in order with `mcp__claude_ai_pika__edit_audio_stitch` (it takes timed `clips` with `start_s`/`end_s` — lay the chunks end to end; this is the audio stitcher, not the video-concat tool). The stitched track feeds Step 6. A single oversized `text` hard-fails the call.
 - `voice_id` — `cloned_voice_id` (from Step 4 — MUST be an ElevenLabs voice ID since Step 4 cloned via ElevenLabs)
 - `provider` — `"elevenlabs"` (aligns with the clone provider; cross-provider voice IDs don't work)
-- `language` — target-language BCP-47 tag (e.g. `es`). (In `mcp__claude_ai_pika__generate_speech` the param is `language`; the `target_language` param belongs to the `mcp__claude_ai_pika__dub_video` fast path.)
+- `language` — target-language BCP-47 tag (e.g. `es`). (In `mcp__claude_ai_pika__generate_speech` the param is `language`; the `target_language` param belongs to the `mcp__plugin_pika_pika__dub_video` fast path.)
 - `expected_duration_s` — the source video duration (optional), so the response returns `drift_seconds` / `drift_pct`. If you don't have the duration handy, omit it — drift reporting is just skipped.
 
 **Duration drift is expected**: target languages like Spanish run ~20–35% longer than English, so the TTS will usually overrun the source. Read `drift_pct` from the response. If the audio is longer than the video, Step 6 handles it via `duration_policy` (freeze-frame pad). Only re-synthesize at a faster pace if drift is extreme (>40%) or the user needs a hard length match.
@@ -196,7 +201,7 @@ Reply with `final_video_url` + the translated transcript text for user review.
 | Audio replacement (no original-audio bleed) | retained → `mcp__claude_ai_pika__edit_audio_replace` | Earlier v1 used an audio-overlay mix (original audio audible). Now uses `mcp__claude_ai_pika__edit_audio_replace` for a clean track swap. |
 | Target-language captions | added → `mcp__claude_ai_pika__add_captions` | v1 had no caption step; Step 7 now burns target-language subtitles (auto-transcribed from the dubbed audio). |
 | BCP-47 language code normalization | partial | v1 passes `--to` value through to `mcp__claude_ai_pika__generate_speech`'s `language` param; worker handles normalization. |
-| 70+ language coverage | retained | Via ElevenLabs (default) — same upstream as hub-skill. |
+| Language coverage reference | added | See `references/language-coverage.md` only when language support is questioned or a language-related upstream error occurs. |
 
 ## Compatibility
 
