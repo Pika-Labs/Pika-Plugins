@@ -1,6 +1,6 @@
 # Language Coverage Reference
 
-Last verified: 2026-06-02 PST
+Last verified: 2026-06-04 PST
 
 ## Purpose
 
@@ -10,101 +10,81 @@ Do not proactively expose provider-specific language-list details in normal user
 
 ## Boundary
 
-The fast-path dub accepts a target language from the user and forwards it upstream as a language code. The worker does not own a hardcoded allowlist.
+The `dub_video` worker **owns a hardcoded, empirically-verified allowlist** (AGNT-689). It is no longer a blind pass-through. Two routing paths:
 
-The current upstream dubbing API reference documents `target_lang` and `source_lang` as valid `iso639-1` or `iso639-3` language codes, but does not publish a complete enum of accepted dubbing languages.
+- **ElevenLabs dubbing** handles **32 languages** — the codes ElevenLabs `eleven_dubbing` actually accepts, verified 2026-06-04 by submitting every code through the dubbing proxy. A target outside this set (and outside the Minimax set below) is rejected **before billing** with the supported list.
+- **Minimax branch (voice-cloned)** handles **8 languages ElevenLabs cannot dub**: Cantonese, Thai, Hebrew, Persian, Slovenian, Catalan, Norwegian Nynorsk, Afrikaans. For these the worker clones the source speaker's voice and synthesizes with Minimax. Trade-offs on this path: one cloned voice for the whole clip, and the original background-music bed is replaced by the dubbed speech.
 
-The language list below is a model-capability reference for speech generation / fallback behavior. It is not a guaranteed dubbing API allowlist.
+**Mandarin gotcha:** ElevenLabs accepts only `zh`. The ISO-639-3 code `cmn` is rejected upstream; the worker auto-maps `cmn`/`zho`/`chi` to `zh`.
 
 The upstream dubbing product docs also advertise 90+ languages for a newer product path while noting that the newer API is not live yet. Do not use that 90+ claim as a guarantee for the current MCP worker path unless the API contract changes.
 
-Source note: verified from upstream help center language-support docs and upstream dubbing API/product docs on the date above. Keep provider-specific names and links out of normal user-facing replies unless the user explicitly asks for the external source.
+Source note: the 32-language ElevenLabs set and the `cmn`-rejected behavior were verified empirically against the dubbing proxy on the date above. The 8-language Minimax set is Minimax Speech-02's `language_boost` coverage minus the ElevenLabs 32. Keep provider-specific names and links out of normal user-facing replies unless the user explicitly asks for the external source.
 
-## 74-Language Model Reference
+## Supported languages
 
-The Help Center lists 74 languages:
+### ElevenLabs dubbing — 32 languages (verified)
 
-| Language | ISO-639 code shown by the source |
+| Language | Code sent upstream |
 | --- | --- |
-| Afrikaans | `afr` |
 | Arabic | `ara` |
-| Armenian | `hye` |
-| Assamese | `asm` |
-| Azerbaijani | `aze` |
-| Belarusian | `bel` |
-| Bengali | `ben` |
-| Bosnian | `bos` |
 | Bulgarian | `bul` |
-| Catalan | `cat` |
-| Cebuano | `ceb` |
-| Chichewa | `nya` |
 | Croatian | `hrv` |
 | Czech | `ces` |
 | Danish | `dan` |
 | Dutch | `nld` |
 | English | `eng` |
-| Estonian | `est` |
 | Filipino | `fil` |
 | Finnish | `fin` |
 | French | `fra` |
-| Galician | `glg` |
-| Georgian | `kat` |
 | German | `deu` |
 | Greek | `ell` |
-| Gujarati | `guj` |
-| Hausa | `hau` |
-| Hebrew | `heb` |
 | Hindi | `hin` |
 | Hungarian | `hun` |
-| Icelandic | `isl` |
 | Indonesian | `ind` |
-| Irish | `gle` |
 | Italian | `ita` |
 | Japanese | `jpn` |
-| Javanese | `jav` |
-| Kannada | `kan` |
-| Kazakh | `kaz` |
-| Kirghiz | `kir` |
 | Korean | `kor` |
-| Latvian | `lav` |
-| Lingala | `lin` |
-| Lithuanian | `lit` |
-| Luxembourgish | `ltz` |
-| Macedonian | `mkd` |
 | Malay | `msa` |
-| Malayalam | `mal` |
-| Mandarin Chinese | `cmn` |
-| Marathi | `mar` |
-| Nepali | `nep` |
-| Norwegian | `nor` |
-| Pashto | `pus` |
-| Persian | `fas` |
+| Mandarin Chinese | `zh` (NOT `cmn`) |
+| Norwegian (Bokmål) | `nor` |
 | Polish | `pol` |
 | Portuguese | `por` |
-| Punjabi | `pan` |
 | Romanian | `ron` |
 | Russian | `rus` |
-| Serbian | `srp` |
-| Sindhi | `snd` |
 | Slovak | `slk` |
-| Slovenian | `slv` |
-| Somali | `som` |
 | Spanish | `spa` |
-| Swahili | `swa` |
 | Swedish | `swe` |
 | Tamil | `tam` |
-| Telugu | `tel` |
-| Thai | `tha` |
 | Turkish | `tur` |
 | Ukrainian | `ukr` |
-| Urdu | `urd` |
 | Vietnamese | `vie` |
-| Welsh | `cym` |
+
+ISO-639-1 spellings (`es`, `fr`, `ja`, `pt-BR`, …) are accepted and forwarded; region subtags are tolerated and script subtags are dropped.
+
+### Minimax voice-clone branch — 8 languages
+
+These are NOT supported by ElevenLabs dubbing; the worker routes them to Minimax with a cloned source voice (AGNT-689).
+
+| Language | Accepted target codes |
+| --- | --- |
+| Cantonese | `yue`, `cantonese`, `zh-HK` |
+| Thai | `tha`, `th` |
+| Hebrew | `heb`, `he` |
+| Persian (Farsi) | `fas`, `fa` |
+| Slovenian | `slv`, `sl` |
+| Catalan | `cat`, `ca` |
+| Norwegian Nynorsk | `nno`, `nn` (Bokmål `no`/`nb` stays on ElevenLabs) |
+| Afrikaans | `afr`, `af` |
+
+## Not supported
+
+Many languages that appear in ElevenLabs' general *speech-generation* help-center list (e.g. Welsh, Icelandic, Serbian, Swahili, Urdu, Lithuanian, Irish, and others) are **not** accepted by the dubbing API and are not in the Minimax set. A model-capability list is **not** a dubbing allowlist — passing such a code now fails fast with the supported list rather than erroring opaquely mid-pipeline.
 
 ## Agent Guidance
 
 When the user asks "how many languages does Language Swap support?", answer carefully:
 
-- For the current fast-path dub worker: upstream is the source of truth; the MCP worker accepts ISO-style `target_language` values and forwards them as `target_lang`.
-- For a named reference list: cite the 74-language list above, and explicitly say it is not a published dubbing API enum.
+- The fast-path dub supports **40 languages total**: 32 via ElevenLabs + 8 via the Minimax voice-clone branch.
+- The two paths are an implementation detail — do not surface provider names in normal replies. If a requested language is unsupported, state that plainly and, when helpful, point to the closest supported option.
 - For the newer 90+ language product claim: mention it only with the API-not-live caveat from the upstream dubbing overview.

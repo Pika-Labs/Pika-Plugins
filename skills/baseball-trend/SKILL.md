@@ -20,7 +20,7 @@ Fixed-recipe skill — the prompts below are calibrated. Substitute the username
 
 Before any paid MCP call, call `mcp__claude_ai_pika__identity_balance({verbose: true})` once. Surface the current balance, recent burn rate, and remaining runway, then gate the run with this exact message:
 
-> Estimated cost: about 3,000-5,500 credits (~$30-$55) for the GPT-image-2 broadcast still, one or two Kling v3-omni pro 15s renders (includes one Step 2 re-render), and post-flight analyze_media QA. This exceeds $5, so Reply `proceed` to continue or `cancel` to stop.
+> Estimated cost: about 3,000-5,500 credits (~$30-$55) for the GPT-image-2 broadcast still, one or two Kling v3-omni pro 15s renders (includes one Step 2 corrective retry with a changed payload), and post-flight analyze_media QA. This exceeds $5, so Reply `proceed` to continue or `cancel` to stop.
 
 Do not call any paid MCP tool until the user replies `proceed`. If the user replies `cancel`, stop without generating. This is the only yes/no gate; after `proceed`, the pipeline runs end-to-end.
 
@@ -180,7 +180,7 @@ Constraints: Preserve identity strongly. Keep him seated behind home plate throu
 
 Save the returned video URL as `state.broadcast_video_url`. If generation completes asynchronously, follow the MCP tool's returned status handle until the video reaches a terminal state.
 
-Step 2 Kling video generation gets at most 2 total attempts (initial render + one targeted re-render for drift, scorebug/chyron movement, or announcer mispronunciation). Track `state.step2_attempt_count`. After either cap is exhausted, stop and ask for a better reference photo or permission to deliver the best attempt; include the best still/video URL and the failing check.
+Step 2 Kling video generation gets at most 2 total attempts (initial render + one corrective retry for drift, scorebug/chyron movement, or announcer mispronunciation). kling-v3-omni has no seed, and identical Kling payloads can resolve to the same job/asset. Do not submit an identical Kling payload just to seek variation. Before the corrective retry, materially change the payload by using an updated `state.broadcast_still_url`, restoring missing strict params / negative_prompt entries, or shortening / clarifying the A/B announcer block. Track `state.step2_attempt_count`. After either cap is exhausted, stop and ask for a better reference photo or permission to deliver the best attempt; include the best still/video URL and the failing check.
 
 ### Step 3 — Deliver
 
@@ -204,7 +204,7 @@ Return JSON only: {
 Check that the chyron still reads the exact username, the subject's identity stays stable throughout, the scorebug remains stable, the final clip has no black frames or wrong-sport shots, and the audio contains two distinct male announcer voices — not just one narrator.
 ```
 
-- If `announcer_count < 2`, treat the result as at least `degraded`, include `audio_warning`, and re-roll Step 2 within the Step 2 retry budget instead of declaring success.
+- If `announcer_count < 2`, treat the result as at least `degraded`, include `audio_warning`, and use the one Step 2 corrective retry only after changing the A/B audio payload. Do not submit an identical Kling payload.
 - If `verdict` is `clean`, return the still URL and final video URL normally.
 - If `verdict` is `degraded`, return the URLs plus the `quality_warning` and `audio_warning` so the user can review before publishing.
 - If `verdict` is `catastrophic`, do not call the run complete; surface the verdict and `re_roll_suggestion` instead of declaring success.
@@ -229,7 +229,7 @@ The output-side gate is unavoidable for this trend regardless of subject, so See
 
 **Kling caveat — recognizable celebrities are blocked too.** Kling has its own content-moderation gate that fires on celebrity references. A celebrity-reference prompt plus matching broadcast chyron can fail at submit-time with `task_status: failed, task_status_msg: "Failure to pass the risk control system"`. This is correct behavior — the trend illusion only works with a non-public-figure reference where the chyron name + face are coherent. If a user supplies a celebrity photo, surface the gate to them and ask for a non-celebrity reference instead.
 
-**Kling trade-offs**: 2500-char `prompt` cap (recipe above is pre-trimmed), no `seed` param (re-rolls are non-reproducible — to re-roll just call again).
+**Kling trade-offs**: 2500-char `prompt` cap (recipe above is pre-trimmed). kling-v3-omni has no seed; identical Kling payloads can collapse to the same job/asset, so a corrective retry must materially change the first-frame still, prompt, negative_prompt, or audio wording. Do not submit an identical Kling payload for variation.
 
 ## Runtime expectations
 
@@ -248,9 +248,9 @@ Typical run time is 4-7 minutes:
 |---|---|---|
 | Chyron pops in mid-clip (~4–5s flash) | Chyron not baked into the still | Re-run Step 1 within the Step 1 retry budget; verify chyron is visible in `state.broadcast_still_url` before Step 2 |
 | Scorebug animates / morphs mid-clip | `prompt_adherence` not `strict`, or `negative_prompt` was trimmed | Restore strict adherence and the full negative_prompt |
-| Identity drift late in the clip (face changes after ~10s) | Reference image too small / Kling losing the face | Re-run Step 2 within the Step 2 retry budget; if drift persists, re-run Step 1 with a tighter face crop on the still only if Step 1 budget remains |
-| Only one announcer voice is heard | Kling collapsed the A/B commentary into one native narrator | Re-run Step 2 within the Step 2 retry budget; after the cap is exhausted, surface the audio warning and ask whether to deliver the best attempt |
-| Username mispronounced by announcers | Native audio is one take | Re-run Step 2 within the Step 2 retry budget |
+| Identity drift late in the clip (face changes after ~10s) | Reference image too small / Kling losing the face | Use the one Step 2 corrective retry only after materially changing the payload, usually by re-running Step 1 with a tighter face crop on the still if Step 1 budget remains |
+| Only one announcer voice is heard | Kling collapsed the A/B commentary into one native narrator | Shorten or clarify the A/B announcer lines before the one Step 2 corrective retry; after the cap is exhausted, surface the audio warning and ask whether to deliver the best attempt |
+| Username mispronounced by announcers | Native audio is one take | Add a pronunciation hint or shorten the announcer line before the one Step 2 corrective retry; otherwise surface the audio warning |
 | OpenAI `moderation_blocked` on Step 1 | `gpt-image-2` safety gate on real person + ESPN-branded live feed + real MLB team context | Try `seedream` once with the same reference image and prompt while Step 1 budget remains. If it also blocks, tell the user: "OpenAI declined this image. Try using a fresh AI-generated headshot instead of a personal photo, or pick a non-MLB sport variant." |
 | Seedance `partner_validation_failed` 422 | Tried Seedance instead of Kling | Use Kling only — see engine-choice section above |
 | Kling `task_status: failed` with `task_status_msg: "Failure to pass the risk control system"` | Reference photo is a recognizable celebrity / public figure | Ask the user for a non-celebrity reference. Kling correctly blocks impersonation patterns (celebrity face + fake-event chyron) |

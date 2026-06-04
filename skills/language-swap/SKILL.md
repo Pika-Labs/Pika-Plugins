@@ -26,7 +26,7 @@ The dubbing worker does the heavy lifting in a single call: it transcribes, tran
 
 ## Behavior defaults
 
-- **Target language**: required via `--to <language>`. Prefer language codes: `es`, `fr`, `ja`, `de`, `pt-BR`, `zh-Hans`. The dubbing worker accepts ISO/BCP-47-like tags and normalizes script subtags before calling ElevenLabs (for example `zh-Hans` → `zh`; `zh-Hant-TW` → `zh-TW`).
+- **Target language**: required via `--to <language>`. Prefer language codes: `es`, `fr`, `ja`, `de`, `pt-BR`, `zh-Hans`. The dubbing worker accepts ISO/BCP-47-like tags and normalizes script/region subtags before calling ElevenLabs (for example `zh-Hans` → `zh`; `zh-Hant-TW` → `zh`).
 - **Lipsync**: ON by default — re-matches the speaker's mouth to the translated audio (fal sync-lipsync; the full-video lip-matcher, distinct from the portrait-image animator). Pass `--no-lipsync` to skip it when the source has no on-camera face or to avoid the meaningful cost (~$4/min on the sync-2-pro tier).
 - **BGM / background music**: kept by default — the dub lays the translated voice over the original music / SFX bed. Pass `--no-bgm` for a translate-only output: the worker drops the original music and keeps only the translated speech (`drop_background_audio=true`).
 - **Language coverage**: if language support is questioned or a language-related upstream error occurs, consult `references/language-coverage.md`. Do not proactively surface provider-specific language-list details in normal user replies.
@@ -112,9 +112,10 @@ Reply with `final_video_url` + the translated transcript (from `dub_transcript_s
 | Class | Trigger | Mitigation | Fallback |
 |---|---|---|---|
 | Source URL not worker-fetchable | `mcp__plugin_pika_pika__dub_video` returns 403 / 4xx, hotlink / UA-gated fetch failure, or "Access Denied" for a public HTTPS URL | Download source bytes in the client/host environment, `mcp__claude_ai_pika__upload_asset` them to Pika, replace `video_url` with the Pika CDN URL, then retry Step 1 once | If local download also fails, ask the user to upload the file or provide a different URL |
+| Extra target language | Target is Cantonese (`yue` / `cantonese` / `zh-HK`), Thai, Hebrew, Persian, Slovenian, Catalan, Norwegian Nynorsk, or Afrikaans | Supported — call `mcp__plugin_pika_pika__dub_video` with the target as usual; the original speaker's voice is kept | Background music isn't preserved for these languages (dubbed speech only) |
 | Dub call fails (not fetchability) | `mcp__plugin_pika_pika__dub_video` errors for another reason — unsupported target language, provider/worker 5xx, `status: failed` from `mcp__plugin_pika_pika__task_status` | Surface the error to the user; if the message points at the language, check `references/language-coverage.md` and suggest a supported tag; otherwise suggest a retry. There is no manual chain to fall back to — dub is the single path | None — return the error, do not silently produce a non-dubbed video |
 | Dub returns no speech | Silent video — nothing to translate | Surface to user: "no detectable speech in video — nothing to translate" | None |
-| Voice not preserved | `mcp__plugin_pika_pika__dub_video` cannot isolate/clone the speaker (very short or noisy source) | Surface to the user that the original voice could not be preserved and the dub uses a provider default voice | Provider default voice |
+| Original voice can't be kept | For the languages above, the source is too short or noisy to keep the original speaker's voice | Surface the error and ask the user for a cleaner / longer source clip | None — the dub fails rather than using a different voice |
 | Lipsync step fails | `mcp__claude_ai_pika__edit_lipsync` errors (no clear face track, provider 4xx) | Fall back through `variant` tiers (v2-pro → sync-3 → v2); if all fail, return the dubbed video without lip-matching and tell the user | Audio-replaced video, no lip-match |
 | Captions wrong language | Step 3 auto-transcription mis-detects language | Pass explicit `language` tag; if `dub_subtitles` exists, use `caption_mode="manual"` with it instead of auto | Manual `subtitles[]` |
 

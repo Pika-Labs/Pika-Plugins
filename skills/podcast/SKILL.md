@@ -32,7 +32,7 @@ argument-hint: <url-or-topic> [bg_img=] [host_a_img=] [host_b_img=] [voice_a=] [
 
 Before any paid MCP call, call `mcp__claude_ai_pika__identity_balance({verbose: true})` once. Surface the current balance, recent burn rate, and remaining runway, then gate the run with this exact message:
 
-> Estimated cost: about 6,000-9,000 credits (~$60-$90) for four Kling v3-omni pro 15s acts, optional missing-asset image generation, one act re-render, concat, and post-flight analyze_media QA. This exceeds $5, so Reply `proceed` to continue or `cancel` to stop.
+> Estimated cost: about 6,000-9,000 credits (~$60-$90) for four Kling v3-omni pro 15s acts, optional missing-asset image generation, one act corrective retry, concat, and post-flight analyze_media QA. This exceeds $5, so Reply `proceed` to continue or `cancel` to stop.
 
 Do not call any paid MCP tool until the user replies `proceed`. If the user replies `cancel`, stop without generating. This is the only yes/no gate; after `proceed`, render the four acts and return the URL.
 
@@ -153,6 +153,18 @@ Use this section when the URL, topic, product name, host name, quote, or require
 - **Captions / font fallback**: this skill skips `add_captions` by default because podcast dialogue mistranscribes jargon. If the user explicitly asks for captions anyway, pass manual `subtitles[]` from the authored script rather than auto-transcribing, set `font: "noto-cjk"` for Chinese / Japanese / Korean, and preserve the original non-Latin text exactly.
 - **QA**: before delivery, include a one-line note in the final verdict when non-Latin text was present: whether original characters were preserved in the script and whether the selected voices were language-matched or best-effort.
 
+### Jargon-heavy native audio handling
+
+Use this section when the URL, topic, product name, quote, or required script detail is domain-heavy or jargon-heavy, especially finance, law, medicine, AI/crypto, acronyms, coined terms, unusual product names, long numbers, or multi-word compounds. Kling-omni native TTS can garble coined terms in the spoken native audio, not just in auto-captions, so reduce the risk before the paid Kling calls.
+
+- **Risk scan**: mark the run jargon-heavy when a line would contain several domain-specific terms, acronyms, long numbers, or nested / multi-clause economist-style phrasing. Treat examples like stablecoins, unbundle, and reassure as load-bearing terms that must remain intelligible.
+- **Script rewrite**: preserve the canonical term in the script state and final recap, but shorten the spoken line around it. Use short lines, split long clauses, keep at most one or two high-risk terms per host line, and avoid nested clauses that make Kling infer similar-sounding filler words.
+- **Pronunciation aid**: create a small per-act pronunciation aid for high-risk terms, for example `stablecoins = STAY-bul coins`, `unbundle = un-BUN-dul`, `reassure = ree-uh-SHOOR`. The pronunciation aid is prompt metadata only; do not replace the canonical term in the dialogue, captions, facts, or final recap.
+- **Known-hard-term correction**: if a term is known to drift, or post-flight localizes a near-neighbor mishearing, do not retry the same standalone hard word. Keep the canonical term in act metadata (`canonical_terms: ["unbundle"]`), then make the corrected voice-token line a short context phrase with a speakable cue / micro-pause, for example `we un-bundle payments`. Add the observed wrong form as a negative pronunciation guard in metadata, for example `unbundle = un-BUN-dul, not un-bumble`.
+- **Known-hard publishable fallback**: before the paid Kling calls, mark observed hard terms such as `unbundle` as known-hard when prior E2E or the current post-flight findings show drift like `unbundle` -> `unbubble`, `un-bumble`, or `unbundable`. Record `canonical_terms` and `observed_wrong_forms`. Do not render known-hard spoken terms with Kling native audio. Instead, generate the affected visual act or final video with no spoken known-hard term in the native voice-token lines, then generate controlled narration with `generate_speech(text=<spoken-only script>, provider: "minimax-tts", minimax_model: "speech-2.8-hd", language: "en")` using the canonical spelling (`unbundle`, not the hyphen cue). The spoken-only script must preserve the authored host-turn order but contain no HOST_A/HOST_B labels, no metadata, no pronunciation aids, and no observed wrong-form spellings. Run pre-replacement QA on the TTS audio with both `transcribe_audio(audio=<tts_audio_url>)` and `analyze_media(media=<tts_audio_url>)`; every required `canonical_terms` entry must appear in the `transcribe_audio` text and must appear in the `analyze_media` observed transcript. Reject the TTS if a canonical term is missing, replaced by any observed wrong form, or replaced by a new near-neighbor. Then call `edit_audio_replace(video_url=<final_mp4>, audio_url=<tts_audio_url>, duration_policy: "video")` to discard the native audio and replace it with the controlled TTS track. Run post-replacement QA on the replaced MP4 with both `transcribe_audio(audio=<replaced_mp4_url>)` and `analyze_media(media=<replaced_mp4_url>)`; every required `canonical_terms` entry must appear in both final checks, and `analyze_media` must also verify host-turn order and acceptable audio/video sync. If any final check hears a wrong form, misses a canonical term, or says the fallback collapses the podcast turn structure, return `not publish-ready`; if both checks pass, the fallback output is publish-ready even though it uses controlled TTS instead of Kling native speech.
+- **Numbers and acronyms**: write spoken-friendly forms when they matter: `$175B` becomes `one hundred seventy-five billion dollars`; `API` becomes `A P I` unless the brand normally says it as a word.
+- **Act prompt**: include the per-act pronunciation aid near the voice-token lines with an instruction that it is not dialogue and should not be spoken verbatim. Ask for clear pronunciation of the canonical terms and no improvising similar words.
+
 ### 5. Write script
 
 Write 4 acts × 2 lines (HOST_A / HOST_B). Each line ~10–12s of spoken dialogue.
@@ -165,6 +177,7 @@ Write 4 acts × 2 lines (HOST_A / HOST_B). Each line ~10–12s of spoken dialogu
 - Real reactions, not generic praise
 - Reference at least one actual feature name, price, claim, or quote
 - Natural ending — no forced "bye!"
+- Apply Jargon-heavy native audio handling before finalizing the act lines when the topic is domain-heavy, jargon-heavy, or uses coined terms.
 
 Acts: Hook → Feature deep-dive → The Turn → Verdict
 (In topic mode the analogue: Hook → Substance → The Pivot → Verdict.)
@@ -173,8 +186,9 @@ Acts: Hook → Feature deep-dive → The Turn → Verdict
 
 Delegate to a subagent with all resolved assets and the script. The subagent runs acts 1→2→3→4 sequentially — do NOT parallelize. The subagent must follow the Long-running task_status polling contract above and relay every 60s progress line back to the parent while it is waiting on Kling, image generation, voice clone, or concat tasks.
 
-Each act: one `generate_reference_video` call (`kling-v3-omni`, `duration=15`, `sound=true`, `quality_mode: "pro"`). Pass `reference_images=[bg_img, host_a_img, host_b_img]`, `voice_ids=[voice_a, voice_b]`, and `quality_mode: "pro"` on every act; this must pass `quality_mode: "pro"` because the cost gate quotes the pro-tier 15s act cost. Optional knob: `kling_model` to pin a specific kling family member if you need reproducibility across runs. Three shots:
+Each normal act: one `generate_reference_video` call (`kling-v3-omni`, `duration=15`, `sound=true`, `quality_mode: "pro"`). Pass `reference_images=[bg_img, host_a_img, host_b_img]`, `voice_ids=[voice_a, voice_b]`, and `quality_mode: "pro"` on every normal act; this must pass `quality_mode: "pro"` because the cost gate quotes the pro-tier 15s act cost. Optional knob: `kling_model` to pin a specific kling family member if you need reproducibility across runs. Three shots:
 
+- **Known-hard fallback exception**: for acts containing known-hard spoken terms, render the affected visual act with `sound=false` and no voice tokens for the affected lines. Do not include canonical known-hard terms in any `<<<voice_*>>>` native voice-token line; the controlled TTS replacement supplies those words later. For jargon-heavy but not known-hard acts, include the per-act pronunciation aid from Step 5 in the act prompt as non-dialogue metadata and preserve canonical terms in the quoted `<<<voice_*>>>` lines.
 - Wide 5s: both hosts, no voice token
 - MCU-A 5s: `<<<voice_1>>> '<HOST_A line>'`
 - MCU-B 5s: `<<<voice_2>>> '<HOST_B line>'`
@@ -185,7 +199,7 @@ Emotional beats per act:
 - Act 3: A firm, B surprised and reconsidering
 - Act 4: A satisfied, B conceding
 
-After act 4, subagent calls `edit_concat([act1, act2, act3, act4])`, relays any async polling progress to the parent, and returns the final video URL. Keep the four act URLs in state so the post-flight quality gate can spend at most one targeted act re-render without regenerating clean acts.
+After act 4, subagent calls `edit_concat([act1, act2, act3, act4])`, relays any async polling progress to the parent, and returns the final video URL. Keep the four act URLs in state so the post-flight quality gate can spend at most one targeted act correction without regenerating clean acts.
 
 ### 7. Output
 
@@ -203,11 +217,13 @@ Return JSON only: {
   "re_roll_suggestion": string | null
 }
 Check that Host A remains on the left, Host B remains on the right, product names / persona names / topic-specific terms are not visibly garbled, the four-act podcast structure is present, and there are no black frames or wrong-host shots.
+Also check the spoken audio, not only captions or visible text: product names, persona names, topic-specific terms, coined terms, and jargon must be intelligible. Flag garbled or mispronounced native audio such as "stablecoins" sounding like "stable kinds", "unbundle" sounding like "un-bumble" or "unbundable", or "reassure" losing syllables.
 ```
 
-- If `verdict` is `clean`, return the final URL and one-sentence verdict normally.
-- If `verdict` is `degraded`, return the final URL plus the `quality_warning` so the user can review before publishing.
-- If `verdict` is `catastrophic`, spend the one targeted act re-render budget only when the observations or `re_roll_suggestion` identifies a single bad act, wrong-host shot, black frame, or localized visual/audio failure. Re-render that act once with `quality_mode: "pro"`, re-concat the four acts, and run this analyze_media check one more time. Do not exceed the cost-gate range: if the second verdict is still `catastrophic`, or if the failure is not attributable to one act, do not call the podcast complete; surface the verdict and `re_roll_suggestion` instead of declaring success.
+- If `verdict` is `clean`, first check whether the script state contains a known-hard spoken term. For known-hard terms, before accepting a clean verdict, run the Known-hard publishable fallback and its pre-replacement plus post-replacement `transcribe_audio` / `analyze_media` checks. Only return success after the replaced MP4 checks pass. If there are no known-hard spoken terms, return the final URL and one-sentence verdict normally.
+- If `verdict` is `degraded` for ordinary non-blocking visual issues, return the final URL plus the `quality_warning` so the user can review before publishing.
+- If `verdict` is `degraded` because spoken audio garbles jargon, coined terms, or other domain-specific terms, treat it as not publish-ready instead of silent success. For a known-hard term or observed hard-term drift, skip the native-audio act correction; do not spend the targeted act correction budget on another Kling native-audio prompt. Use the Known-hard publishable fallback directly: call `generate_speech(text=<spoken-only script>, provider: "minimax-tts", minimax_model: "speech-2.8-hd")`, run pre-replacement `transcribe_audio` and `analyze_media` on the TTS audio, then call `edit_audio_replace(video_url=<final_mp4>, audio_url=<tts_audio_url>, duration_policy: "video")` to discard the native audio and replace the final MP4 audio. Run post-replacement `transcribe_audio` and `analyze_media` on the replaced MP4. If those checks pass, return the replaced URL; if the fallback checks still report spoken jargon garble, or if the garble is not localized enough to correct or replace, do not call the podcast complete; return the URL with `not publish-ready`, affected terms, and the `quality_warning`. For non-known-hard garble only, if the observations or `re_roll_suggestion` localize the problem to one act, spend the one targeted act correction budget: materially change that act payload by shortening the affected line, splitting multi-clause wording, adding or refining the phonetic pronunciation aid, changing the shot prompt, reference image, voice ID, or other stage-specific input that caused the failure. Submit one corrected act with `quality_mode: "pro"`, re-concat the four acts, and run this analyze_media check one more time. If the second verdict still reports spoken jargon garble, do not call the podcast complete; return `not publish-ready`.
+- If `verdict` is `catastrophic`, spend the one targeted act correction budget only when the observations or `re_roll_suggestion` identifies a single bad act, wrong-host shot, black frame, or localized visual/audio failure. kling-v3-omni has no seed, and identical act payloads can resolve to the same job/asset. Do not submit an identical Kling payload. Before retrying, materially change the bad act payload by adjusting the script line, shot prompt, reference image, voice ID, pronunciation aid, or other stage-specific input that caused the failure. Submit one corrected act with `quality_mode: "pro"`, re-concat the four acts, and run this analyze_media check one more time. Do not exceed the cost-gate range: if the second verdict is still `catastrophic`, or if the failure is not attributable to one act, do not call the podcast complete; surface the verdict and `re_roll_suggestion` instead of declaring success.
 
 ---
 
