@@ -13,6 +13,8 @@ required-capabilities:
   - mcp__claude_ai_pika__upload_asset
   - mcp__plugin_pika_pika__dub_video
   - mcp__plugin_pika_pika__task_status
+  - mcp__claude_ai_pika__extract_audio_from_video
+  - mcp__claude_ai_pika__transcribe_audio
   - mcp__claude_ai_pika__edit_lipsync
   - mcp__claude_ai_pika__add_captions
 ---
@@ -24,6 +26,30 @@ required-capabilities:
 Translate and dub a video into another language while preserving the original speaker's voice. Pipeline: dub (one worker call) → lipsync (default ON) → burn target-language captions or bilingual captions.
 
 The dubbing worker does the heavy lifting in a single call: it transcribes, translates, preserves each speaker's voice server-side (no separate clone step), and returns a fully A/V-synced video — so there is no manual transcribe/clone/TTS/replace chain to manage and no duration-drift handling to do by hand.
+
+## Segmented / multi-language dub (per-range languages)
+
+Use this when the user wants **different languages on different parts** of one video (e.g. first half Spanish, second half Japanese), or wants to **translate only some sections** and keep the rest in the original voice. Both are the same thing: a timeline of segments, each tagged with a language; any uncovered range keeps the original audio.
+
+`mcp__plugin_pika_pika__dub_video` takes a `segments` plan **instead of** `target_language` (pass exactly one — they are mutually exclusive):
+
+```
+mcp__plugin_pika_pika__dub_video(source_video_url=<video_url>, segments=[
+  {start_s: 0,  end_s: 30, target_language: "es"},
+  {start_s: 30, end_s: 60, target_language: "ja"}
+])
+```
+
+How to build the plan: the user needs to know *where* the content is before they can pick ranges, so **transcribe first** — extract the audio with `mcp__claude_ai_pika__extract_audio_from_video`, then `mcp__claude_ai_pika__transcribe_audio(audio=<audio_url>, timestamps=true)`, show the user the timestamped segments, and let them say which time range goes to which language. Then assemble `segments[]` (seconds, ordered, non-overlapping) and make ONE `dub_video` call. There is no separate "video understanding" tool — the timestamped transcript is the understanding step.
+
+Behavior of the segmented path:
+- **Shared voice across all segments.** The source speaker is cloned once and every segment — in every language — is spoken in that same cloned voice, then the clone is recycled, all inside the one `dub_video` call. You never clone or delete a voice yourself.
+- **Keep-original.** Any time range NOT covered by a segment plays the original audio (voice + background) untouched. To translate only parts of a video, list only the parts you want translated.
+- **Length-locked.** Output stays exactly the source length (each dubbed range is speed-fit to its window), so boundaries line up with the original timeline.
+- **Provider.** Mixed-language-per-range always uses the voice-cloning route automatically; the single-call whole-video dubbing route can't mix languages per range, so don't force a single-call provider for a segmented plan. Every covered language must be supported on the voice-cloning route — if one isn't, surface the error and consult `references/language-coverage.md`.
+- **Result.** Same dubbed-video result; `target_language` echoes the covered languages comma-joined (e.g. `"spa,jpn"`), and no single `transcript_language` is returned (the track is multi-language). Lipsync (Step 2, default ON, ≤5 min) still runs on the whole dubbed video. For captions (Step 3), use the returned multi-language `subtitles[]` in `caption_mode="manual"`; auto re-transcription can't pick a single language for a mixed track.
+
+If `mcp__plugin_pika_pika__dub_video` rejects `segments` (older deployment without segmented support), fall back to dubbing each range single-language and concatenating — but prefer the one-call segmented path when available.
 
 ## Behavior defaults
 
@@ -65,7 +91,9 @@ Optional:
 
 Infer `bilingual_subtitles=true` from user wording even if the explicit flag is absent.
 
-If `--to` is missing, STOP and prompt the user.
+If `--to` is missing, STOP and prompt the user — UNLESS the user wants different languages on different parts, or to translate only some sections: that is the per-range segmented path (see "Segmented / multi-language dub" above), which uses a `segments` plan instead of `--to`.
+
+For the segmented path, first build the time-range plan: extract the audio with `mcp__claude_ai_pika__extract_audio_from_video`, then transcribe it with timestamps via `mcp__claude_ai_pika__transcribe_audio(audio=<audio_url>, timestamps=true)`, show the user the timestamped segments, and capture which time range maps to which language into `segments[]`.
 
 Outputs: `video_url`, `target_language`, `with_lipsync` (default true), `no_bgm` (default false), `bilingual_subtitles` (default false).
 

@@ -1,6 +1,6 @@
 # Language Coverage Reference
 
-Last verified: 2026-06-04 PST
+Use this reference as the current worker-supported fast path.
 
 ## Purpose
 
@@ -10,16 +10,16 @@ Do not proactively expose provider-specific language-list details in normal user
 
 ## Boundary
 
-The `dub_video` worker **owns a hardcoded, empirically-verified allowlist** (AGNT-689). It is no longer a blind pass-through. Two routing paths:
+The `dub_video` worker owns a hardcoded, empirically verified allowlist. It is no longer a blind pass-through. Two routing paths:
 
-- **ElevenLabs dubbing** handles **32 languages** — the codes ElevenLabs `eleven_dubbing` actually accepts, verified 2026-06-04 by submitting every code through the dubbing proxy. A target outside this set (and outside the Minimax set below) is rejected **before billing** with the supported list.
+- **ElevenLabs dubbing** handles **32 languages** — the codes ElevenLabs `eleven_dubbing` actually accepts through the worker path. A target outside this set (and outside the Minimax set below) is rejected **before billing** with the supported list.
 - **Minimax branch (voice-cloned)** handles **8 languages ElevenLabs cannot dub**: Cantonese, Thai, Hebrew, Persian, Slovenian, Catalan, Norwegian Nynorsk, Afrikaans. For these the worker clones the source speaker's voice and synthesizes with Minimax. Trade-offs on this path: one cloned voice for the whole clip, and the original background-music bed is replaced by the dubbed speech.
 
 **Mandarin gotcha:** ElevenLabs accepts only `zh`. The ISO-639-3 code `cmn` is rejected upstream; the worker auto-maps `cmn`/`zho`/`chi` to `zh`.
 
 The upstream dubbing product docs also advertise 90+ languages for a newer product path while noting that the newer API is not live yet. Do not use that 90+ claim as a guarantee for the current MCP worker path unless the API contract changes.
 
-Source note: the 32-language ElevenLabs set and the `cmn`-rejected behavior were verified empirically against the dubbing proxy on the date above. The 8-language Minimax set is Minimax Speech-02's `language_boost` coverage minus the ElevenLabs 32. Keep provider-specific names and links out of normal user-facing replies unless the user explicitly asks for the external source.
+Source note: the 32-language ElevenLabs set and the `cmn`-rejected behavior were verified empirically against the dubbing proxy. The 8-language Minimax set is Minimax Speech-02's `language_boost` coverage minus the ElevenLabs 32. Keep provider-specific names and links out of normal user-facing replies unless the user explicitly asks for the external source.
 
 ## Supported languages
 
@@ -64,7 +64,7 @@ ISO-639-1 spellings (`es`, `fr`, `ja`, `pt-BR`, …) are accepted and forwarded;
 
 ### Minimax voice-clone branch — 8 languages
 
-These are NOT supported by ElevenLabs dubbing; the worker routes them to Minimax with a cloned source voice (AGNT-689).
+These are NOT supported by ElevenLabs dubbing; the worker routes them to Minimax with a cloned source voice.
 
 | Language | Accepted target codes |
 | --- | --- |
