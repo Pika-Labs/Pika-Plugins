@@ -1,0 +1,22 @@
+<!--
+  PDF DO / DON'T — body fragment for html_to_pdf. Markup only; .dodont classes live in
+  pdf-shared-head.template.html. Two columns: Do (left, 5 items) | Don't (right, 5 items).
+
+  TOKENS:
+    {{DO_HTML}}    the Do list — raw <li>…</li> items (no <ul> wrapper), 5 items. ✓ added via CSS.
+    {{DONT_HTML}}  the Don't list — raw <li>…</li> items (no <ul> wrapper), 5 items. ✕ added via CSS.
+-->
+<div class="page dodont">
+  <div class="col do">
+    <div class="col-title">Do</div>
+    <ul>
+      {{DO_HTML}}
+    </ul>
+  </div>
+  <div class="col dont">
+    <div class="col-title">Don't</div>
+    <ul>
+      {{DONT_HTML}}
+    </ul>
+  </div>
+</div>

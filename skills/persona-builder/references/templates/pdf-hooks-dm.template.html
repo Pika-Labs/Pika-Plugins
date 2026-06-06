@@ -1,0 +1,25 @@
+<!--
+  PDF HOOKS + DM — body fragment for html_to_pdf. Markup only; .hooks classes live in
+  pdf-shared-head.template.html. Left column = numbered hook openers; right column =
+  DM / comment reply examples.
+
+  TOKENS:
+    {{HOOKS_HTML}}  the numbered hook list — raw <li>…</li> items (no <ol> wrapper);
+                    numbering is auto via CSS counter. ~5-7 hooks.
+    {{DM_HTML}}     the DM/comment examples — raw HTML of repeated .dm blocks (example below).
+
+  {{DM_HTML}} block — repeat one per example:
+    <div class="dm"><div class="who">FAN</div><div class="msg">message text…</div></div>
+-->
+<div class="page hooks">
+  <div class="col hooks-col">
+    <div class="col-title">Hook Openers</div>
+    <ol>
+      {{HOOKS_HTML}}
+    </ol>
+  </div>
+  <div class="col dm-col">
+    <div class="col-title">DMs &amp; Comments</div>
+    {{DM_HTML}}
+  </div>
+</div>

@@ -1,0 +1,32 @@
+<!--
+  PDF ABOUT — body fragment for html_to_pdf. Markup only; .about classes live in
+  pdf-shared-head.template.html. Left = prose + stats grid; right = 1-3 curated photos.
+
+  TOKENS:
+    {{ABOUT_HTML}}   1-2 <p>…</p> paragraphs from identity (raw HTML, no wrapper)
+    {{STAT_BASED}}   value for "Based"
+    {{STAT_NICHE}}   value for "Niche"
+    {{STAT_STATUS}}  value for "Status"
+    {{STAT_VOICE}}   value for "Voice"
+    {{SIDE_TILES}}   the side-photo loop — 1 to 3 .tile blocks (see example below)
+
+  {{SIDE_TILES}} loop — repeat one block per curated photo (1-3 total), fill url + crop:
+    <div class="tile" style="background-image:url('IMAGE_URL');background-position:50% 35%"></div>
+-->
+<div class="page about">
+  <div class="body">
+    <h1 class="page-title">About</h1>
+    <div class="prose">
+      {{ABOUT_HTML}}
+    </div>
+    <div class="stats">
+      <div class="stat"><div class="k">Based</div><div class="v">{{STAT_BASED}}</div></div>
+      <div class="stat"><div class="k">Niche</div><div class="v">{{STAT_NICHE}}</div></div>
+      <div class="stat"><div class="k">Status</div><div class="v">{{STAT_STATUS}}</div></div>
+      <div class="stat"><div class="k">Voice</div><div class="v">{{STAT_VOICE}}</div></div>
+    </div>
+  </div>
+  <div class="side">
+    {{SIDE_TILES}}
+  </div>
+</div>

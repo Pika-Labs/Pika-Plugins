@@ -1,0 +1,11 @@
+<!--
+  PDF MOODBOARD — body fragment for html_to_pdf. FULL BLEED: a single pre-composited
+  mood-board PNG fills the entire 1920x1080 page. No header band, no padding, no grid here
+  (the grid was already rendered into the PNG by mood-board-no-header.template.html).
+
+  TOKENS:
+    {{MOODBOARD_NOHEADER_URL}}  URL of the no-header mood-board PNG (1920x1080)
+-->
+<div class="page moodboard">
+  <img src="{{MOODBOARD_NOHEADER_URL}}" alt="">
+</div>
