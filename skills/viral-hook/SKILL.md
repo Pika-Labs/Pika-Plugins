@@ -8,10 +8,10 @@ description: >-
   "viral hook with typography", "scroll-stopper intro".
 argument-hint: "[video path or URL] [optional title line]"
 required-capabilities:
-  - mcp__claude_ai_pika__upload_asset
-  - mcp__claude_ai_pika__analyze_media
-  - mcp__claude_ai_pika__generate_viral_hook
-  - mcp__claude_ai_pika__task_status
+  - mcp__plugin_pika_pika__upload_asset
+  - mcp__plugin_pika_pika__analyze_media
+  - mcp__plugin_pika_pika__generate_viral_hook
+  - mcp__plugin_pika_pika__task_status
 ---
 
 # Viral Hook
@@ -20,7 +20,7 @@ Prepends an extreme, no-dialogue ~4s hook to a user's video — an attention-gra
 that erupts into the user's own scene, with an optional designed title burned into the
 lower third — then hard-cuts into the untouched clip.
 
-`mcp__claude_ai_pika__generate_viral_hook` does the whole render in one call and returns BOTH
+`mcp__plugin_pika_pika__generate_viral_hook` does the whole render in one call and returns BOTH
 the hook and the stitched final. This skill's job is the creative judgment the tool can't
 make: read the scene, pick a hook action from the menu, and write a title.
 
@@ -113,13 +113,13 @@ Wait for the next message. Don't guess an input.
 
 ### Step 1 — Get a URL
 
-If the input is a local file, `mcp__claude_ai_pika__upload_asset` it and use the returned
+If the input is a local file, `mcp__plugin_pika_pika__upload_asset` it and use the returned
 `public_url`. If it's already an https URL, use it directly. Any format is fine — no
 transcoding or probing here.
 
 ### Step 2 — Read the scene
 
-`mcp__claude_ai_pika__analyze_media(video_url)` → capture the subject + framing, indoor/outdoor + setting,
+`mcp__plugin_pika_pika__analyze_media(video_url)` → capture the subject + framing, indoor/outdoor + setting,
 lighting, photoreal vs stylized aesthetic, and the spirit/topic. Also note the **hero
 objects** (product, pet, drink, phone, logos) — required for super-categories C and D. This
 reading is passed verbatim as the `scene` parameter.
@@ -140,9 +140,12 @@ If no, skip — the hook renders title-free.
 
 ### Step 5 — Render
 
-Call `mcp__claude_ai_pika__generate_viral_hook({ video_url, scene, hook_action, title?, type_style?, seed? })`.
-If it returns `{task_id, status}`, poll `mcp__claude_ai_pika__task_status(task_id)` in a tight
+Call `mcp__plugin_pika_pika__generate_viral_hook({ video_url, scene, hook_action, title?, type_style?, seed? })`.
+If it returns `{task_id, status}`, poll `mcp__plugin_pika_pika__task_status(task_id)` in a tight
 loop until terminal, then read the result. On `failed`, surface the error — don't retry blindly.
+If the failure indicates provider-down, `provider_payment_required`, upstream 5xx, or provider
+unavailable, tell the user the render provider is temporarily unavailable and retry later with
+the same creative choices. Do not invent a skill-side renderer or route around the tool.
 
 ### Step 6 — Deliver
 

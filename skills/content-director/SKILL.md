@@ -14,16 +14,26 @@ description: >-
   "content-director".
 argument-hint: "<instagram-or-tiktok-handle> [talking|pov|dance|duet]"
 required-capabilities:
-  - mcp__claude_ai_pika__analyze_media
-  - mcp__claude_ai_pika__capture_website
-  - mcp__claude_ai_pika__edit_audio_replace
-  - mcp__claude_ai_pika__edit_concat
-  - mcp__claude_ai_pika__edit_trim
-  - mcp__claude_ai_pika__extract_audio_from_video
-  - mcp__claude_ai_pika__generate_reference_video
-  - mcp__claude_ai_pika__scrape_social
-  - mcp__claude_ai_pika__transcribe_audio
-  - mcp__claude_ai_pika__upload_asset
+  - mcp__plugin_pika_pika__analyze_media
+  - mcp__plugin_pika_pika__capture_website
+  - mcp__plugin_pika_pika__create_upload_return
+  - mcp__plugin_pika_pika__add_captions
+  - mcp__plugin_pika_pika__edit_audio_replace
+  - mcp__plugin_pika_pika__edit_audio_mix
+  - mcp__plugin_pika_pika__edit_audio_stitch
+  - mcp__plugin_pika_pika__edit_audio_trim
+  - mcp__plugin_pika_pika__edit_concat
+  - mcp__plugin_pika_pika__edit_reframe
+  - mcp__plugin_pika_pika__edit_split_screen
+  - mcp__plugin_pika_pika__edit_trim
+  - mcp__plugin_pika_pika__edit_transcode
+  - mcp__plugin_pika_pika__extract_audio_from_video
+  - mcp__plugin_pika_pika__generate_reference_video
+  - mcp__plugin_pika_pika__probe_media
+  - mcp__plugin_pika_pika__render_html_animation
+  - mcp__plugin_pika_pika__scrape_social
+  - mcp__plugin_pika_pika__task_status
+  - mcp__plugin_pika_pika__transcribe_audio
 ---
 
 # Content Director — Bundle (format router)
@@ -39,7 +49,7 @@ A single front-door content director that packs **four** format playbooks and ro
 
 **This skill ONLY bundles these four.** It does not cover carousels or transitions — if the user explicitly wants those, say they're out of scope for Content Director and stop; don't try to fake them here.
 
-**Teleprompter handoff (talking + duet only).** Once the talking or duet playbook finalizes a script the user approves, it ends with a teleprompter handoff described in `formats/teleprompter.md`: it emits the live URL `https://teleprompter.pika.bot/?script=...&handle=...&trend=...&format=...` and, when already available, an approved server/CDN QR image URL so the user can record on their phone (front camera + scrolling prompter + lens-aligned read zone + Share-sheet output). If no approved QR image path is available, the playbook surfaces the clickable URL only; the hosted page renders its own QR on desktop. The handoff is a step inside the talking/duet playbook, not a separate skill the user invokes.
+**Teleprompter handoff (talking + duet only).** Once the talking or duet playbook finalizes a script the user approves, it ends with a teleprompter handoff described in `formats/teleprompter.md`: it calls `mcp__plugin_pika_pika__create_upload_return`, emits the live URL `https://teleprompter.pika.bot/?script=...&handle=...&trend=...&format=...#upload=...`, and keeps the returned `status_url` so the agent can poll for the uploaded `public_url`. The page POSTs `{mime_type,size_bytes}` to `upload_url`, receives `direct_upload_url`, `attempt_id`, and `complete_url`, PUTs the recorded Blob directly to the CDN, then POSTs the `attempt_id` to `complete_url`. It falls back to Share/Save if upload fails. When already available, it may also include an approved server/CDN QR image URL so the user can record on their phone (front camera + scrolling prompter + lens-aligned read zone + upload-return output, with Share/Save fallback). If no approved QR image path is available, the playbook surfaces the clickable URL only. The hosted page does not load third-party scripts because the upload token lives in the URL fragment. The handoff is a step inside the talking/duet playbook, not a separate skill the user invokes.
 
 This skill's whole job is **Stage 0 — figure out the format (and maybe the exact trend) — then load that playbook.** Everything after is the format playbook's pipeline, run verbatim. Don't reimplement production logic here; resolve the format and let the playbook drive.
 
@@ -79,7 +89,11 @@ Once a reply arrives:
 
 ### Step 0b — Recommend a format from their profile
 
-Scrape the profile **once** (`mcp__claude_ai_pika__scrape_social` on `state.handle`; fall back to `mcp__claude_ai_pika__capture_website` on the public profile URL if it's empty / rate-limited — and say so). Pull the most recent 12–20 posts and synthesize a short `state.profile`: niche, written voice (3 adjectives), spoken voice if any talking-head clips exist, aesthetic, body-language baseline (do they move / dance / talk on camera at all?), what already over-performs. **Keep this `state.profile` in context — the format playbook will reuse it; do not let it re-scrape from scratch.**
+Scrape the profile **once** (`mcp__plugin_pika_pika__scrape_social` on `state.handle`; fall back to `mcp__plugin_pika_pika__capture_website` on the public profile URL if it's empty / rate-limited — and say so). Pull the most recent 12–20 posts.
+
+**Identity-confirmation gate before profiling.** Before you synthesize `state.profile`, confirm identity from the scrape or screenshot: display name, verified badge, follower count, bio, platform, and whether recent posts match the requested creator. Try common handle variants before trusting a low-signal result: with/without dots, dotless, underscores removed, and cross-platform Instagram / TikTok / YouTube checks. Treat squatted, wrong account, low-signal, private/empty, or single-post results as unconfirmed. When unconfirmed, stop and ask **"Is this you?"** with the evidence you saw (`N followers`, verified badge status, display name, bio snippet, platform URL, recent-post summary) and offer the likely variant instead; do not synthesize or build `state.profile` before identity is confirmed. Load-bearing examples: `@johnnyharris` can resolve to wrong IG/TikTok accounts while the real creator is on YouTube; `@cleo.abram` should trigger a dotless `@cleoabram` variant check.
+
+After identity is confirmed, set `state.identity_confirmed = true`, then synthesize a short `state.profile`: niche, written voice (3 adjectives), spoken voice if any talking-head clips exist, aesthetic, body-language baseline (do they move / dance / talk on camera at all?), what already over-performs. **Keep this `state.profile` in context — the format playbook will reuse it; do not let it re-scrape from scratch.**
 
 Then recommend using this mapping (rank, don't hard-filter — see the trend-vs-voice separation rule):
 
@@ -96,12 +110,14 @@ Present it as: **"Based on your profile I'd lean *{format}* because {1–2 lines
 
 This is the "give me a trend for each format and I'll choose" path. Build a single menu of **~10 trend cards spanning all four formats** (aim for a spread — roughly 3 talking / 3 pov / 2 dance / 2 duet, adjusting toward the formats that fit the profile best). **Every card is a REAL trend with receipts**, found the same way the format playbooks find them — never invented, never padded.
 
+Before building the sampler, require `state.profile` and `state.identity_confirmed = true`. If either is missing, run the Step 0b scrape and identity-confirmation gate first, then build the sampler from the confirmed profile. Do not build sampler cards from an unconfirmed handle.
+
 Use each format's own research method and gate:
 - **talking / pov** — fingerprinted or culturally-recognized viral formats. Reference clips **≥500K plays (broad)** or **≥50K (niche)**. See the virality receipts gate and the trend fingerprint gate.
 - **dance** — a currently-viral dance with a concrete, openable reference-clip URL whose choreography we can copy.
 - **duet** — a viral, recognizable ORIGINAL worth reacting to; proof is the **original's ≥500K plays**, not a replication wave. See the duet reaction model.
 
-Research order (don't skip — this order is the gate): discover named trends this week via WebSearch across 3+ creator-tool blogs (Later / Hootsuite / Buffer / OpusClip / Manychat) → capture each fingerprint (audio URL or verbatim opener) → verify replicators / play counts via `mcp__claude_ai_pika__scrape_social` (`tiktok/hashtag`, `tiktok/keyword`, `tiktok/trending-feed`, `instagram/reels-search`) → tag each surviving trend with its format. Drop anything that can't show the receipts. **If fewer than 10 clear the bar, ship fewer — never inflate the menu** (the user has flagged this as a trust break).
+Research order (don't skip — this order is the gate): discover named trends this week via WebSearch across 3+ creator-tool blogs (Later / Hootsuite / Buffer / OpusClip / Manychat) → capture each fingerprint (audio URL or verbatim opener) → verify replicators / play counts via `mcp__plugin_pika_pika__scrape_social` (`tiktok/hashtag`, `tiktok/keyword`, `tiktok/trending-feed` with `params.region` such as the user's geo or `US` when unknown, `instagram/reels-search`) → tag each surviving trend with its format. Drop anything that can't show the receipts. **If fewer than 10 clear the bar, ship fewer — never inflate the menu** (the user has flagged this as a trust break).
 
 Card format:
 
@@ -135,30 +151,43 @@ Once `state.format` is known, **read the matching playbook file and follow it ve
 
 Because this registered skill loads the format playbooks instead of registering separate slash skills, its `required-capabilities` frontmatter declares the union of MCP tools those playbooks may invoke:
 
-- `mcp__claude_ai_pika__scrape_social`
-- `mcp__claude_ai_pika__capture_website`
-- `mcp__claude_ai_pika__transcribe_audio`
-- `mcp__claude_ai_pika__analyze_media`
-- `mcp__claude_ai_pika__edit_trim`
-- `mcp__claude_ai_pika__edit_concat`
-- `mcp__claude_ai_pika__edit_audio_replace`
-- `mcp__claude_ai_pika__extract_audio_from_video`
-- `mcp__claude_ai_pika__generate_reference_video`
-- `mcp__claude_ai_pika__upload_asset`
+- `mcp__plugin_pika_pika__scrape_social`
+- `mcp__plugin_pika_pika__task_status`
+- `mcp__plugin_pika_pika__capture_website`
+- `mcp__plugin_pika_pika__transcribe_audio`
+- `mcp__plugin_pika_pika__analyze_media`
+- `mcp__plugin_pika_pika__create_upload_return`
+- `mcp__plugin_pika_pika__probe_media`
+- `mcp__plugin_pika_pika__edit_trim`
+- `mcp__plugin_pika_pika__edit_concat`
+- `mcp__plugin_pika_pika__edit_reframe`
+- `mcp__plugin_pika_pika__edit_transcode`
+- `mcp__plugin_pika_pika__edit_audio_replace`
+- `mcp__plugin_pika_pika__edit_audio_mix`
+- `mcp__plugin_pika_pika__edit_audio_stitch`
+- `mcp__plugin_pika_pika__edit_audio_trim`
+- `mcp__plugin_pika_pika__edit_split_screen`
+- `mcp__plugin_pika_pika__add_captions`
+- `mcp__plugin_pika_pika__extract_audio_from_video`
+- `mcp__plugin_pika_pika__generate_reference_video`
+- `mcp__plugin_pika_pika__render_html_animation`
+
+Any loaded playbook MCP worker can return `{task_id, status}` instead of an inline URL/result when the server budget expires or a render runs in the background. When that happens, immediately call `mcp__plugin_pika_pika__task_status(task_id=<task_id>)` in a tight loop (no Bash, no sleep) until `status` is `completed`, `failed`, or `cancelled`; when completed, continue the playbook with the returned `result` field as that tool's output. Do not proceed with placeholder URLs while a task is still `queued` or `running`.
 
 Read the file from the skill directory, carry `state.handle` and `state.brief` into it, and run its pipeline.
 
 **Critical rule — don't redo work you've already done.** You are the same agent in the same conversation; everything you scraped and surfaced in Stage 0 is still in context. When you load the playbook:
 
-- If you already built `state.profile` in 0b/0c → **reuse it. Do NOT re-scrape.** Jump straight to the playbook's trend stage with the profile already in hand.
-- If the user picked a specific trend from the 0c sampler (`state.pick` is set) → **carry it in as the chosen trend.** Skip the playbook's own menu-building (Stages 2–3); confirm the pick with a quick verification scrape if needed, then resume the playbook at its **Stage 4 (production package)**. Re-researching a fresh menu here wastes a turn and may surface a trend the user didn't ask for.
-- If only the format is locked (no specific trend yet) → resume the playbook at its **Stage 2 (trend research)** so it builds a full single-format menu, but still skip re-scraping the profile.
+- If the user picked a specific trend from the 0c sampler (`state.pick` is set) and `state.profile` plus `state.identity_confirmed = true` exist → **carry it in as the chosen trend.** Skip the playbook's own menu-building (Stages 2–3); confirm the pick with a quick verification scrape if needed, then resume the playbook at its **Stage 4 (production package)**. Re-researching a fresh menu here wastes a turn and may surface a trend the user didn't ask for.
+- If `state.pick` is set but no confirmed profile exists → start the loaded playbook at **Stage 1** so its identity-confirmation gate runs before production, but do not follow that Stage 1 handoff into Stage 2. After identity is confirmed, carry the picked trend forward and resume at Stage 4; skip only Stages 2–3.
+- If you already built `state.profile` in 0b/0c and `state.identity_confirmed = true` → **reuse it. Do NOT re-scrape.** Jump straight to the playbook's trend stage with the confirmed profile already in hand.
+- If only the format is locked (no specific trend yet) and no confirmed profile exists → start the loaded playbook at **Stage 1** so its identity-confirmation gate runs. If `state.profile` and `state.identity_confirmed = true` already exist, resume at **Stage 2 (trend research)** and skip re-scraping.
 
 State it to the user in one line — **"Building your {format} trend from here."** — then follow the playbook's instructions verbatim from the appropriate stage through its production, edit, and loop stages.
 
 ## Stage 2 — Loop (format switching)
 
-After the playbook delivers, it runs its own Stage-7 loop ("do another from this menu?"). Layer one extra option on top: **"…or want to switch formats? Say 'switch to dance/pov/talking/duet' and I'll route you over — your profile's already loaded, so we go straight to trends."** On a switch, set the new `state.format`, keep `state.profile`, and re-enter Stage 1 (load the new format's playbook, resume at its Stage 2). The profile never gets re-scraped within a session.
+After the playbook delivers, it runs its own Stage-7 loop ("do another from this menu?"). Layer one extra option on top: **"…or want to switch formats? Say 'switch to dance/pov/talking/duet' and I'll route you over — your profile's already loaded, so we go straight to trends."** On a format switch, set the new `state.format`, keep `state.profile` and `state.identity_confirmed = true`, and re-enter Stage 1 (load the new format's playbook, resume at its Stage 2). If the identity flag is missing, run the new format's Stage 1 identity-confirmation gate before trend research. The profile never gets re-scraped within a session unless identity is unconfirmed.
 
 ## What NOT to do
 

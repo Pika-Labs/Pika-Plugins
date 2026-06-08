@@ -118,6 +118,8 @@ Voice-page tiles demonstrate caption modes with fresh imagery. They should be di
 - **Vulnerable:** quiet room, unmade bed, journal, candle, late-night counter, window seat.
 - **Promo:** product in lived-in context, never a styled product hero shot.
 
+**gpt-image-2 content-policy fallback for generated selfie-register tiles:** if the model rejects "mirror selfie", "selfie", or "phone obscuring face" wording, retry once with safer language. Drop the word "selfie"; describe a hand-held phone body-framing shot, cropped outfit/body detail, or face hidden by a hand-held phone. Do not retry the same prompt or repeat rejected wording. No visible generated faces remains mandatory.
+
 Promo-mode formula:
 
 ```text
@@ -150,7 +152,7 @@ GPT renders atmosphere: rooms, weather, light, settings, types of objects, publi
 
 ## HTML/CSS composite assembly
 
-Build mood-board composites as deterministic HTML/CSS and render with `mcp__claude_ai_pika__html_to_png`; do not ask gpt-image-2 to render a mood-board grid.
+Build mood-board composites as deterministic HTML/CSS and render with `mcp__plugin_pika_pika__html_to_png`; do not ask gpt-image-2 to render a mood-board grid.
 
 **Title-banded board:**
 - Canvas: about 1920×1224 PNG (1920×1080 tile area + 120-144px header band).

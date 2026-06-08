@@ -6,23 +6,25 @@ description: >
   to fix — then ship the designed multi-page Influencer Persona PDF + a persona.md folder kit
   that downstream skills (ugc-ads, podcast, founder-product-video, app-sizzle, app-store-screens)
   can consume. Input is the person themselves: socials, camera roll, taste URLs, a selfie
-  video, or start-from-scratch answers. Visual/PDF stages still require user-provided photos
-  for curated tiles. Output is a self-contained kit + a roadmap to actually become that persona online.
+  video, or start-from-scratch answers. Visual/PDF stages still require real curated imagery:
+  user-provided photos, or clean public-feed frames from a supported social handle. Output is a
+  self-contained kit + a roadmap to actually become that persona online.
   Trigger phrases: "build my influencer identity", "make me a creator brand", "personal brand for
   [niche]", "build my online persona", "influencer persona.md", "I want to be an influencer",
   "make my creator identity", "persona.md for my socials", "creator identity for @[handle]",
   "persona-builder", "glow up my online presence".
 argument-hint: "[social handles, camera roll, taste URLs, or 'start from scratch']"
 required-capabilities:
-  - mcp__claude_ai_pika__identity_balance
-  - mcp__claude_ai_pika__scrape_social
-  - mcp__claude_ai_pika__transcribe_audio
-  - mcp__claude_ai_pika__generate_image
-  - mcp__claude_ai_pika__html_to_png
-  - mcp__claude_ai_pika__html_to_pdf
-  - mcp__claude_ai_pika__upload_asset
-  - mcp__claude_ai_pika__analyze_media
-  - mcp__claude_ai_pika__task_status
+  - mcp__plugin_pika_pika__identity_balance
+  - mcp__plugin_pika_pika__scrape_social
+  - mcp__plugin_pika_pika__transcribe_audio
+  - mcp__plugin_pika_pika__generate_image
+  - mcp__plugin_pika_pika__html_to_png
+  - mcp__plugin_pika_pika__html_to_pdf
+  - mcp__plugin_pika_pika__upload_asset
+  - mcp__plugin_pika_pika__extract_frame
+  - mcp__plugin_pika_pika__analyze_media
+  - mcp__plugin_pika_pika__task_status
 ---
 
 # Influencer Identity
@@ -33,7 +35,7 @@ Sister skill to `build-a-brand`: same uncompromising standards on voice, aesthet
 
 ## Cost transparency gate
 
-Before any paid MCP call, call `mcp__claude_ai_pika__identity_balance({verbose: true})` once. Surface the current balance, recent burn rate, and remaining runway, then gate the run with this exact message:
+Before any paid MCP call, call `mcp__plugin_pika_pika__identity_balance({verbose: true})` once. Surface the current balance, recent burn rate, and remaining runway, then gate the run with this exact message:
 
 > Estimated cost: about 600-1,200 credits (~$6-$12) for scrape/transcription if needed, GPT-image-2 mood-board and voice-page atmosphere tiles, MCP HTML image renders, JPG conversion, final html_to_pdf render, and post-render analyze_media PDF QA. This exceeds $5, so Reply `proceed` to continue or `cancel` to stop.
 
@@ -70,7 +72,7 @@ If the user already dropped one of the above, skip the menu and proceed straight
 
 ### Step 1 — Read the input
 
-Before supported social scrape/transcription or any other paid MCP call in this step, ensure the Cost transparency gate above has been completed. Run that gate only if it has not already run in this invocation; do not call `mcp__claude_ai_pika__identity_balance` again, and do not ask for a second `proceed` after the user has already approved the upfront cost gate.
+Before supported social scrape/transcription or any other paid MCP call in this step, ensure the Cost transparency gate above has been completed. Run that gate only if it has not already run in this invocation; do not call `mcp__plugin_pika_pika__identity_balance` again, and do not ask for a second `proceed` after the user has already approved the upfront cost gate.
 
 Open with a brief agenda so the user knows what's coming. Set the tone — this is a glow-up, not a packaging job:
 
@@ -88,15 +90,15 @@ let's start. [questions follow]
 ```
 
 **Read inputs first:**
-- If any supported social handles or supported social URLs were dropped → call `mcp__claude_ai_pika__scrape_social` on those supported socials IN PARALLEL before asking the canonical questions, so data is back by the time the user answers. Do not send unsupported taste URLs (Spotify, Depop, Letterboxd, personal sites, mood-board links, etc.) to `mcp__claude_ai_pika__scrape_social`; keep them as taste signals and ask what to borrow from them if the intent is not obvious. Standard call pattern per supported platform:
-  - **instagram**: `instagram.profile` + `instagram.user-posts` (limit 30) + `instagram.user-reels` (limit 30)
-  - **tiktok**: `tiktok.profile` + `tiktok.profile-videos` (limit 30)
+- If any supported social handles or supported social URLs were dropped → call `mcp__plugin_pika_pika__scrape_social` on those supported socials IN PARALLEL before asking the canonical questions, so data is back by the time the user answers. Use `rehost: true` for Instagram/TikTok feed and video actions so downstream curated tiles have durable `pika_cdn_url` / CDN media instead of ephemeral signed media. Do not send unsupported taste URLs (Spotify, Depop, Letterboxd, personal sites, mood-board links, etc.) to `mcp__plugin_pika_pika__scrape_social`; keep them as taste signals and ask what to borrow from them if the intent is not obvious. Standard call pattern per supported platform:
+  - **instagram**: `instagram.profile` + `instagram.user-posts` (limit 30, `rehost: true`) + `instagram.user-reels` (limit 30, `rehost: true`)
+  - **tiktok**: `tiktok.profile` + `tiktok.profile-videos` (limit 30, `rehost: true`)
   - **youtube**: `youtube.channel` + `youtube.channel-videos` (limit 30)
   - **twitter**: `twitter.profile` + `twitter.user-tweets` (limit 30)
   - **pinterest**: `pinterest.profile` (limit 50)
-  Pull recent posts, captions, bios, visual style. Note dominant subjects, lighting, voice patterns, caption length, hook style. All scraped data is **input signal** that informs Step 2; nothing from the scrape goes directly into the mood board. **Scraped captions are the PRIMARY voice signal for the voice bank in Step 4 — direct user captions beat any inference from chat answers.** Chat-voice + intake answers are the fallback only when scrape fails (private account, no posts yet, brand-new handle).
+  Pull recent posts, captions, bios, visual style. Note dominant subjects, lighting, voice patterns, caption length, hook style. Captions, bios, metrics, and visual-style summaries are **text/strategy signal** that informs Step 2; they are not dropped raw into visual artifacts. Clean public-feed media from the `rehost: true` scrape can become curated image source material in Step 3 / Step 4 after the source-priority and no-text gates below. **Scraped captions are the PRIMARY voice signal for the voice bank in Step 4 — direct user captions beat any inference from chat answers.** Chat-voice + intake answers are the fallback only when scrape fails (private account, no posts yet, brand-new handle).
 - If camera roll / photos → look at them. Note settings, lighting, what's in frame, what's NOT (no people? all flatlay? always outdoors?).
-- If selfie video → transcribe via `mcp__claude_ai_pika__transcribe_audio`, note vocabulary, energy, pacing, fillers, what they're enthusiastic about.
+- If selfie video → transcribe via `mcp__plugin_pika_pika__transcribe_audio`, note vocabulary, energy, pacing, fillers, what they're enthusiastic about.
 
 **Then ask these 4 FIXED canonical questions in a single message.** Same every time — do NOT improvise or substitute. Consistency matters; if the user restarts and gets different questions, they lose trust in the process.
 
@@ -136,7 +138,7 @@ For each direction:
 - **Why this direction fits the inputs** — point to the specific posts / photos / things they said that support it
 - **Rough monetization profile** — typical CPM range, common brand-deal floor at different follower tiers (e.g. "fashion micro: $100–250/post at 5K; lifestyle micro: $150–300/post; finance: $400–800/post"), affiliate/LTK reasonableness, sponsored-post realism. Every numeric monetization claim must either cite a source verified during this run or be explicitly labeled **broad heuristic estimate**; never present unsourced CPMs, follower thresholds, or brand-deal floors as precise facts.
 - **Content load this path requires** — posting cadence (e.g. "4–5 outfits/week + 1 location reel"), production tier expected (phone-shot OK vs. mirrorless needed), recurring formats audiences expect in this niche (e.g. "OOTD posts + 'GRWM for X' reels + monthly local-roundup carousel")
-- **Who's already winning here at your size** — name 2–3 creators at 5K–30K who run this exact play, with one sentence each on what makes them work. Only name real creators, handles, follower tiers, or current metrics if verified during this run via `mcp__claude_ai_pika__scrape_social` or another live supported source. If you cannot verify, use clearly labeled archetypes instead (e.g. "local style micro-creator archetype") and omit handles/counts.
+- **Who's already winning here at your size** — name 2–3 creators at 5K–30K who run this exact play, with one sentence each on what makes them work. Only name real creators, handles, follower tiers, or current metrics if verified during this run via `mcp__plugin_pika_pika__scrape_social` or another live supported source. If you cannot verify, use clearly labeled archetypes instead (e.g. "local style micro-creator archetype") and omit handles/counts.
 
 End the section with a direct question: **"which of these directions are you most drawn to — or do you want to combine?"** Don't let the user pick "lifestyle" generically; force the choice to be specific.
 
@@ -229,12 +231,13 @@ Be specific about what's amplified, what's filtered, and why.]
 Build the mood board AFTER identity is locked. **The board is built to match the `Visual aesthetic` section in the approved Step 2 identity.md — not to discover the aesthetic.** Re-read that section before sourcing or generating any tile. Every tile (curated + generated) must serve that locked spec.
 
 **Source priority — mix is required, fully-generated is a fail state:**
-1. **Individual full-resolution photos from the user** (their camera roll, photos they love, full-res files) — the ONLY curated source. These go in `mood-board/curated/`.
+1. **Individual full-resolution photos from the user** (their camera roll, photos they love, full-res files) — the strongest curated source. These go in `mood-board/curated/`.
+1a. **Handle-only public-feed fallback for video-heavy / mostly Reels accounts.** If the user gave a public handle but no separate photo files, scraped feed imagery can provide curated tiles. For image posts, use the highest-quality `image_versions2.candidates[0].url`. For video posts where `media_url` is a `.mp4`, do not use the ephemeral IG `visual_media_url` / signed cover JPG as the curated tile source; do not alter any signed-cover query param because that causes `URL signature mismatch`, and mid-clip covers often include baked-in caption or title overlays. Use only the durable rehosted `.mp4` returned by the Step 1 `rehost: true` scrape (the `pika_cdn_url` / `cdn.pika.art` media; treat it as `is_durable: true`) and call `mcp__plugin_pika_pika__extract_frame(video_url: <durable_rehosted_mp4>, time_s: 0)`. This server-side ffmpeg frame-0 extraction gives a clean first frame and avoids the burned-in text that appears later in many reels. If no durable rehosted `.mp4` is present, retry the scrape with `rehost: true`; do not fall back to a signed cover URL. If frame 0 still contains text, drop that reel for curated-tile purposes; mood-board tiles and voice-page curated tiles must be clean, no text on tiles.
 2. **NEVER crop from an IG grid screenshot.** Tile widths in grid screenshots aren't pixel-aligned to clean fractions; auto-crop bleeds; result is bad. Confirmed-fail approach. If a user offers a grid screenshot, **ask them for individual photos instead**.
-3. **A mood board with zero curated tiles has failed.** If user photos didn't reach disk, unblock that first — never substitute generated stand-ins. For start-from-scratch / no-social users, pause here and request 16+ individual photos before building visual artifacts: 6 mood-board curated tiles plus 10 separate PDF voice-page curated tiles.
+3. **A mood board with zero curated tiles has failed.** If neither user photos nor clean public-feed curated frames are available, unblock that first — never substitute generated stand-ins. If the user intended to provide photos and they didn't reach disk, ask them to re-upload. For start-from-scratch / no-social users, pause here and request 16+ individual photos before building visual artifacts: 6 mood-board curated tiles plus 10 separate PDF voice-page curated tiles.
 4. **Read the `Relationship to existing grid` field from Step 2.** If the locked aesthetic is identical to the user's existing grid, place curated tiles as-is. If Step 2 names a slight evolution (e.g. "their grid is warm + washed, the influencer aesthetic pushes deeper shadows + cooler highlights"), apply **light CSS color treatment** in the HTML composite before rendering — `filter: contrast(...) saturate(...) brightness(...)`, a subtle overlay, or a mild blend-mode treatment. **Never re-pass the user's photos through gpt-image-2** — image-model re-rendering drifts face/pet/object identity and breaks the "this is actually her" anchor. If the divergence is too large for CSS treatment alone, the answer is more generated atmosphere tiles in the new aesthetic + fewer untreated curated tiles, NOT regenerating her photos.
 5. **Identify aesthetic coverage gaps** — what part of the locked Step 2 aesthetic isn't represented yet (a specific setting, framing, lighting condition)?
-6. **Fill gaps with `mcp__claude_ai_pika__generate_image` (provider="gpt-image-2")** for **social-content atmosphere only** *(load-bearing phrase — pushes gpt-image-2 away from vision-board / wallpaper energy; see Load-bearing phrases section)*, prompted in the Step 2 aesthetic (its palette, lighting, settings, photography style). See the hard rules below. Generated tiles go in `mood-board/generated/`.
+6. **Fill gaps with `mcp__plugin_pika_pika__generate_image` (provider="gpt-image-2")** for **social-content atmosphere only** *(load-bearing phrase — pushes gpt-image-2 away from vision-board / wallpaper energy; see Load-bearing phrases section)*, prompted in the Step 2 aesthetic (its palette, lighting, settings, photography style). See the hard rules below. Generated tiles go in `mood-board/generated/`.
 
 🛑 **HARD RULE: Generated tiles render SOCIAL CONTENT energy, not atmospheric vision-board energy.**
 
@@ -255,7 +258,7 @@ See `references/aesthetic-prompts.md` "Social trend framings" for the prompt pat
 
 Generated tiles render: rooms, weather, light through windows, hardwood floors, snow on cobblestones, the *type* of object they collect (vintage leather goods, brass watches), the *kind* of place they go (golden-hour skylines, woodland trails). NEVER a fake version of someone or something they actually have. **Reason:** face/animal fidelity drifts, and a fake version of someone's real dog reads as uncanny and insulting. The user will tell you "that's not my dog."
 
-**Composite — fill the template, don't author CSS.** The board is built from a fixed template, `references/templates/mood-board.template.html`, rendered by `mcp__claude_ai_pika__html_to_png`. Never ask gpt-image-2 to render a "mood board grid" — it hallucinates the tiles. **You only supply data:** exactly 12 `.tile` rows (each an image URL + a per-image `background-position` crop focus), the brand name, the subtitle vibe words, the font pair, and the palette tokens. The template owns the grid math, the white header band, and the dimensions once — so the cream-sliver / off-grid failures can't recur. Set `{{COLS}}` to **6** for portrait tiles (default; most camera-roll input) or **4** for landscape-heavy input. Use exactly 12 tiles so the title-banded board and the PDF full-bleed no-header variant fill the canvas with no empty cells.
+**Composite — fill the template, don't author CSS.** The board is built from a fixed template, `references/templates/mood-board.template.html`, rendered by `mcp__plugin_pika_pika__html_to_png`. Never ask gpt-image-2 to render a "mood board grid" — it hallucinates the tiles. **You only supply data:** exactly 12 `.tile` rows (each an image URL + a per-image `background-position` crop focus), the brand name, the subtitle vibe words, the font pair, and the palette tokens. The template owns the grid math, the white header band, and the dimensions once — so the cream-sliver / off-grid failures can't recur. Set `{{COLS}}` to **6** for portrait tiles (default; most camera-roll input) or **4** for landscape-heavy input. Use exactly 12 tiles so the title-banded board and the PDF full-bleed no-header variant fill the canvas with no empty cells.
 
 **Curated:generated ratio = ~50/50.** Roughly 6 curated + 6 generated for a 12-tile board. A board that's 8+ curated tiles + 2-3 generated reads as "her camera roll dumped on a grid" — not designed. The generated tiles do the work of expanding the aesthetic into branded territory she hasn't shot yet (the brunch tablescape, the wool-coat outfit selfie, the cocktail POV). A 50/50 mix reads as a designed mood board with real-life anchoring.
 
@@ -280,12 +283,12 @@ Save the chosen pair as `fontDisplay` + `fontBody` in the persona.md Visual aest
 - `{{BRAND_NAME}}`, `{{SUBTITLE}}` (tracked vibe words, e.g. `BOSTON · WOOL COATS · COCKTAIL BARS`).
 - `{{FONT_IMPORT}}` (a Google Fonts `<link>` when the pair isn't system-installed), `{{FONT_DISPLAY}}`, `{{FONT_BODY}}`, `{{BG}}` (lightest palette tone), `{{FG}}`, `{{MUTED}}`.
 
-Then call `mcp__claude_ai_pika__html_to_png` with `format: "png"` and `raster_options.viewport_px = { width: 1920, height: 1224 }`. If it returns `{task_id, status}`, poll `mcp__claude_ai_pika__task_status({task_id})` until terminal and read the image URL. **For the PDF full-bleed page (Step 4 page 3)**, render the SAME tiles through `references/templates/mood-board-no-header.template.html` at `{ width: 1920, height: 1080 }` — that variant has zero gutters so the PDF page shows no cream slivers.
+Then call `mcp__plugin_pika_pika__html_to_png` with `format: "png"` and `raster_options.viewport_px = { width: 1920, height: 1224 }`. If it returns `{task_id, status}`, poll `mcp__plugin_pika_pika__task_status({task_id})` until terminal and read the image URL. **For the PDF full-bleed page (Step 4 page 3)**, render the SAME tiles through `references/templates/mood-board-no-header.template.html` at `{ width: 1920, height: 1080 }` — that variant has zero gutters so the PDF page shows no cream slivers.
 
 **Mandatory checks before delivering:**
-1. **Curated tiles required.** A fully-generated mood board is a fail state. If you can't get user-supplied images on disk, the gate is "unblock the file path," not "ship without."
+1. **Curated tiles required.** A fully-generated mood board is a fail state. Valid curated tiles are user-supplied images or clean public-feed curated frames from a supported social handle. If you can't get either onto the board, the gate is "unblock the real curated source," not "ship without."
 2. **No regenerated real subjects.** Re-read the hard rule above. The user's face, pet, partner, friends — never generated. Their atmosphere — fine.
-3. **No baked-in text on generated tiles.** gpt-image-2 prompts must include the no-text guardrail — append `"NO text anywhere in image"` *(load-bearing — gpt-image-2 otherwise bakes faux brand labels onto bottles, scarves, books; see Load-bearing phrases section)*.
+3. **No baked-in text on any tile.** gpt-image-2 prompts must include the no-text guardrail — append `"NO text anywhere in image"` *(load-bearing — gpt-image-2 otherwise bakes faux brand labels onto bottles, scarves, books; see Load-bearing phrases section)*. For handle-only reel-derived curated tiles, use frame 0 from the durable rehosted `.mp4`; if a reel frame still shows burned-in caption/title overlays, drop it rather than shipping text on the board.
 4. **Anti-stocky test.** If the board reads as stock photography (uniform polish, uniform palette, studio-perfect, no real-life imperfection) — fail. Trendy 2024–2026 aesthetic energy = real-feeling snapshots > campaign-clean glossiness. The curated user tiles anchor the "real" register; generated tiles should match that energy, not slick up.
 5. **Palette variation within the identity.** A cohesive palette is fine; a single-register board ("just brown" / "just sage" / "just beige") reads dead. Even within a warm-cognac identity, you can include warm cream, dusty rose, deep navy, sage — whatever co-exists naturally in their world.
 6. **Cast diversity on any generated tiles featuring people.** Name an ethnicity per prompt *(load-bearing procedural rule — gpt-image-2 defaults to lighter skin tones otherwise; see Load-bearing phrases section)*. (Note: with the hard rule above, generated tiles featuring people should be RARE — strangers in scenes only, never the user.) See `references/aesthetic-prompts.md` for the cast-diversity prompt pattern.
@@ -323,7 +326,7 @@ Generate the voice-bank text first (the same content the old skill produced inli
 
 **PDF spec:**
 - **Page size:** 16:9 landscape, 1920×1080 per page.
-- **Page count:** exactly 12 pages maximum, each focused on one idea. Do not expand the kit past 12 pages: the required `mcp__claude_ai_pika__analyze_media` PDF QA path uses `all_pages: true`, and that sync path supports at most 12 PDF pages.
+- **Page count:** exactly 12 pages maximum, each focused on one idea. Do not expand the kit past 12 pages: the required `mcp__plugin_pika_pika__analyze_media` PDF QA path uses `all_pages: true`, and that sync path supports at most 12 PDF pages.
 - **Typography:** the `fontDisplay` + `fontBody` pair locked in Step 3. NO third font, no mixing of register.
 - **Palette:** the Visual aesthetic palette from Step 2. Page backgrounds default to the lightest tone; accents from the rest of the palette.
 
@@ -346,7 +349,7 @@ Generate the voice-bank text first (the same content the old skill produced inli
 
 **Voice-mode page imagery — the demonstration:**
 - **Exactly 4 tiles per voice-mode page, arranged in the 2×2 grid above.** With an 800×920px grid and 16px gap, each tile cell is **392×452px** at page scale. Fill the cell with `width: 100%; height: 100%; background-size: cover;` and tune `background-position` per tile; do not force a separate 3:4 crop that would overflow the grid.
-- **Split: 2 curated + 2 freshly-generated tiles per page.** Curated = scraped feed images at higher quality than what's in the mood board (different posts). If there is no feed/no social yet, use different user-provided camera-roll photos instead. If there are no curated user photos, do not build the PDF; pause and request real photos.
+- **Split: 2 curated + 2 freshly-generated tiles per page.** Curated = scraped feed images at higher quality than what's in the mood board (different posts). For handle-only video-heavy / mostly Reels accounts, treat clean `mcp__plugin_pika_pika__extract_frame(video_url: <durable_rehosted_mp4>, time_s: 0)` outputs from `.mp4` `media_url` posts as curated feed images; do not use altered `visual_media_url` signed covers, and reject frames with baked-in caption/title overlays. If there is no feed/no social yet, use different user-provided camera-roll photos instead. If there are no curated user photos or clean public-feed curated frames, do not build the PDF; pause and request real photos.
 - **Voice-page tiles MUST be different from the mood board.** The mood board is the visual world; voice pages demonstrate the voice with fresh imagery. Reusing mood-board tiles flattens the read.
 - **Be smart per mode — match imagery to mode intent:**
   - Hook → bold scroll-stopper OOTD / cinematic outfit walks
@@ -356,6 +359,7 @@ Generate the voice-bank text first (the same content the old skill produced inli
   - Promo → product-on-table, brand-deal-style flat lays, the user's own brand collab posts
 - **Curated photos (the user's real face / pet / partner) are placed as-is** — never AI-modified. Light CSS color treatment from Step 3 is OK; full re-rendering through gpt-image-2 is not.
 - For generated selfie tiles, **never generate the user's face** — render faceless mirror-selfie POVs (`"hand obscuring face"`, `"phone obscuring face"`, `"back-of-head 3/4"`) *(load-bearing phrasings — without them gpt-image-2 invents the user's face, breaking the "this is actually her" anchor; see Load-bearing phrases section)* so the imagery reads as a selfie register without faking identity.
+- **gpt-image-2 content-policy fallback:** if a generated selfie-register prompt is rejected because the words "mirror selfie", "selfie", or "phone obscuring face" trip the policy filter, retry once with reworded, policy-safe framing. Drop the word "selfie"; write a hand-held phone body-framing shot, cropped outfit/body detail, or face hidden by a hand-held phone. Do not retry the same prompt or repeat rejected wording. The fallback still requires no visible generated faces and must not invent the user's face.
 
 #### 4c — Design principles (non-negotiable)
 
@@ -370,28 +374,28 @@ Generate the voice-bank text first (the same content the old skill produced inli
 - **Assemble from the page templates — don't author HTML/CSS.** `shared_head` = `references/templates/pdf-shared-head.template.html` (carries the palette/font vars + ALL page CSS; fill its `{{FONT_IMPORT}}` / `{{FONT_DISPLAY}}` / `{{FONT_BODY}}` / `{{BG}}` / `{{FG}}` / `{{ACCENT}}` / `{{MUTED}}` tokens). `body_pages[]` = the filled per-page templates in sequence: `pdf-cover` → `pdf-about` → `pdf-moodboard` → `pdf-content-categories` → `pdf-voice-mode` ×5 (one per mode) → `pdf-hooks-dm` → `pdf-do-dont` → `pdf-next-steps`. Each body fragment is markup-only; the worker injects `shared_head` into every page and renders them in parallel, then merges.
 - Use one `@page` rule per slide (1920×1080 landscape, no margins on @page).
 - Embed fonts by filling `{{FONT_IMPORT}}` with one Google Fonts `<link rel="stylesheet" href="...">` tag; that token is inserted before the shared `<style>` block.
-- Reference images as HTTPS URLs — for local images, call `mcp__claude_ai_pika__upload_asset` first to get a CDN URL, then reference that URL in the HTML.
-- **🛑 LOAD-BEARING: pass `pdf_options.paper_size` explicitly to `mcp__claude_ai_pika__html_to_pdf`.** The `@page { size: 1920px 1080px }` CSS rule alone is **not enough** — `mcp__claude_ai_pika__html_to_pdf` defaults to US Letter (792×612 points, 1.294 aspect ratio) if `pdf_options.paper_size` is omitted, and the 1920×1080-designed HTML gets scaled/letterboxed into the letter page with giant white bars top and bottom. Always pass:
+- Reference images as HTTPS URLs — for local images, call `mcp__plugin_pika_pika__upload_asset` first to get a CDN URL, then reference that URL in the HTML.
+- **🛑 LOAD-BEARING: pass `pdf_options.paper_size` explicitly to `mcp__plugin_pika_pika__html_to_pdf`.** The `@page { size: 1920px 1080px }` CSS rule alone is **not enough** — `mcp__plugin_pika_pika__html_to_pdf` defaults to US Letter (792×612 points, 1.294 aspect ratio) if `pdf_options.paper_size` is omitted, and the 1920×1080-designed HTML gets scaled/letterboxed into the letter page with giant white bars top and bottom. Always pass:
   ```json
   "pdf_options": {
     "paper_size": {"width": 1920, "height": 1080, "unit": "px"},
     "margins": {"top": 0, "right": 0, "bottom": 0, "left": 0, "unit": "px"}
   }
   ```
-  `mcp__claude_ai_pika__html_to_pdf` defaults to async mode. If the response is `{task_id, status}`, poll `mcp__claude_ai_pika__task_status({task_id})` in a tight loop until `completed`, `failed`, or `cancelled`; on `completed`, read the PDF URL from the task result before proceeding. Verify after each render by calling `mcp__claude_ai_pika__analyze_media` on the rendered PDF as `application/pdf` with `all_pages: true`. Ask it to inspect all pages for 16:9 landscape framing, no US Letter letterboxing, no giant white bars, no blank trailing pages, and no page that breaks the visual hierarchy. If it reports letterboxing or white bars, rerender with the explicit `pdf_options.paper_size` above.
+  `mcp__plugin_pika_pika__html_to_pdf` defaults to async mode. If the response is `{task_id, status}`, poll `mcp__plugin_pika_pika__task_status({task_id})` in a tight loop until `completed`, `failed`, or `cancelled`; on `completed`, read the PDF URL from the task result before proceeding. Keep the completed `mcp__plugin_pika_pika__html_to_pdf` / `mcp__plugin_pika_pika__task_status` result in notes; its server-side structural metadata (`page_count`, and `pages[]` when present) is the only portable page-count evidence for the timeout fallback. Verify after each render by calling `mcp__plugin_pika_pika__analyze_media` on the rendered PDF as `application/pdf` with `all_pages: true`. Ask it to inspect all pages for 16:9 landscape framing, no US Letter letterboxing, no giant white bars, no blank trailing pages, and no page that breaks the visual hierarchy. If `all_pages: true` times out on an image-dense PDF, use the Step 4e per-page QA + server-result page-count / `pdf_options.paper_size` fallback before deciding whether the render can proceed. If it reports letterboxing or white bars, rerender with the explicit `pdf_options.paper_size` above.
 - Save the resulting PDF as `./tmp/[handle]-influencer-kit/influencer-persona.pdf` (never `media-kit.pdf`).
 
-**🛑 PDF size cap: html_to_pdf rejects outputs over 50 MB.** gpt-image-2 PNG outputs are 1–3 MB each; with ~15–20 images per kit, raw PNG embeds can push past the cap on the first render. **Before final PDF render, reduce large generated images through MCP, not local image libraries:** wrap each large image URL in a one-image HTML/CSS frame and call `mcp__claude_ai_pika__html_to_png` with `format: "jpg"`, `raster_options.viewport_px` capped so the longest side is ≤1400, and `raster_options.jpeg_quality: 85`. If the response is `{task_id, status}`, poll `mcp__claude_ai_pika__task_status({task_id})` until terminal and use the completed JPG URL in the PDF HTML.
+**🛑 PDF size cap: html_to_pdf rejects outputs over 50 MB.** gpt-image-2 PNG outputs are 1–3 MB each; with ~15–20 images per kit, raw PNG embeds can push past the cap on the first render. **Before final PDF render, reduce large generated images through MCP, not local image libraries:** wrap each large image URL in a one-image HTML/CSS frame and call `mcp__plugin_pika_pika__html_to_png` with `format: "jpg"`, `raster_options.viewport_px` capped so the longest side is ≤1400, and `raster_options.jpeg_quality: 85`. If the response is `{task_id, status}`, poll `mcp__plugin_pika_pika__task_status({task_id})` until terminal and use the completed JPG URL in the PDF HTML.
 
 **Canonical generated-tile URL pipeline (MCP-only):**
-1. Generate each atmosphere tile with `mcp__claude_ai_pika__generate_image` (provider="gpt-image-2").
-2. For every generated PNG that will be embedded in the PDF, transcode/downscale through `mcp__claude_ai_pika__html_to_png` by placing the source URL as a full-bleed background image in a small HTML frame and rendering `format: "jpg"` at quality 85.
+1. Generate each atmosphere tile with `mcp__plugin_pika_pika__generate_image` (provider="gpt-image-2").
+2. For every generated PNG that will be embedded in the PDF, transcode/downscale through `mcp__plugin_pika_pika__html_to_png` by placing the source URL as a full-bleed background image in a small HTML frame and rendering `format: "jpg"` at quality 85.
 3. Build an explicit `asset_url_map` in scratch notes: raw generated URL → final JPG URL. Insert the final JPG URLs into the `body_pages` fragments.
 4. Grep the final HTML/source notes for raw `gpt-image-` PNG URLs before render; the mood board full-bleed PNG may remain, but voice-page generated tiles should use the final JPG URLs.
-5. Call `mcp__claude_ai_pika__html_to_pdf` with `body_pages`, `shared_head`, and the explicit `pdf_options.paper_size` above.
+5. Call `mcp__plugin_pika_pika__html_to_pdf` with `body_pages`, `shared_head`, and the explicit `pdf_options.paper_size` above.
 6. A 12-page kit at this spec should land far below 50 MB. PDFs in the 40–55 MB range mean the MCP JPG conversion step was skipped or the HTML still references raw generated PNGs. AI tiles that still look "stocky" after this means the *composition* itself is the problem — go to Step 4d.5 for the re-generation prompt formula.
 
-**🛑 Cloudflare R2 / `mcp__claude_ai_pika__upload_asset` PUT gotchas:**
+**🛑 Cloudflare R2 / `mcp__plugin_pika_pika__upload_asset` PUT gotchas:**
 - **Presigned URLs expire in 300s.** A sequential `curl PUT` chain of 10+ files where each takes 8–12s can exceed the window for the last few URLs. **Always run PUTs in parallel** using `(curl ... &)` subshells + `wait`.
 - **Subshell PUTs can drop the `Content-Type` header silently** — the file uploads but R2 stores it with `text/html` MIME, which then makes html_to_pdf reject the image with "MIME type 'text/html' is not in the allowlist." Mitigation: after every batch PUT, verify with `curl -s -I <url> | grep content-type` and re-PUT any wrong types.
 - **Re-mint + re-PUT immediately if you see 403/ExpiredRequest.** Don't try to extend a stale URL.
@@ -426,11 +430,12 @@ Use the HTML render layer to match generated tiles to the user's real-photo regi
 
 #### 4e — Mandatory checks before delivering
 
-1. **Render-read every page through MCP.** Call `mcp__claude_ai_pika__analyze_media` on the final PDF URL as `application/pdf` with `all_pages: true` and ask for a page-by-page QA pass: confirm every page renders cleanly in 16:9 landscape, no blank pages, no US Letter white-bar letterboxing, no confusing/off-aesthetic pages, no broken hierarchy, and no visible image/crop failure. If any issue is reported, fix the HTML/assets and rerender before delivering.
+1. **Render-read every page through MCP.** Call `mcp__plugin_pika_pika__analyze_media` on the final PDF URL as `application/pdf` with `all_pages: true` and ask for a page-by-page QA pass: confirm every page renders cleanly in 16:9 landscape, no blank pages, no US Letter white-bar letterboxing, no confusing/off-aesthetic pages, no broken hierarchy, and no visible image/crop failure. If any issue is reported, fix the HTML/assets and rerender before delivering.
+   - **Fallback only for image-dense PDF timeout / rasterization budget failures:** `all_pages: true` is still the mandatory first QA call. If that all-pages call times out or fails only because the multi-page PDF rasterization budget was exhausted, do not block the run solely on that aggregate failure. Verify structure from MCP/server evidence first: the completed `mcp__plugin_pika_pika__html_to_pdf` or `mcp__plugin_pika_pika__task_status` result must report `page_count: 12` (and `pages[]` length 12 when present), the render request must have exactly 12 `body_pages`, and the submitted `pdf_options.paper_size` must be `{width: 1920, height: 1080, unit: "px"}` with zero margins. Treat that server-render result + request as the MediaBox/page-size contract; do not run local PDF inspection or local PDF tools/libraries. If the server result lacks `page_count`, the fallback is not proven: rerender with smaller JPG assets or stop and report `pdf_structural_metadata_unavailable`. Once structure is proven, run per-page MCP QA with `mcp__plugin_pika_pika__analyze_media(media=<pdf_url>, application/pdf, page: <n>)` for page 1 through page 12, asking the same visual QA question for each page. Any per-page visual defect still blocks delivery and requires rerender.
 2. **Anti-AI-voice on all captions** is re-checked before they go into the PDF.
 3. **Real photo integrity** — the user's face / pet / partner only as curated originals (or lightly graded), never AI-rendered.
 4. **Typography consistency** — same display + body pair on every page. No surprise font swaps.
-5. **No baked-in text on generated tiles** (carried over from Step 3).
+5. **No baked-in text on any tile** (carried over from Step 3). Check generated, curated, public-feed, and reel-derived tiles; if a frame has burned-in caption/title overlays or any other visible text, replace it and rerender before delivery.
 6. **Palette stays inside the spec** — no rogue colors.
 7. **PDF size under 50 MB** — if html_to_pdf returns a "File too large" error, the MCP PNG→JPG conversion step (4d) was skipped.
 8. **Voice-page imagery is mode-appropriate** — Selfie page actually shows selfies; Vulnerable page actually shows quiet-moment imagery. Not "abstract atmosphere for everything."
@@ -589,7 +594,7 @@ Tell the user the rough total up front.
 |---|---|---|
 | Stage 0 → Step 1 (intake + Q&A + social scrape) | 5–15 min | User-paced; one batch of questions; scrape runs in parallel |
 | Step 2 (identity summary) | 2–4 min | All text; user reads + approves |
-| Step 3 (mood board: font pick + curate + GPT fill + composite) | 6–10 min | gpt-image-2 generations + HTML/CSS composite rendered through `mcp__claude_ai_pika__html_to_png` |
+| Step 3 (mood board: font pick + curate + GPT fill + composite) | 6–10 min | gpt-image-2 generations + HTML/CSS composite rendered through `mcp__plugin_pika_pika__html_to_png` |
 | Step 4 (Influencer Persona PDF: voice draft + 10 new generated tiles + 10 curated tiles + HTML layout + MCP JPG conversion + html_to_pdf render) | 12–20 min | Heaviest step. ~10 gpt-image-2 generations in parallel, curated image selection, MCP image renders, HTML + PDF render, JPG conversion pass to stay under 50 MB cap. |
 | Step 5 (package kit) | 2–4 min | File assembly + README |
 
@@ -606,7 +611,7 @@ Verbatim anchors that go into gpt-image-2 prompts (or procedural rules that hold
 
 ### Identity-preservation anchors (selfie / face content)
 
-- **`"faceless"`, `"hand obscuring face"`, `"phone obscuring face"`, `"back-of-head 3/4"`** — load-bearing for ALL selfie-mode generations. Without one of these, gpt-image-2 invents the user's face, breaking the "this is actually her" anchor (hard rule in Step 3). Referenced in Step 4b voice imagery + Step 3 hard rule.
+- **`"faceless"`, `"hand obscuring face"`, `"phone obscuring face"`, `"back-of-head 3/4"`** — load-bearing for ALL selfie-mode generations. Without one of these, gpt-image-2 invents the user's face, breaking the "this is actually her" anchor (hard rule in Step 3). Referenced in Step 4b voice imagery + Step 3 hard rule. If gpt-image-2 rejects the original wording on content-policy grounds, retry once after dropping the word "selfie" and rephrasing as a hand-held phone body-framing shot with the face hidden by a hand-held phone; do not repeat the rejected prompt.
 
 ### Image-content guardrails
 
@@ -616,7 +621,7 @@ Verbatim anchors that go into gpt-image-2 prompts (or procedural rules that hold
 ### Procedural anchors
 
 - **Name a specific ethnicity per face-bearing prompt** — gpt-image-2 defaults to lighter skin tones otherwise. Vary across the set. Referenced in Step 3 mandatory check #6.
-- **Render generated PNGs through `mcp__claude_ai_pika__html_to_png` before PDF embedding** — the MCP JPG conversion keeps the final PDF under the 50 MB cap and lets CSS filters/overlays match the generated tile to nearby real-photo register. This is size + presentation hygiene; it cannot rescue bad generated composition.
+- **Render generated PNGs through `mcp__plugin_pika_pika__html_to_png` before PDF embedding** — the MCP JPG conversion keeps the final PDF under the 50 MB cap and lets CSS filters/overlays match the generated tile to nearby real-photo register. This is size + presentation hygiene; it cannot rescue bad generated composition.
 
 ### Voice anchors (caption copy)
 
@@ -637,13 +642,15 @@ When editing the skill: if you touch a section that references one of these phra
 | Mood board reads as stocky / iStockphoto density | Too many tiles (24+), uniform polish, uniform color register, studio-clean | Exactly 12 tiles at 1920×1080. Varied palette within the identity. Real-feeling snapshots > campaign-clean. The curated user tiles set the "real" register; generated tiles match that energy, never slick up. |
 | Mood board palette collapses to one color (e.g. "just brown") | Every generated prompt named the same dominant color register | Cohesive palette is fine; mono-register is dead. Even a warm-cognac identity can include cream, sage, dusty rose, deep navy where those co-exist in the user's world. Vary lighting and setting, not just subjects. |
 | Sample captions sound like creator-template filler | Wrote in "creator voice" instead of THIS creator's voice | Re-read the user's actual scraped captions and the personality Q&A. Pull phrases / energy / sentence rhythm from those. Rewrite from there. |
-| `mcp__claude_ai_pika__scrape_social` returns "not found" | Handle typo or wrong platform (gave you a TikTok handle thinking it was IG) | Confirm the handle with the user, retry with the correction. |
-| Taste URL sent to `mcp__claude_ai_pika__scrape_social` and fails | Spotify / Depop / Letterboxd / personal sites are taste signals, not supported `mcp__claude_ai_pika__scrape_social` platforms | Do not call `mcp__claude_ai_pika__scrape_social` for unsupported taste URLs. Record what the URL suggests; if unclear, ask what dimension to borrow from it. |
-| `mcp__claude_ai_pika__scrape_social` returns "private account" | Account is private | Ask the user to set it public temporarily OR paste 5–10 recent captions in chat. If they cannot, mark the voice bank as inferred from chat answers and keep caption examples conservative. |
-| `mcp__claude_ai_pika__scrape_social` throttled | Platform rate-limited the worker | Wait 60s and retry once. If still throttled, fall back to manual caption paste. |
-| `mcp__claude_ai_pika__scrape_social` returns posts but no caption text | Photos-only / reels-only account with no caption bodies | Use bio + chat-voice as voice signal. Note in `persona.md` that captions weren't available so other skills know the voice was inferred. |
+| `mcp__plugin_pika_pika__scrape_social` returns "not found" | Handle typo or wrong platform (gave you a TikTok handle thinking it was IG) | Confirm the handle with the user, retry with the correction. |
+| Taste URL sent to `mcp__plugin_pika_pika__scrape_social` and fails | Spotify / Depop / Letterboxd / personal sites are taste signals, not supported `mcp__plugin_pika_pika__scrape_social` platforms | Do not call `mcp__plugin_pika_pika__scrape_social` for unsupported taste URLs. Record what the URL suggests; if unclear, ask what dimension to borrow from it. |
+| `mcp__plugin_pika_pika__scrape_social` returns "private account" | Account is private | Ask the user to set it public temporarily OR paste 5–10 recent captions in chat. If they cannot, mark the voice bank as inferred from chat answers and keep caption examples conservative. |
+| `mcp__plugin_pika_pika__scrape_social` throttled | Platform rate-limited the worker | Wait 60s and retry once. If still throttled, fall back to manual caption paste. |
+| `mcp__plugin_pika_pika__scrape_social` returns posts but no caption text | Photos-only / reels-only account with no caption bodies | Use bio + chat-voice as voice signal. Note in `persona.md` that captions weren't available so other skills know the voice was inferred. |
+| `URL signature mismatch` when trying to use a reel cover | Used or modified the ephemeral IG `visual_media_url` / signed cover URL instead of a durable video asset; signed cover query params must stay untouched and are not reliable curated-tile sources | For handle-only Reels accounts, ignore the signed cover for curated tiles. Use the durable rehosted `.mp4` `media_url` (for example `cdn.pika.art`) and call `mcp__plugin_pika_pika__extract_frame(video_url: <durable_rehosted_mp4>, time_s: 0)` to create the tile. |
+| Reel-derived curated tile has baked-in caption/title overlays | Sampled a mid-clip reel frame or cover frame after the creator's text appeared | Extract frame 0 / `time_s: 0` from the durable rehosted `.mp4`; if that first frame still has text, drop the reel and choose another clean post. Mood-board and voice-page tiles must have no text on tiles. |
 | User says "make it more X" without approving | Treated creative direction as approval | Incorporate the direction, regenerate the relevant artifact, ask for approval again. Don't skip the gate. |
-| Mood board has visible misaligned / overlapping tiles | HTML/CSS grid dimensions or `object-position` values were off | Re-check tile dimensions and grid spacing. Re-render with `mcp__claude_ai_pika__html_to_png`. Don't ship a misaligned board. |
+| Mood board has visible misaligned / overlapping tiles | HTML/CSS grid dimensions or `object-position` values were off | Re-check tile dimensions and grid spacing. Re-render with `mcp__plugin_pika_pika__html_to_png`. Don't ship a misaligned board. |
 | Generated cast defaults to white / light-skinned | gpt-image-2 default behavior when ethnicity isn't named in the prompt | Name a specific ethnicity per face-bearing prompt, varied across the set. See `references/aesthetic-prompts.md` for the pattern. |
 | Authenticity dial isn't called out in persona.md | Treated "real / amplified / different" as a private decision instead of public spec | persona.md must say it out loud. Other skills downstream read this file — they need to know what's amplified. |
 | Skill skipped the strategic conversation and went straight to identity lock | Treated Step 2 as just "draft identity.md" instead of the four-part real-talk step | Step 2 has four parts (2a strategic direction, 2b gap analysis, 2c content critique + gear, 2d identity lock). Skipping 2a–2c is the most common failure mode — the user came for the real talk, not for packaging. |
@@ -652,16 +659,18 @@ When editing the skill: if you touch a section that references one of these phra
 | Key Next Steps page has 300+ px of dead space below the cards | Grid rows auto-sized to content; flex container had spare height that didn't propagate to rows | Set `.next-grid { height: 720px; grid-template-rows: 1fr 1fr 1fr; }` so the 3 rows distribute evenly across a definite height. See Step 4 page-sequence load-bearing rule for the final page. |
 | Kit shipped a contact card / "let's work together" page | Inherited the old refs-and-contact final page | The final page is **Key Next Steps**, not a contact card. The user defines their persona, not their brand-deal contact form, in this skill. |
 | Content categories card photos crop the subject's chin off or center the wrong thing | Used uniform `background-position: center` for all 4 cards | Each card declares its own per-card `background-position` (e.g. `50% 20%` for upper-body, `50% 35%` for top-down kitchen, `50% 50%` for centered subjects). Image container is 300×400, not 240×320. |
-| PDF has giant white bars at the top and bottom of every page | Forgot to pass `pdf_options.paper_size` to `mcp__claude_ai_pika__html_to_pdf` — the @page CSS rule is not enough; the tool defaults to US Letter (792×612, 1.29 aspect) and the 1920×1080 HTML letterboxes into it | Always pass `pdf_options: { paper_size: {width: 1920, height: 1080, unit: "px"}, margins: {top:0, right:0, bottom:0, left:0, unit:"px"} }`. After render, call `mcp__claude_ai_pika__analyze_media` on the PDF as `application/pdf` with `all_pages: true` and ask it to flag white-bar letterboxing or any non-16:9 page. |
+| PDF has giant white bars at the top and bottom of every page | Forgot to pass `pdf_options.paper_size` to `mcp__plugin_pika_pika__html_to_pdf` — the @page CSS rule is not enough; the tool defaults to US Letter (792×612, 1.29 aspect) and the 1920×1080 HTML letterboxes into it | Always pass `pdf_options: { paper_size: {width: 1920, height: 1080, unit: "px"}, margins: {top:0, right:0, bottom:0, left:0, unit:"px"} }`. After render, call `mcp__plugin_pika_pika__analyze_media` on the PDF as `application/pdf` with `all_pages: true` and ask it to flag white-bar letterboxing or any non-16:9 page. |
+| `mcp__plugin_pika_pika__analyze_media(all_pages: true)` times out on an image-dense final PDF | Multi-page PDF rasterization budget exhausted before Gemini sees every page | Use the Step 4e fallback only with portable evidence: `mcp__plugin_pika_pika__html_to_pdf` / `mcp__plugin_pika_pika__task_status` result `page_count: 12` (and `pages[]` length 12 when present), original `body_pages.length === 12`, and explicit 1920×1080 `pdf_options.paper_size`. Then run `mcp__plugin_pika_pika__analyze_media` with `page: <n>` for page 1 through page 12. If `page_count` is missing, rerender smaller or stop with `pdf_structural_metadata_unavailable`; do not use local PDF tools/libraries. |
 | Voice-page AI tiles still look stocky in the rendered PDF | The prompt composition is stocky OR the final `body_pages` still reference raw generated PNGs instead of MCP-converted JPG URLs | Re-generate with lived-in-context prompts. Then update `asset_url_map`, replace the raw generated URLs in `body_pages`, and grep the source notes for stale raw generated URLs before rerender. |
 | Final kit ships without an `images/` folder | Treated the existing `mood-board/` + `build/` subfolders as sufficient | At Step 5 packaging, create `./images/` and copy every image actually used in the PDF (curated tiles, MCP-converted generated tiles, mood-board variants). The user expects a single browse-able folder of "every photo in my kit"; raw asset folders aren't a substitute. |
 | Kit shipped before user explicitly approved | Misread "I love this" or "make it more X" as ship-it | Approval is explicit only. Re-ask if ambiguous. The gate exists because the kit locks every decision. |
-| `mcp__claude_ai_pika__html_to_pdf` returns "File too large" (>50 MB) | Embedded gpt-image-2 PNG outputs at full resolution. 10–20 PNGs at 1–3 MB each blow past the cap. | Mandatory: convert large PNG image inputs to JPG q85 through `mcp__claude_ai_pika__html_to_png` before the final render. See Step 4d for the workflow. Result should land far below 50 MB for a 12-page kit. |
+| `mcp__plugin_pika_pika__html_to_pdf` returns "File too large" (>50 MB) | Embedded gpt-image-2 PNG outputs at full resolution. 10–20 PNGs at 1–3 MB each blow past the cap. | Mandatory: convert large PNG image inputs to JPG q85 through `mcp__plugin_pika_pika__html_to_png` before the final render. See Step 4d for the workflow. Result should land far below 50 MB for a 12-page kit. |
 | Texture-swatch / color-swatch palette page reads as "all cloth" or "all boring" | Tried to make the Visual Aesthetic page interesting with material textures (cashmere, peony, silk, leather, velvet, eucalyptus) but textures end up reading as the same fabric register — they don't tell a brand partner what the creator actually MAKES. | Replace the Visual Aesthetic page with a **Content Categories** page (page 4). 4 cards in 2×2 grid, each = image + category name + 1-line description + 3–4 example post types. Categories derived from the user's actual feed. This is what brand partners want to see. |
 | Voice-page imagery doesn't match mode (e.g. atmospheric scenery on a Selfie page) | Treated voice pages as "any aesthetic image" instead of mode-demonstrative imagery | When the mode is "Casual Selfie," show actual selfies (mirror, 3/4 back-of-head, phone-obscured face). When "Vulnerable," show quiet-moment imagery (unmade bed, candle, journal). Match the mode intent — that's the whole point of demonstrating voice-in-context. |
 | Voice pages reuse mood-board tiles | Defaulted to mood-board imagery to save generation cost | Voice pages need FRESH imagery — different curated posts from scrape (use other `image_versions2.candidates[0].url` indices) + freshly-generated tiles. The mood board is the visual world; voice pages prove the voice in NEW contexts. |
 | Mood board on PDF page 3 reads with empty cream around it | Used `mood-board.png` (with title band) and `background-size: contain` | Pre-render a `mood-board-no-header.png` variant (1920×1080, just the tile grid, no title) and embed full-bleed with `background-size: cover`. Keep the title-banded version as the standalone disk artifact. |
 | Thin cream slivers visible on the left/right edges (or between rows) of the full-bleed mood board page | No-header HTML kept the standard outer padding/gutters | The no-header variant must use zero outer padding, zero gutters, and tile dimensions that exactly fill 1920×1080. The standalone disk mood-board.png keeps its gutters/header. |
 | AI tiles still feel AI after CSS treatment | The AI tell is the *composition*, not just the photography style — and presentation treatment can't redo composition. Common: skincare flat lay on marble with peonies, perfume on silk scarf, perfectly arranged cinnamon dough. | Re-generate with prompts that put the item in *real lived-in context* — handheld + actual messy environment + faceless person partially in frame + "NOT a styled flat lay / product hero shot." See Step 4d.5 for the prompt formula and Promo-mode examples. |
-| html_to_pdf rejects image asset with "MIME type 'text/html' is not in the allowlist" | A parallel subshell `curl PUT` after `mcp__claude_ai_pika__upload_asset` dropped the `Content-Type: image/jpeg` header silently; R2 stored the JPG with `text/html` MIME | After every batch PUT, verify with `curl -s -I <url> \| grep content-type` and re-PUT any with wrong types. Or use sequential PUTs (but watch the 5-min URL TTL — see next row). |
+| gpt-image-2 rejects a generated selfie-register prompt on content policy | The prompt used risky terms such as "mirror selfie", "selfie", or "phone obscuring face" | Retry once with policy-safe wording: drop the word "selfie", describe a hand-held phone body-framing shot or face hidden by a hand-held phone, and keep no visible generated faces. Do not repeat the rejected prompt. |
+| html_to_pdf rejects image asset with "MIME type 'text/html' is not in the allowlist" | A parallel subshell `curl PUT` after `mcp__plugin_pika_pika__upload_asset` dropped the `Content-Type: image/jpeg` header silently; R2 stored the JPG with `text/html` MIME | After every batch PUT, verify with `curl -s -I <url> \| grep content-type` and re-PUT any with wrong types. Or use sequential PUTs (but watch the 5-min URL TTL — see next row). |
 | Cloudflare R2 returns 403 ExpiredRequest on PUT | Presigned URL TTL is 300s. A sequential `curl PUT` chain of 10+ files at 8–12s each exceeds the window for the last few URLs. | Run PUTs in parallel using `(curl ... &)` subshells + `wait`. Mint + PUT within one tight cycle. Re-mint if you hit 403 — don't try to extend a stale URL. |

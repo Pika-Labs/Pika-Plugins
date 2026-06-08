@@ -11,10 +11,21 @@ description: >-
   "TTC trends for {handle}", "hot-take trend for my niche", "content-director talking".
 argument-hint: <instagram-or-tiktok-handle>
 required-capabilities:
-  - mcp__claude_ai_pika__scrape_social
-  - mcp__claude_ai_pika__capture_website
-  - mcp__claude_ai_pika__transcribe_audio
-  - mcp__claude_ai_pika__analyze_media
+  - mcp__plugin_pika_pika__scrape_social
+  - mcp__plugin_pika_pika__capture_website
+  - mcp__plugin_pika_pika__probe_media
+  - mcp__plugin_pika_pika__transcribe_audio
+  - mcp__plugin_pika_pika__analyze_media
+  - mcp__plugin_pika_pika__extract_audio_from_video
+  - mcp__plugin_pika_pika__edit_trim
+  - mcp__plugin_pika_pika__edit_reframe
+  - mcp__plugin_pika_pika__edit_concat
+  - mcp__plugin_pika_pika__edit_audio_stitch
+  - mcp__plugin_pika_pika__edit_audio_replace
+  - mcp__plugin_pika_pika__edit_audio_mix
+  - mcp__plugin_pika_pika__add_captions
+  - mcp__plugin_pika_pika__create_upload_return
+  - mcp__plugin_pika_pika__task_status
 ---
 
 # Content Director — Talking-to-Camera
@@ -22,6 +33,8 @@ required-capabilities:
 A talking-to-camera specialist content director. The user gives an IG or TikTok handle; this playbook reverse-engineers their voice, finds TTC trends that pass a hard virality gate, and produces one end-to-end: spoken script in their voice + shot list + final edited mp4 with captions + trending audio mixed under the spoken track.
 
 Sibling routing: `formats/pov.md` (silent / situational), `formats/dance.md` (AI-generated dance from a photo), the Content Director front door (multi-format menu), `formats/duet.md` (stitch / duet reactions).
+
+**Long-running MCP tools:** If any MCP call returns `{task_id, status}` instead of an inline URL/result, immediately call `mcp__plugin_pika_pika__task_status(task_id=<task_id>)` in a tight loop (no Bash, no sleep) until `status` is `completed`, `failed`, or `cancelled`. Continue with the returned `result` only after completion.
 
 ## Parameters
 
@@ -49,16 +62,17 @@ Once a handle arrives, save it as `state.handle` and the optional bias as `state
 
 The goal: capture the user's *written* voice AND *spoken* voice. TTC lives on spoken delivery, so spoken voice matters more than written; but written is the fallback when no audio exists on the grid.
 
-1. **Scrape** — call `mcp__claude_ai_pika__scrape_social` on `state.handle` (instagram profile + user-reels + user-posts, or tiktok profile + profile-videos). Pull the most recent 12-20 posts.
-2. **Listen** — if any scraped posts are reels with the creator talking, transcribe one or two via `mcp__claude_ai_pika__transcribe_audio` to capture cadence, fillers, sign-offs, energy curve.
-3. **Fallback** — if scrape returns empty / rate-limited, run `mcp__claude_ai_pika__capture_website` on the public profile URL for a grid screenshot, and tell the user the profile is grid-only (spoken voice will be inferred from caption style).
-4. **Synthesize** `state.profile`:
+1. **Scrape** — call `mcp__plugin_pika_pika__scrape_social` on `state.handle` (instagram profile + user-reels + user-posts, or tiktok profile + profile-videos). Pull the most recent 12-20 posts.
+2. **Fallback** — if scrape returns empty / rate-limited, run `mcp__plugin_pika_pika__capture_website` on the public profile URL for a grid screenshot, and tell the user the profile is grid-only (spoken voice will be inferred from caption style).
+3. **Identity-confirmation gate before profiling** — confirm the scraped account is the intended creator before you transcribe reels or synthesize `state.profile`. Cross-check display name, verified badge, follower count, bio, platform, and whether recent posts match the user's expected creator. Try common handle variants first: with/without dots, dotless, underscores removed, and cross-platform Instagram / TikTok / YouTube checks. Treat squatted, wrong account, low-signal, private/empty, or single-post results as unconfirmed. When unconfirmed, stop and ask **"Is this you?"** with the evidence you saw (`N followers`, verified badge status, display name, bio snippet, platform URL, recent-post summary) and offer the likely variant; do not synthesize the profile before identity is confirmed. When identity is confirmed, set `state.identity_confirmed = true`.
+4. **Listen** — after identity is confirmed, if any scraped posts are reels with the creator talking, transcribe one or two via `mcp__plugin_pika_pika__transcribe_audio` to capture cadence, fillers, sign-offs, energy curve.
+5. **Synthesize** `state.profile`:
    - **Niche** — primary topic cluster
    - **Voice (written)** — 3 adjectives (dry / earnest / chaotic / aspirational / deadpan / playful / hyped / soft / sarcastic / nerdy)
    - **Voice (spoken)** — separate from written; delivery speed, energy floor and ceiling, fillers, catchphrases, sign-offs. Note explicitly when this is unknown (no talking-head content on grid) so Stage 4 inherits written voice as a placeholder.
    - **Caption style** — short clipped vs long rambly, casing, emoji habits, punctuation. Copy this into on-screen title text so muted viewers feel the same voice as the spoken delivery.
    - **Aesthetic, recurring motifs, what works, filming environment baseline** — see the multi-option script and shot-list contract for what to capture.
-5. **Present** the profile to the user in ~6 short lines (with separate "writes like" / "talks like" rows), then continue to Stage 2.
+6. **Present** the profile to the user in ~6 short lines (with separate "writes like" / "talks like" rows), then continue to Stage 2.
 
 ## Stage 2 — Trend research → `state.menu`
 
@@ -94,9 +108,9 @@ If the trend requires silent acting and narrative-by-caption only → route to `
 
 Topical keyword searches return vibe clusters of low-view content. The correct order is named-trend discovery first, virality verification second, TTC filter third.
 
-1. **Discover named trends this week.** WebSearch for "TikTok trends {currentMonth} {currentYear}" and "Instagram Reels trends this week {currentMonth} {currentYear}" — cross-reference 3+ creator-tool blogs (Later, Hootsuite, NewEngen, Manychat, Buffer, OpusClip). Only trends named by 2+ blogs are still warm. In parallel: `mcp__claude_ai_pika__scrape_social tiktok / trending-feed` and `tiktok / popular-hashtags` to spot sounds with 5+ creators in the top 50.
+1. **Discover named trends this week.** WebSearch for "TikTok trends {currentMonth} {currentYear}" and "Instagram Reels trends this week {currentMonth} {currentYear}" — cross-reference 3+ creator-tool blogs (Later, Hootsuite, NewEngen, Manychat, Buffer, OpusClip). Only trends named by 2+ blogs are still warm. In parallel: `mcp__plugin_pika_pika__scrape_social tiktok / trending-feed` with `params.region` set to the user's geo, or `US` when unknown, and `tiktok / popular-hashtags` to spot sounds with 5+ creators in the top 50.
 2. **Capture the fingerprint** per candidate — exact audio name + artist + sound URL, OR the verbatim opening phrase. If creators paraphrase the opener, it's a format not a trend.
-3. **Verify replicators** — for each candidate, scrape 3+ high-view clips via `mcp__claude_ai_pika__scrape_social tiktok / hashtag` (the trend's specific tag, not generic) or `tiktok / keyword` (using the verbatim phrase). Read each clip's `play_count` field and confirm threshold. Drop candidates that don't have 3 above the line.
+3. **Verify replicators** — for each candidate, scrape 3+ high-view clips via `mcp__plugin_pika_pika__scrape_social tiktok / hashtag` (the trend's specific tag, not generic) or `tiktok / keyword` (using the verbatim phrase). Read each clip's `play_count` field and confirm threshold. Drop candidates that don't have 3 above the line.
 4. **Filter for TTC** — the format must involve audible spoken delivery from the creator. Pure lip-sync, pure POV/silent, pure dance → drop.
 5. **Score for the user's voice** — last step, ranking only, NOT a filter. The trend's format is vibe-agnostic; the user's voice attaches via the script in Stage 4. See the trend-vs-voice separation rule.
 
@@ -149,7 +163,7 @@ On-screen opening title (0:00-2.0s): "{exact title text}"
 Stinger title (optional, last 1-2s): "{exact text or 'none'}"
 ```
 
-Save the chosen variation as `state.script`.
+Save the chosen full spoken script as `state.script_text`, and save its planned spoken duration from the approved variation/shot list as `state.planned_script_duration_s`. Keep the selected variation metadata in `state.script` only if the agent needs the concept/title fields later.
 
 ### 4b. Filming breakdown
 
@@ -169,30 +183,28 @@ The validated default — **phone at eye level, 18-24 inches from face, chest-up
 
 Be filmable, not vibey. See the multi-option script and shot-list contract for the bar — "phone on tripod at eye level, 22 inches from face, sit on the edge of the bed facing the window so the natural light hits your left cheek" beats "morning storytime energy."
 
-For b-roll inserts: list each insert separately with its own framing + duration, specify which spoken line it cuts in over, keep inserts silent so the A-roll voiceover carries under.
+For b-roll inserts in this MCP-only path: use them only when the spoken script is split at natural pauses into separate A-roll segments around the insert, e.g. `a1 -> b1 -> a2`. Do not plan one full-script A-roll plus appended B-roll; that would put the cutaway after the complete speech. Each silent B-roll replaces a pause between A-roll clips, not an overlay under continuous voice.
 
-For lip-sync-then-talk hybrid: specify the exact lip-sync window (first 2-3s) and lyric being mouthed, plus the pivot moment where audio ducks and the user starts talking.
+Do not plan lip-sync-then-talk hybrids in this MCP-only path until an envelope-capable audio workflow is validated. Pick a bed-under TTC trend instead.
 
 ### 4c. Caption layout
 
 Two layers of on-screen text:
 
-**Layer 1 — Opening title card** (muted-viewer hook). Top safe zone, `y=380` for 1080×1920. Text mirrors or paraphrases the spoken opener. In 0:00-2.0s. Style: white Arial Bold ~57-63px with 4px black stroke (Instagram-native look — see Load-bearing phrases).
+**Layer 1 — Opening title card** (muted-viewer hook). Top safe zone, `margin_v≈380` for 1080×1920. Text mirrors or paraphrases the spoken opener. In 0:00-2.0s. Style: `reels-clean`, bold white text, 4px black outline, no pill (Instagram-native look — see Load-bearing phrases).
 
-**Layer 2 — Word-sync captions** for the spoken script. Bottom safe zone, `y=1255`. Auto-generated from `mcp__claude_ai_pika__transcribe_audio` word-level timestamps in Stage 6. 2-4 word chunks, ~1.5-2.5s each, no chunk crossing a sentence break.
+**Layer 2 — Word-sync captions** for the spoken script. Bottom safe zone, `margin_v≈665` from the bottom edge. Auto-generated from `mcp__plugin_pika_pika__transcribe_audio(timestamps=true)` segment timestamps in Stage 6, then split into short phrase rows only when a segment is too dense. 2-4 word chunks when possible, ~1.5-2.5s each, no chunk crossing a sentence break.
 
 Pre-deliver the user a preview of how the word-sync captions will look for one or two variations (the punchy hook + the stinger) so they can flag rewording before filming.
 
 ### 4d. Trending audio role
 
-The exact sound URL and where its beats land, plus how it sits in the mix:
+The exact sound URL and how it sits in the mix:
 
-- **Bed-under** (most common for TTC): trending sound at -12 to -18 dB under the spoken voice. The vibe of the sound colors the post; the algorithm matches on audio fingerprint.
-- **Sting-then-duck**: trending sound full-volume for the first 2-3s (often a viral musical hit), then ducks hard so spoken voice takes over.
-- **End-tag only**: trending sound silent for most of the video, fades in at the final 2-3s as a stinger.
-- **Lip-sync-then-talk**: trending sound full volume in the lip-sync window, ducks to -15 dB once the user starts talking, optionally returns at the end.
+- **MCP-supported default: Bed-under only** — trending sound at -12 to -18 dB under the spoken voice for the full clip. The vibe of the sound colors the post; the algorithm matches on audio fingerprint.
+- **Unsupported in this MCP-only path until revalidated:** sting-then-duck, end-tag only, and lip-sync-then-talk. `mcp__plugin_pika_pika__edit_audio_mix` supports constant gain/offset tracks, not a timed duck/fade envelope. If a trend depends on those dynamics, pick a different TTC trend or file a follow-up rather than approximating it incorrectly.
 
-Save the chosen role as `state.audio_role` — Stage 6 references it.
+Save `state.audio_role="bed_under"` and `state.audio_offset_s` (default `0`, adjust only when the trend's beat/stinger must land later or earlier) — Stage 6 references both.
 
 ### 4e. Filming checklist (handed to the user)
 
@@ -215,15 +227,25 @@ Once the user **approves** the script in Stage 4 — *don't* leave them to copy-
 
 ```python
 import urllib.parse
-url = "https://teleprompter.pika.bot/?" + urllib.parse.urlencode({
+upload_return = mcp__plugin_pika_pika__create_upload_return(
+    filename=f"{state.handle.lstrip('@')}-talking-take.webm",
+    mime_type="video/webm",          # preferred; upload-return accepts browser mp4/webm variants
+    max_size_bytes=350_000_000,
+    expires_in_s=86400,
+)
+state.teleprompter_upload_url = upload_return["upload_url"]
+state.teleprompter_status_url = upload_return["status_url"]
+query = urllib.parse.urlencode({
     "script": state.script_text,           # the full approved script with newlines
     "handle": state.handle.lstrip("@"),     # e.g. "matancohengrumi"
     "trend":  state.pick.name,              # e.g. "Wow, ok challenge"
     "format": "talking",
 })
+fragment = urllib.parse.urlencode({"upload": state.teleprompter_upload_url})
+url = "https://teleprompter.pika.bot/?" + query + "#" + fragment
 ```
 
-**Do NOT pass `?upload=...`** in v1 — Share-only flow. Pika's `upload_asset` presigned URLs expire in minutes, which would break for any user who spends >5 min recording. The user records on their phone and **shares the take back** (AirDrop / Save to Photos / attach to chat). When/if a long-TTL upload primitive ships, this is where we'd add `&upload=<presigned>` and resume Stage 5 by polling `public_url`.
+**Do NOT pass raw presigned media URLs** into the teleprompter. Use `create_upload_return` only: it gives a browser-safe `upload_url` and `status_url`, mints the CDN presign only after the user starts uploading, and avoids TTL failures from recording sessions that take more than a few minutes. The hosted page POSTs `{mime_type,size_bytes}` to `upload_url`, receives `direct_upload_url`, `attempt_id`, and `complete_url`, PUTs the Blob to the CDN URL, then completes by POSTing `attempt_id` to `complete_url`. Keep `status_url` in agent state only; do not put it in the browser URL.
 
 **Emit the URL and, when already available, an approved server/CDN QR image URL** (canonical Pika-MCP handoff — see `formats/teleprompter.md`'s "The handoff" section):
 
@@ -234,39 +256,45 @@ qr_block = f"![Scan QR]({qr_image_url})" if qr_image_url else ""
 
 **Caption to surface to the user** (use this verbatim, swap the trend name):
 
-> 📱 **Film it on your phone.** Open the link below; if a QR image is included, scan it. Your script is already loaded with the read zone at the top right under the camera lens. You get 3-2-1 countdown, per-line pacing, re-shoot, and Share when you're done.
+> 📱 **Film it on your phone.** Open the link below; if a QR image is included, scan it. Your script is already loaded with the read zone at the top right under the camera lens. You get 3-2-1 countdown, per-line pacing, re-shoot, and Upload when you're done.
 >
 > {qr_block}
 >
 > 🔗 Or open here: {url}
 >
-> When the take is ready, hit **Share** → **AirDrop** back to this Mac (or save to Photos + drag it into the chat). I'll pick it up and run Stage 5.
+> When the take is ready, hit **Upload**. I'll watch the upload status and start Stage 5 as soon as it lands. If upload fails, use Share/Save and send the MP4 back here.
 
 If `qr_image_url` is empty, omit that markdown image line entirely; do not generate a local QR PNG.
-The hosted page still renders its own QR on desktop if the user opens the link there first.
+The hosted page intentionally does not generate its own QR because it runs without third-party
+scripts on the same page as the upload-return fragment token.
 
-After this — wait for the user to deliver the clip via chat attachment. Stage 5's first action ("When the clips arrive") starts when the file lands.
+After this — poll `state.teleprompter_status_url` until it returns `status="uploaded"` with `public_url`. Save it as `state.user_take_url`. If there is no B-roll plan, initialize `state.clip_manifest[]` with the uploaded A-roll entry: `{clip_id: "a1", url: public_url, role: "a_roll", planned_duration_s: state.planned_script_duration_s}`. If the shot list includes B-roll, do not treat one full-script upload as the whole edit sequence; collect separate A-roll segment uploads/attachments around each B-roll insert and build the manifest in planned order (`a1`, `b1`, `a2`, ...). If those split segment URLs are not available, omit B-roll from the edit sequence rather than appending it after the complete A-roll.
 
-## Stage 5 — User films, uploads → `state.clips`
+## Stage 5 — User films, uploads → `state.clip_manifest[]`
 
 When the clips arrive:
 
-1. **Probe** — `ffprobe` or `mcp__claude_ai_pika__analyze_media` per clip. Confirm orientation (portrait — see Failure modes for the iPhone displaymatrix gotcha), resolution (≥1080×1920 after rotation), duration, framerate, and audio presence.
-2. **Transcribe** — `mcp__claude_ai_pika__transcribe_audio` (whisper provider, timestamps=true) on each A-roll clip. Save word-level timestamps as `state.transcript` for the caption burn.
-3. **Opener verbatim check** — listen to the first 2-3s of each clip; if the opener was paraphrased, ask for a reshoot of just the opener.
-4. **Shot list check** — confirm each scripted shot was captured. If a single clip is unusable (wrong orientation, blown exposure, blurry, silent), reshoot only that shot.
-5. **Fetch trending audio** — `mcp__claude_ai_pika__scrape_social tiktok / video` to get the media URL, curl it locally, extract via `mcp__claude_ai_pika__extract_audio_from_video`. Save as `state.audio_track`.
+1. **Finalize manifest** — confirm every uploaded or manually attached clip has a `state.clip_manifest[]` entry in script order with `{clip_id, url, role: "a_roll"|"b_roll", planned_duration_s}`. The teleprompter A-roll upload is normally `"a1"`; silent B-roll inserts are `"b1"`, `"b2"`, etc. If B-roll is present, the manifest must alternate around split A-roll segments (`a1 -> b1 -> a2`) rather than `full_a1 -> b1`; otherwise ask for split segment uploads or omit B-roll. Do not continue to trimming/captions until each entry has a stable `clip_id`.
+2. **Probe** — `mcp__plugin_pika_pika__probe_media` per manifest entry. Confirm portrait orientation, resolution (≥1080×1920 after any server-side normalization), duration, framerate, and audio presence.
+3. **Transcribe** — `mcp__plugin_pika_pika__transcribe_audio` (`timestamps=true`) on each A-roll clip only. Save timestamped transcript segments by `clip_id` as `state.clip_transcripts_by_id[clip_id]` for per-clip trimming and later caption-row assembly; do not store transcripts as an array aligned to `state.clips`, because B-roll clips may have no speech.
+4. **Opener verbatim check** — listen to the first 2-3s of each A-roll clip; if the opener was paraphrased, ask for a reshoot of just the opener.
+5. **Shot list check** — confirm each scripted shot was captured. If a single clip is unusable (wrong orientation, blown exposure, blurry, silent), reshoot only that shot.
+6. **Fetch trending audio** — call `mcp__plugin_pika_pika__scrape_social` on the chosen TikTok/IG reference with `rehost: true`; use the returned durable video URL, then call `mcp__plugin_pika_pika__extract_audio_from_video`. Save the returned audio URL as `state.audio_track`.
 
-## Stage 6 — Edit pipeline → `state.final`
+## Stage 6 — Edit pipeline → `state.final_url`
 
-Mechanical once `state.clips`, `state.transcript`, and `state.audio_track` are in hand.
+Mechanical once `state.clip_manifest[]`, `state.clip_transcripts_by_id`, and `state.audio_track` are in hand.
 
-1. **Measure end-of-speech per clip** — run `ffmpeg -af silencedetect=noise=-30dB:d=0.2` on each source clip to find the precise trailing-silence start. Trim each clip to `(end_of_speech + 100ms)` so verdicts land hard against the cut. See the trim measurement guidance for the lesson — eyeballed trims left 1.5s of dead air per clip and broke the deadpan rhythm.
-2. **Transcode each clip to portrait 1080×1920** — `scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2`, H.264 + AAC, 30fps. iPhone clips arrive with displaymatrix rotation metadata; ffmpeg auto-applies on decode, so the pixel orientation flips to portrait without an explicit transpose.
-3. **Concat in script order** — `ffmpeg -f concat -safe 0 -i list.txt -c copy concat.mp4`. Same codec across clips → stream-copy is safe.
-4. **Mix audio** per `state.audio_role` (Stage 4d). The user's spoken voice is the deliverable, so the trending audio sits under it — never replace.
-5. **Burn captions locally with ffmpeg drawtext** — not MCP captioning tools. The Instagram-native white-text-with-4px-black-stroke Arial Bold look is load-bearing; MCP `edit_text_overlay` produces a black-text-on-white-pill, `add_captions` produces a stylized preset that misses the look. See Load-bearing phrases below for the validated params.
-6. **Final encode** — `-c:v libx264 -preset medium -crf 20 -pix_fmt yuv420p -c:a copy -movflags +faststart`. Save to `{state.work_dir}/{user_slug}_{trend_slug}_v{N}.mp4` in a host-local writable directory. Versioned — never overwrite a previous deliverable.
+1. **Trim to speech end per clip** — iterate `state.clip_manifest[]` in script order. For A-roll entries, derive `end_of_speech` from `state.clip_transcripts_by_id[clip_id].segments` as the final transcript segment's `end` timestamp, then call `mcp__plugin_pika_pika__edit_trim(video_url=entry.url, start_s=0, end_s=end_of_speech+0.1)`. For B-roll/silent inserts, call `mcp__plugin_pika_pika__edit_trim(video_url=entry.url, start_s=0, end_s=planned_duration_s)` and do not expect a transcript. Save the returned URL and exact post-trim duration back onto the manifest entry as `{trimmed_url, trimmed_duration_s}`; if the trim response does not include duration, call `mcp__plugin_pika_pika__probe_media` on `trimmed_url` and store the probed duration before continuing. After all entries have `trimmed_duration_s`, set `state.total_trimmed_duration_s` to the sum of those durations in manifest order. If an A-roll transcription cannot find speech, surface that uncertainty and trim from the planned shot duration instead of guessing from silence.
+2. **Normalize each clip to portrait** — call `mcp__plugin_pika_pika__edit_reframe` on each manifest entry's `trimmed_url` with `target_aspect="9:16"` and `fill_mode="crop"` for normal talking-head clips; use `fill_mode="pad"` only when preserving the full frame matters more than filling the screen. Save the returned URL as `normalized_url` on the same manifest entry.
+3. **Concat in script order when needed** — collect the manifest `normalized_url` values in order. If there is only one `normalized_url`, skip `mcp__plugin_pika_pika__edit_concat` and set `state.concat_url` to that single URL because the concat tool requires at least two inputs. If there are two or more URLs, call `mcp__plugin_pika_pika__edit_concat` with them and save the returned URL as `state.concat_url`. Use clean cuts; no transitions unless the chosen trend explicitly uses them.
+4. **Clean the speech track when B-roll is present** — if the manifest contains no `role: "b_roll"` entries, set `state.speech_clean_url=state.concat_url`. If any B-roll is present, do not let its camera audio survive the concat: call `mcp__plugin_pika_pika__extract_audio_from_video` on each A-roll entry's `trimmed_url`, build `state.voice_slots[]` in output timeline order as `{audio_url, start_s, end_s}` where `start_s` is the cumulative `trimmed_duration_s` of every prior manifest entry and `end_s=start_s+trimmed_duration_s`, then call `mcp__plugin_pika_pika__edit_audio_stitch(clips=state.voice_slots, total_duration_s=state.total_trimmed_duration_s, output_format="m4a")` so B-roll gaps become silence. Save the returned URL as `state.voice_track_url`, then call `mcp__plugin_pika_pika__edit_audio_replace(video_url=state.concat_url, audio_url=state.voice_track_url, duration_policy="video")` and save the returned URL as `state.speech_clean_url`. This preserves A-roll speech, mutes B-roll camera audio, and keeps the visual timeline unchanged.
+5. **Mix bed-under audio** — require `state.audio_role="bed_under"` from Stage 4d, then call `mcp__plugin_pika_pika__edit_audio_mix(video_url=state.speech_clean_url, audio_url=state.audio_track, audio_gain_db=-15, audio_offset_s=state.audio_offset_s, original_gain_db=0)` and save the returned URL as `state.mixed_url`. Use -15 dB as the default bed level; adjust within -12 to -18 dB only by passing a single concrete number. The user's spoken voice is the deliverable, so the trending audio sits under it — never replace for TTC. If `state.audio_role` is anything else, stop and rescope; do not fake timed duck/fade behavior with a constant-gain mix.
+6. **Burn captions with `mcp__plugin_pika_pika__add_captions` after all edit/mix steps are done** — `add_captions` has one global position per call, so treat Stage 4c's two layers as separate caption-layer passes:
+   - **Opening title layer**: call `mcp__plugin_pika_pika__add_captions(video_url=state.mixed_url, caption_mode="manual", subtitles=[{start_s:0, end_s:2.0, text:<opening_title>}], style="reels-clean", position="top", margin_v=380, font_color="white", outline_color="black", outline_width=4)`; save the returned URL as `state.latest_captioned_url`.
+   - **Word-sync layer**: after concat, build `state.caption_rows` as `[{start_s, end_s, text}]` from A-roll entries in `state.clip_manifest[]` by looking up `state.clip_transcripts_by_id[clip_id].segments`; split overly long segment text into short phrase rows only when the timing can stay monotonic. Drop any segment/phrase row whose start timestamp is at or beyond that entry's `trimmed_duration_s`, clamp each remaining row's end timestamp to `trimmed_duration_s`, and then offset rows by the cumulative `trimmed_duration_s` of all preceding clips, including B-roll inserts. Call `mcp__plugin_pika_pika__add_captions(video_url=state.latest_captioned_url, caption_mode="manual", subtitles=state.caption_rows, style="reels-clean", position="bottom", margin_v=665, font_color="white", outline_color="black", outline_width=4)` after the title pass, or the same call with `video_url=state.mixed_url` when there was no title pass. If the transcript rows are not trusted, use `caption_mode="auto"` with `hint_terms[]` for names/brands instead of passing `subtitles`. Save the returned URL as `state.latest_captioned_url`.
+   - If the chosen concept has no opening title, skip the title pass and run only the word-sync pass from `state.mixed_url`. Do not run any trim/reframe/concat/mix step after captions; if timing changes, rebuild the caption rows and re-run the caption phase.
+7. **Final output** — read `state.latest_captioned_url` from the last caption pass and save it as `state.final_url`. Keep version metadata in agent state (`{user_slug}_{trend_slug}_v{N}`) so a later render never overwrites the previous deliverable.
 
 ### Pre-delivery gates
 
@@ -274,12 +302,12 @@ Mechanical once `state.clips`, `state.transcript`, and `state.audio_track` are i
 - **Caption legibility + sync** — every chunk readable on first pass at phone screen size, lands on the right spoken words within ±100ms. If chunks lag or lead, re-derive timings from the transcript and re-render.
 - **Audio balance** — spoken voice intelligible above the bed. Lower bed by 3-6 dB if it clips the voice; normalize down if voice peaks > -3 dB.
 - **Audio-sync** — trending audio's beat drop lands on the script's pivot moment, stinger lands on the closing line. Retime the audio offset if misaligned.
-- **Pixel orientation** — verify with `cv2.VideoCapture(...).read()` returning `shape[0] > shape[1]`. Re-encode with `ffmpeg -vf "transpose=2"` if a clip's pixels are still landscape after auto-rotate (rare but happens with edited iPhone exports).
+- **Pixel orientation** — verify with `mcp__plugin_pika_pika__probe_media` after reframe; if the result is not portrait, run `mcp__plugin_pika_pika__edit_reframe` again with `fill_mode="pad"` or ask for a corrected upload.
 - **Phone-cameo** — if any clip shows a phone on screen, it must be a current-gen iPhone (15 Pro / 16 / Air). See the phone-cameo gate.
 
 ## Stage 7 — Loop
 
-After delivering `state.final`, ask: **"Want to do the next one? (pick another number from the menu, or 'new trends' to re-research)"**. If they pick another, return to Stage 4 with that trend — the Stage 3 menu stays warm for the session.
+After delivering `state.final_url`, ask: **"Want to do the next one? (pick another number from the menu, or 'new trends' to re-research)"**. If they pick another, return to Stage 4 with that trend — the Stage 3 menu stays warm for the session.
 
 ## Load-bearing phrases
 
@@ -287,27 +315,19 @@ Each phrase below is verbatim-anchored — agents simplifying the skill should n
 
 ### Caption render (validated `pika-trendy-reel` pattern)
 
-- Font: copy an available bold sans font to `{state.work_dir}/font.ttf` to avoid space-in-path issues. Good defaults: macOS Arial Bold, Linux DejaVu Sans Bold, or Windows Arial Bold.
-- `fontsize=57` (scale 50-72 per readability)
-- `fontcolor=white`
-- `bordercolor=black`
-- `borderw=4` — the 4px black stroke is the Instagram-native look. MCP captioning tools produce a different look that misses this.
-- `x=(w-text_w)/2` — horizontally centered
-- Top opening title: `y=380` (inside top safe zone)
-- Bottom word-sync: `y=1255` (inside bottom safe zone, avoids face overlap)
-- IG Reels safe zone (1080×1920): captions sit inside `y=270 to y=1475`, ~80px margin from left/right edges
-- `enable='between(t,{start},{end})'` — gates each chunk's time window
-- Use `textfile=...` per chunk (one textfile per caption) — avoids shell-escape pain on quotes/apostrophes
-- Emoji warning: Arial Bold has no color emoji glyphs. Drop 🖤 🖼️ etc. from burned captions; tell the user to put emoji in the post description at upload.
-
-### ffmpeg binary
-
-Resolve at runtime. Prefer `ffmpeg` on `PATH`. If unavailable, install `imageio-ffmpeg`
-and resolve its bundled binary with `python -c "import imageio_ffmpeg; print(imageio_ffmpeg.get_ffmpeg_exe())"`.
+- Use `mcp__plugin_pika_pika__add_captions` with `style="reels-clean"` for bold white text, no pill, black outline.
+- Use one pass per caption position layer. TTC normally needs two layers: top opening title first, then bottom word-sync captions. If only bottom captions are needed, use one pass.
+- Captions are the final media operation. Do not run trim/reframe/concat/mix after the caption phase, because that can drift manual timings.
+- `outline_width=4` — the 4px black stroke is the Instagram-native look.
+- `font_size≈57` (scale 50-72 per readability).
+- Top opening title: `position="top"`, `margin_v≈380` (inside top safe zone).
+- Bottom word-sync: `position="bottom"`, `margin_v≈665` (visually near y≈1255 on a 1080×1920 render).
+- IG Reels safe zone (1080×1920): captions sit inside y≈270 to y≈1475, ~80px margin from left/right edges.
+- Emoji warning: platform emoji glyphs can vary in burned captions. Drop decorative emoji from burned text and tell the user to put emoji in the post description at upload.
 
 ### Trim measurement
 
-`silencedetect=noise=-30dB:d=0.2` then trim to `(last silence_start + 100ms)`. Eyeballed trims have shipped 1.5s of dead air per clip in production — measure, don't guess. See the trim measurement guidance.
+Use segment timestamps from `mcp__plugin_pika_pika__transcribe_audio(timestamps=true)`: set `end_of_speech` to the final transcript segment's `end` timestamp and trim to `(end_of_speech + 100ms)`. Eyeballed trims have shipped 1.5s of dead air per clip in production — measure, don't guess. This is slightly less exact than acoustic silence detection, but keeps the workflow MCP-only.
 
 ### Filming defaults
 
@@ -315,7 +335,7 @@ Phone at eye level, 18-24 inches from face, chest-up framing, window light from 
 
 ### Audio mix levels
 
-Bed-under: trending audio at -15 dB, voice at 0 dB. Sting: 0 dB sting → duck to -18 dB once voice enters. End-tag: -3 dB fade-in for the last 2-3s.
+Bed-under only in this MCP path: trending audio at about -15 dB, voice at 0 dB, optional `audio_offset_s` for beat alignment. Sting-then-duck, end-tag fades, and lip-sync-then-talk need a validated envelope/segmented audio workflow before returning here.
 
 ### Play-count thresholds
 
@@ -325,15 +345,15 @@ Bed-under: trending audio at -15 dB, voice at 0 dB. Sting: 0 dB sting → duck t
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| `mcp__claude_ai_pika__scrape_social` returns empty / rate-limited | Profile blocked, region-locked, or quota exhausted | Fall back to `mcp__claude_ai_pika__capture_website` on the public URL for grid screenshot. Tell the user the spoken voice will be inferred from caption style. |
-| Whisper `mcp__claude_ai_pika__transcribe_audio` returns 0 segments | Short clip with no detected speech, or audio track is silent / corrupted | Re-run with `provider="gemini"` via `mcp__claude_ai_pika__analyze_media` to double-check. If both fail, ask the user to confirm the clip has audible audio. |
+| `mcp__plugin_pika_pika__scrape_social` returns empty / rate-limited | Profile blocked, region-locked, or quota exhausted | Fall back to `mcp__plugin_pika_pika__capture_website` on the public URL for grid screenshot. Tell the user the spoken voice will be inferred from caption style. |
+| Whisper `mcp__plugin_pika_pika__transcribe_audio` returns 0 segments | Short clip with no detected speech, or audio track is silent / corrupted | Re-run with `provider="gemini"` via `mcp__plugin_pika_pika__analyze_media` to double-check. If both fail, ask the user to confirm the clip has audible audio. |
 | Whisper mis-transcribes a phrase ("haters will say" → "hey don't") | Short clip + Israeli accent + brand-name words. Whisper degrades on <3s clips. | Use the scripted line verbatim for the caption. Don't re-transcribe — the user knows what they said. |
 | User delivers a paraphrased opener | Forgot the exact wording mid-take | Reshoot only the opening 2-3s and splice in. Don't re-shoot the whole sequence. |
-| iPhone clip metadata shows `1920x1080` (landscape) | iPhone stores rotation in displaymatrix, not pixel layout | ffmpeg auto-applies the displaymatrix on decode — output will be 1080×1920 portrait. Verify the post-decode dimensions, not the file metadata. Add `transpose=2` explicitly only if a clip pixel-checks as landscape after decode. |
-| Tail silence between cards in concat output | Trims eyeballed instead of measured | Re-run `silencedetect` per clip, trim to `(last silence_start + 100ms)`. See Load-bearing phrases. |
-| Caption text overlaps the speaker's face | Top zone caption placed too low, or word-sync caption escaped the safe zone | Top = y=380, bottom = y=1255 for 1080×1920. Re-render with corrected y values. |
-| Concat fails with "Non-monotonic DTS" warning | Source clips have slight timestamp drift after trim | Warning is benign for visual output. If the audio glitches on playback, re-encode each clip with `-fflags +genpts` before concat. |
-| ffmpeg drawtext filter string fails to parse | Apostrophes / colons / commas in caption text leak into the filter | Always use `textfile=...` per chunk, never inline `text='...'`. One textfile per caption, generated by a Python helper. |
+| iPhone clip metadata shows `1920x1080` (landscape) | iPhone stores a rotation flag separately from the pixel frame | Trust `mcp__plugin_pika_pika__probe_media` after `mcp__plugin_pika_pika__edit_reframe`, not the pre-upload filename or camera metadata. |
+| Tail silence between cards in concat output | Trims eyeballed instead of measured | Re-run timestamped transcription per clip and trim to `(final transcript segment end + 100ms)`. See Load-bearing phrases. |
+| Caption text overlaps the speaker's face | Top zone caption placed too low, or word-sync caption escaped the safe zone | Top title ≈380px from the top; bottom captions visually near y≈1255 for 1080×1920. Re-run `mcp__plugin_pika_pika__add_captions` with corrected `position`/`margin_v`. |
+| Concat output has an audio glitch at a cut | Source clips have incompatible timestamps or audio layouts | Re-run `mcp__plugin_pika_pika__edit_reframe` on the affected input, then call `mcp__plugin_pika_pika__edit_concat` again so the worker normalizes the source. |
+| Caption tool mis-spells a brand or slang phrase | Auto transcription drift on short TTC clips | Use `caption_mode="manual"` with transcript rows from the approved script, or pass `hint_terms[]` before re-running captions. |
 | Stage 3 menu has < 10 cards | Fewer than 10 trends pass the strict virality gate this week | Ship what passed (could be 3, 5, 7). Tell the user "only N trends qualified this week" and list the formats that were popular but lacked fingerprinting. Never inflate — see the virality receipts gate. |
 | Final video exceeds the trend's duration window | User's natural delivery is longer than the trend's reference clips | Trim filler / breath / dead air in the edit. If still over, trim the script before re-filming. Going over kills completion rate. |
 
@@ -348,9 +368,9 @@ Bed-under: trending audio at -15 dB, voice at 0 dB. Sting: 0 dB sting → duck t
 - **Don't film for the user.** This playbook writes the plan and runs the edit; the user films their own talking-head footage. No AI-generated TTC footage — the authenticity of the actual delivery is the format's value.
 - **Don't write vibey shot lists.** Every shot needs explicit camera position, distance, framing, energy direction, look direction.
 - **Don't burn captions outside the IG Reels safe zone.** Inside `y=270 to y=1475` for 1080×1920, ~80px left/right margin. See the caption safe-zone guidance.
-- **Don't use MCP captioning tools for the final caption burn.** `edit_text_overlay` produces black-text-on-white-pill (wrong); `add_captions` produces a stylized preset that misses the Instagram-native look. Use local ffmpeg drawtext per Load-bearing phrases.
+- **Don't chain arbitrary text overlays for captions or edit after captions.** Use `mcp__plugin_pika_pika__add_captions` with `reels-clean`, `outline_width=4`, and safe-zone placement; when TTC needs both a top title and bottom word-sync, run one caption pass per layer and keep captions as the final phase.
 - **Don't put word-sync captions over the user's face.** Bottom safe zone (y=1255). Top is reserved for the opening title-card hook.
-- **Don't replace the user's spoken audio with the trending sound.** Mix under (bed-under / sting-then-duck / end-tag). Audio-replace is for pure lip-sync only.
+- **Don't replace the user's spoken audio with the trending sound.** Mix under with bed-under only in this MCP path. Do not choose sting-then-duck, end-tag fades, or lip-sync-then-talk until a validated envelope/segmented audio workflow exists.
 - **Don't exceed the trend's duration window.** 15s / 30s / 45s / 60s. Over kills completion rate; cut tighter or trim the script.
 - **Don't propose 10 of the same archetype.** Mix storytime / hot-take / POV-explaining / things-nobody-tells-you / rant / GRWM-monologue across the menu.
 - **Don't show old phones.** If a clip shows a phone, it must be a current-gen iPhone (15 Pro / 16 / Air). See the phone-cameo gate.

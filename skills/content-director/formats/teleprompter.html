@@ -6,8 +6,6 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>Pika Teleprompter</title>
-<script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js" defer></script>
-<script src="https://cdn.jsdelivr.net/npm/lz-string@1.5.0/libs/lz-string.min.js"></script>
 <style>
   :root {
     --bg: #000;
@@ -402,30 +400,57 @@
 <script>
 (() => {
   // ============ PARAMS ============
-  // Two ways to receive params:
-  // 1. Plain URL params: ?script=...&handle=...
-  // 2. Compressed JSON blob: ?z=<lz-string-encoded> — shrinks the URL ~60-70%, giving a sparse QR.
-  //    The blob is a JSON object with the same keys as the plain params. URL params win on conflict.
+  // Plain URL params carry the non-secret script metadata. The upload-return
+  // token is accepted only from the URL fragment so it is not sent to the
+  // teleprompter static host.
   const params = new URLSearchParams(location.search);
-  let payload = {};
-  const z = params.get('z');
-  if (z && typeof LZString !== 'undefined') {
-    try {
-      const decompressed = LZString.decompressFromEncodedURIComponent(z);
-      if (decompressed) payload = JSON.parse(decompressed);
-    } catch (e) { /* malformed blob — silently fall back to URL params */ }
-  }
+  const hashParams = new URLSearchParams(location.hash ? location.hash.replace(/^#/, '') : '');
   const pick = (key, fallback) => {
     const v = params.get(key);
     if (v !== null && v !== '') return v;
-    if (payload[key] !== undefined && payload[key] !== null) return String(payload[key]);
     return fallback;
   };
+  const pickSecret = (key, fallback) => {
+    const v = hashParams.get(key);
+    if (v !== null && v !== '') return v;
+    return fallback;
+  };
+  const ALLOWED_UPLOAD_ORIGINS = new Set([
+    'https://mcp.pika.me',
+    'https://staging-mcp.pika.bot',
+    'http://localhost:3000',
+    'http://127.0.0.1:3000'
+  ]);
+  function safeUploadUrl(raw) {
+    if (!raw) return '';
+    try {
+      const url = new URL(raw);
+      if (!ALLOWED_UPLOAD_ORIGINS.has(url.origin)) return '';
+      if (!/^\/api\/upload-return\/[A-Za-z0-9_-]{24,128}$/.test(url.pathname)) return '';
+      url.hash = '';
+      return url.toString();
+    } catch (e) {
+      return '';
+    }
+  }
+  function safeCompleteUrl(raw, uploadOrigin) {
+    if (!raw) return '';
+    try {
+      const url = new URL(raw);
+      if (url.origin !== uploadOrigin) return '';
+      if (!/^\/api\/upload-return\/[A-Za-z0-9_-]{24,128}\/complete$/.test(url.pathname)) return '';
+      url.hash = '';
+      return url.toString();
+    } catch (e) {
+      return '';
+    }
+  }
   const script = (pick('script', pick('s', "Welcome to the Pika teleprompter.\n\nReplace this default text with your actual script.\n\nThe line you are reading sits at the top — look up there, right under the camera lens."))).trim();
   const handle = pick('handle', '');
   const trend = pick('trend', '');
   const format = pick('format', '');
   const sessionId = pick('session', (crypto.randomUUID ? crypto.randomUUID() : String(Date.now())));
+  const uploadUrl = safeUploadUrl(pickSecret('upload', ''));
 
   // ============ STATE ============
   const $ = sel => document.querySelector(sel);
@@ -461,6 +486,7 @@
   let mediaRecorder = null;
   let recordedChunks = [];
   let recordedBlob = null;
+  let isUploading = false;
   let isRecording = false;
   let isScrolling = false; // prompter only scrolls during recording
   let manualMode = false;
@@ -500,38 +526,6 @@
       metaEl.appendChild(pill);
     }
     $('#script-preview').textContent = script;
-    renderQR();
-  }
-
-  function renderQR() {
-    const section = document.getElementById('qr-section');
-    const canvas = document.getElementById('qr-canvas');
-    if (!canvas || !section) return;
-    // Only show if we have a script param (i.e. this URL was emitted by an agent — worth re-scanning)
-    if (!script) return;
-    // qrcode-generator loads with defer; if not ready yet, retry shortly
-    if (typeof qrcode === 'undefined') {
-      setTimeout(renderQR, 250);
-      return;
-    }
-    const url = location.href;
-    // QR codes max out around ~2-3KB; URLs longer than ~1800 chars get hard to scan reliably
-    if (url.length > 1800) return;
-    try {
-      const qr = qrcode(0, 'M'); // type 0 = auto-size, M = 15% error correction
-      qr.addData(url);
-      qr.make();
-      const dataUrl = qr.createDataURL(4, 0); // cellSize=4, margin=0
-      while (canvas.firstChild) canvas.removeChild(canvas.firstChild);
-      const img = document.createElement('img');
-      img.src = dataUrl;
-      img.alt = 'QR code — scan to open on phone';
-      canvas.appendChild(img);
-      section.classList.remove('hidden');
-    } catch (e) {
-      // QR encode failed (probably URL too long for any version) — silently hide
-      section.classList.add('hidden');
-    }
   }
 
   // ============ CAMERA ============
@@ -912,6 +906,113 @@
     }
   }
 
+  async function uploadRecording() {
+    if (!uploadUrl || !recordedBlob || isUploading) return false;
+    isUploading = true;
+    const shareBtn = $('#share-btn');
+    const previousLabel = shareBtn.textContent;
+    shareBtn.disabled = true;
+    shareBtn.textContent = 'Uploading…';
+    shareStatus.hidden = false;
+    shareStatus.className = 'share-status';
+    shareStatus.textContent = 'Uploading take…';
+    try {
+      const uploadOrigin = new URL(uploadUrl).origin;
+      const startRes = await fetch(uploadUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          mime_type: recordedBlob.type || 'video/webm',
+          size_bytes: recordedBlob.size
+        })
+      });
+      let startData = {};
+      try { startData = await startRes.json(); } catch (e) {}
+      if (!startRes.ok) {
+        throw new Error(startData.message || startData.error || ('HTTP ' + startRes.status));
+      }
+      if (startData.uploaded && startData.public_url) {
+        shareStatus.className = 'share-status ok';
+        shareStatus.textContent = '✓ Uploaded. Return to chat.';
+        shareBtn.textContent = 'Uploaded';
+        return true;
+      }
+      if (String(startData.direct_upload_method || 'PUT').toUpperCase() !== 'PUT') {
+        throw new Error('Unexpected direct upload method');
+      }
+      if (String(startData.complete_method || 'POST').toUpperCase() !== 'POST') {
+        throw new Error('Unexpected completion method');
+      }
+      if (!startData.direct_upload_url || !startData.attempt_id) {
+        throw new Error('Upload start response missing direct_upload_url or attempt_id');
+      }
+      const completeUrl = safeCompleteUrl(startData.complete_url, uploadOrigin);
+      if (!completeUrl) {
+        throw new Error('Upload start response missing safe complete_url');
+      }
+      const directHeaders = {};
+      const returnedHeaders = startData.direct_upload_headers;
+      if (returnedHeaders && typeof returnedHeaders === 'object') {
+        for (const [k, v] of Object.entries(returnedHeaders)) {
+          if (typeof v === 'string') directHeaders[k] = v;
+        }
+      }
+      if (!directHeaders['Content-Type']) {
+        directHeaders['Content-Type'] = recordedBlob.type || 'video/webm';
+      }
+      const putRes = await fetch(startData.direct_upload_url, {
+        method: 'PUT',
+        headers: directHeaders,
+        body: recordedBlob
+      });
+      if (!putRes.ok) {
+        throw new Error('Direct upload failed with HTTP ' + putRes.status);
+      }
+      const completeRes = await fetch(completeUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ attempt_id: startData.attempt_id })
+      });
+      let completeData = {};
+      try { completeData = await completeRes.json(); } catch (e) {}
+      if (!completeRes.ok) {
+        throw new Error(completeData.message || completeData.error || ('HTTP ' + completeRes.status));
+      }
+      shareStatus.className = 'share-status ok';
+      shareStatus.textContent = completeData.public_url ? '✓ Uploaded. Return to chat.' : '✓ Uploaded.';
+      shareBtn.textContent = 'Uploaded';
+      return true;
+    } catch (e) {
+      shareStatus.className = 'share-status err';
+      shareStatus.textContent = 'Upload failed: ' + (e.message || e.name || 'unknown') + '. Opening Share/Save fallback.';
+      shareBtn.textContent = previousLabel;
+      return false;
+    } finally {
+      isUploading = false;
+      shareBtn.disabled = false;
+    }
+  }
+
+  async function uploadOrShareRecording() {
+    if (uploadUrl) {
+      const uploaded = await uploadRecording();
+      if (uploaded) return;
+    }
+    await shareRecording();
+  }
+
+  if (window.__PIKA_TELEPROMPTER_E2E__) {
+    window.__pikaTeleprompterE2E = {
+      uploadUrl,
+      setRecordedBlobForTest(blob) { recordedBlob = blob; },
+      uploadRecording
+    };
+  }
+
   function extFor(mime) {
     if (!mime) return 'webm';
     if (mime.includes('mp4')) return 'mp4';
@@ -986,9 +1087,11 @@
   });
 
   $('#reshoot-from-preview').addEventListener('click', backToRecord);
-  $('#share-btn').addEventListener('click', shareRecording);
-  // Tweak label based on capability: "Share" on iOS/Android, "Save" on desktop browsers
-  if (!canNativeShareFiles()) {
+  $('#share-btn').addEventListener('click', uploadOrShareRecording);
+  // Tweak label based on capability: "Upload" with upload-return, "Share" on iOS/Android, "Save" on desktop browsers
+  if (uploadUrl) {
+    $('#share-btn').textContent = 'Upload';
+  } else if (!canNativeShareFiles()) {
     $('#share-btn').textContent = 'Save';
   }
 
