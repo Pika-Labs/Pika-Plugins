@@ -29,7 +29,8 @@ make: read the scene, pick a hook action from the menu, and write a title.
 1. **Certain to grab attention, fast.** Extreme and unmissable inside ~2s — over plausibility
    or relevance to the video's topic.
 2. **Erupts into the user's OWN scene.** Same person, location, lighting — the tool anchors
-   on the real frame; describe the event entering THAT space, never a different setting.
+   on the best visual anchor frame: 0s when usable, otherwise the first detectable face frame.
+   Describe the event entering THAT space, never a different setting.
 3. **Use the scene's real geometry.** Enter through a doorway with depth, a wall behind the
    subject, headroom above.
 4. **No dialogue.** Voice-free (only ambient / impact SFX) — don't write spoken lines into
@@ -38,8 +39,8 @@ make: read the scene, pick a hook action from the menu, and write a title.
 ## Hook super-category menu
 
 Four super-categories. **Rotate** super-category per run on the same clip/session — without
-rotation, regenerates collapse to vehicle / explosion / creature. Archetypes are seeds, not a
-closed list; invent freely within the category.
+rotation, regenerates collapse to vehicle / explosion / creature. Archetypes are starting
+points, not a closed list; invent freely within the category.
 
 ### A. Destructive intrusion — external force violently enters and damages the scene
 
@@ -121,8 +122,9 @@ transcoding or probing here.
 
 `mcp__plugin_pika_pika__analyze_media(video_url)` → capture the subject + framing, indoor/outdoor + setting,
 lighting, photoreal vs stylized aesthetic, and the spirit/topic. Also note the **hero
-objects** (product, pet, drink, phone, logos) — required for super-categories C and D. This
-reading is passed verbatim as the `scene` parameter.
+objects** (product, pet, drink, phone, logos), including whether each one is visible near the
+opening or only appears later — required for super-categories C and D. This reading is passed
+verbatim as the `scene` parameter.
 
 ### Step 3 — Pick the hook action
 
@@ -130,22 +132,22 @@ Rotate super-category vs the previous run on this clip; pick a different one if 
 Choose the strongest archetype the scene's geometry supports (A/B) or the most prominent hero
 object (C/D). Write the specific hook action — entry vector + motion + scale + peak — as one
 vivid sentence. This is `hook_action`. For C/D, name the exact hero object so the tool ties
-it to the clip.
+it to the clip. If the hero object appears later in the clip rather than near the opening,
+make the first hook frame explicit: "from the first frame, the subject is holding/using
+[hero object]".
 
 ### Step 4 — Title + style
 
 Ask whether the user wants a title. If yes, propose a ≤7-word ALL-CAPS line tying the hook
-action to the topic, get approval, and confirm the typography (default / custom / brand.md).
-If no, skip — the hook renders title-free.
+action to the topic, get approval, and offer typography choices before rendering: default,
+custom direction, or `brand.md`. If the user has no preference, use default and say so. If no
+title is wanted, skip — the hook renders title-free.
 
 ### Step 5 — Render
 
-Call `mcp__plugin_pika_pika__generate_viral_hook({ video_url, scene, hook_action, title?, type_style?, seed? })`.
+Call `mcp__plugin_pika_pika__generate_viral_hook({ video_url, scene, hook_action, title?, type_style? })`.
 If it returns `{task_id, status}`, poll `mcp__plugin_pika_pika__task_status(task_id)` in a tight
 loop until terminal, then read the result. On `failed`, surface the error — don't retry blindly.
-If the failure indicates provider-down, `provider_payment_required`, upstream 5xx, or provider
-unavailable, tell the user the render provider is temporarily unavailable and retry later with
-the same creative choices. Do not invent a skill-side renderer or route around the tool.
 
 ### Step 6 — Deliver
 
@@ -158,5 +160,6 @@ Present both clips:
 - **Don't re-implement the render in the skill.** No extract_frame / generate_image /
   edit_concat / transcode here — `generate_viral_hook` owns all of it. If the hook looks
   wrong, change the `hook_action` / `title` text, not the pipeline.
+- **Don't pass a seed.** Variations should come from `hook_action`, `title`, or `type_style`.
 - **Don't bake a title onto the real video.** The title belongs only on the hook.
 - **Don't auto-edit an approved title.** If a rephrase is needed, ask.

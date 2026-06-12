@@ -3,9 +3,10 @@ name: fix-my-look
 description: >
   Change ANYTHING inside a video — background, scene, lighting, outfit, weather,
   mood — from a free-form prompt, while keeping the EXACT original facial
-  identity, motion, speech, audio AND aspect ratio. Edits the first frame with
-  gpt-image-2, then propagates that look across the clip with seedance
-  reference-video using the original clip as the identity anchor. Triggers:
+  identity, motion, speech, audio AND closest supported output ratio. Edits the
+  first frame with gpt-image-2, then propagates that look across the clip with
+  seedance reference-video using the original clip as the identity anchor.
+  Triggers:
   "change anything in my video", "edit my video with a prompt", "change the
   background of this video", "change my outfit in this clip", "restyle this
   video without changing the person", "put me on a beach", "make this video at
@@ -23,8 +24,9 @@ required-capabilities:
 Edit the source's first usable frame with `gpt-image-2` from the user's prompt,
 then propagate that look across the clip with `seedance` reference-video while
 locking the original face, motion and audio via the original video + audio as
-references. All prep happens in one `mcp__plugin_pika_pika__normalize_video` call. Aspect is preserved;
-this skill does NOT reframe.
+references. All prep happens in one `mcp__plugin_pika_pika__normalize_video`
+call. The output ratio uses the normalized clip's closest supported output
+ratio; this skill does NOT reframe the source video.
 
 ## Inputs
 
@@ -50,7 +52,8 @@ For sources >15s where the user wants a window, also pass `start_s=<offset>`.
 
 Wire the result into the rest: `face_frame_url` is the Step 2 edit target;
 the normalized `video_url` + `audio_url` are seedance's references in Step 4;
-`aspect_ratio` carries through both. Compute
+`closest_aspect_ratio` carries through both as the downstream `aspect_ratio`.
+Compute
 `duration = max(4, min(15, round(duration_s)))`, and use `resolution="720p"`
 unless the user asked for high res. If `face_found` is false, no clear face was
 found and `face_frame_url` fell back to the t=0 frame — proceed but warn
@@ -60,8 +63,8 @@ faces camera.
 ### Step 2 — Edit the frame with gpt-image-2 (the "change" stage)
 
 `mcp__plugin_pika_pika__generate_image` with `provider="gpt-image-2"`,
-`aspect_ratio=<aspect_ratio>`, `reference_images=[<face_frame_url>]`,
-`quality="high"`, prompt:
+`aspect_ratio=<closest_aspect_ratio>`, `resolution="2K"`,
+`reference_images=[<face_frame_url>]`, `quality="high"`, prompt:
 
 > "Modify the reference photograph as follows: `<change_prompt>`. Keep the
 > person's face, identity, hair, body and pose EXACTLY as in the reference.
@@ -84,7 +87,7 @@ and re-render?" Do NOT call seedance until approved. For tweaks, re-run Step 2
 
 `mcp__plugin_pika_pika__generate_reference_video` with `provider="seedance"`,
 `reference_videos=[<normalized video_url>]`, `reference_images=[<edited_frame_url>]`,
-`reference_audio=[<audio_url>]`, `aspect_ratio=<aspect_ratio>`,
+`reference_audio=[<audio_url>]`, `aspect_ratio=<closest_aspect_ratio>`,
 `duration=<duration>`, `resolution=<resolution>`, prompt:
 
 > "Apply the change shown in @Image1 to @Video1. Keep the person in @Video1 with
@@ -102,7 +105,7 @@ If Seedance is unavailable, use the Kling fallback instead of stopping:
 
 1. Re-run `mcp__plugin_pika_pika__normalize_video(video_url=<source>, max_duration_s=9.8, extract_audio=false, extract_face_frame=false)` so the reference is safely below Kling's 10s cap. This means the output is truncated versus the original clip; tell the user before generation.
 2. Compute `kling_duration = max(3, min(10, round(fallback duration_s)))` from this fallback normalize result. Do not reuse the Seedance `duration` from Step 1.
-3. Call `mcp__plugin_pika_pika__generate_reference_video` with `provider="kling"`, `reference_videos=[<9.8s normalized video_url>]`, `reference_images=[<edited_frame_url>]`, `aspect_ratio=<aspect_ratio>`, `duration=<kling_duration>`, `sound=false`, `video_keep_sounds=[true]`, prompt:
+3. Call `mcp__plugin_pika_pika__generate_reference_video` with `provider="kling"`, `reference_videos=[<9.8s normalized video_url>]`, `reference_images=[<edited_frame_url>]`, `aspect_ratio=<closest_aspect_ratio>`, `duration=<kling_duration>`, `sound=false`, `video_keep_sounds=[true]`, prompt:
 
 > "Apply the change shown in <<<image_1>>> to <<<video_1>>>. Keep the person in
 > <<<video_1>>> with the EXACT same face, identity, expressions, motion and
@@ -130,6 +133,6 @@ that path.
 |---|---|---|
 | Output face drifts from the original | gpt-image-2 over-edited the face AND seedance under-weighted @Video1 | Re-run Step 2 with a stronger "keep the face the same" clause; soften `change_prompt`. |
 | Output looks like the original (no change) | Edited image too similar, OR you passed the raw frame not the edited output | Re-run Step 2 with a more dramatic prompt; confirm the edited frame URL. |
-| Output aspect doesn't match source | Source aspect not in {16:9, 9:16, 1:1, 4:3, 3:4} | Step 1 snaps to the closest; for exotic aspects ask the user. |
+| Output aspect doesn't match source | Source aspect not in {16:9, 9:16, 1:1, 4:3, 3:4} | Step 1 returns `closest_aspect_ratio`, the closest supported output label; for exotic aspects ask the user. |
 | Kling fallback rejects with `error:1201 sound on is not supported with video input` | `sound=true` was passed with a video reference | Retry the Kling call with `sound=false` and `video_keep_sounds=[true]`; do not use `reference_audio` for this fallback. |
 | Kling fallback rejects or cuts off the reference | Kling caps video references at 10s | Re-run `mcp__plugin_pika_pika__normalize_video` with `max_duration_s=9.8` and tell the user the fallback output is truncated. |

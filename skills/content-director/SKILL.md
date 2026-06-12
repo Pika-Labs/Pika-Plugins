@@ -27,6 +27,7 @@ required-capabilities:
   - mcp__plugin_pika_pika__edit_split_screen
   - mcp__plugin_pika_pika__edit_trim
   - mcp__plugin_pika_pika__edit_transcode
+  - mcp__plugin_pika_pika__edit_video_upscale
   - mcp__plugin_pika_pika__extract_audio_from_video
   - mcp__plugin_pika_pika__generate_reference_video
   - mcp__plugin_pika_pika__probe_media
@@ -162,6 +163,7 @@ Because this registered skill loads the format playbooks instead of registering 
 - `mcp__plugin_pika_pika__edit_concat`
 - `mcp__plugin_pika_pika__edit_reframe`
 - `mcp__plugin_pika_pika__edit_transcode`
+- `mcp__plugin_pika_pika__edit_video_upscale`
 - `mcp__plugin_pika_pika__edit_audio_replace`
 - `mcp__plugin_pika_pika__edit_audio_mix`
 - `mcp__plugin_pika_pika__edit_audio_stitch`

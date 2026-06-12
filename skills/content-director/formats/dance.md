@@ -19,6 +19,7 @@ required-capabilities:
   - mcp__plugin_pika_pika__edit_trim
   - mcp__plugin_pika_pika__edit_concat
   - mcp__plugin_pika_pika__edit_transcode
+  - mcp__plugin_pika_pika__edit_video_upscale
   - mcp__plugin_pika_pika__task_status
 ---
 
@@ -163,7 +164,7 @@ Call `mcp__plugin_pika_pika__generate_reference_video` with `provider: seedance`
 - `resolution: 1080p`, `fast: false` — fast/720p compresses identity signal.
 - `aspect_ratio: "9:16"` — the tool default is 16:9, so this must be explicit for the portrait deliverable.
 - `sound: false` — generated audio clashes with the platform-native trending sound the user attaches later.
-- `duration` — integer seconds matching the reference. Seedance's cap is 15s; longer references get split into segments and concatenated.
+- `duration` — integer seconds matching the reference. Seedance's reference-video input ceiling (`reference_videos`) is `[2, 15]s`; leave rounding headroom before the provider call. If the probed reference is just over the ceiling (>~14.8s, for example a 15.07s / 15.1s social clip), first call `mcp__plugin_pika_pika__edit_trim` to create a ≤14.8s motion reference, then call `mcp__plugin_pika_pika__generate_reference_video` with `provider: seedance`. Do not truncate clearly longer choreography to one 14.8s reference; when the full >15s trend matters, split into Seedance-eligible segments (each ≥2s and ≤14.8s), generate in order, and stitch the generated segment URLs with `mcp__plugin_pika_pika__edit_concat`.
 - **Stack 2–3 reference_images** — the full-body photo PLUS a tight face crop (~1:1, ≥512px). Single full-body refs lose face fidelity because the face is small relative to frame; the crop gives the model a dedicated identity anchor.
 - Reference video goes in `reference_videos` as the motion driver.
 
@@ -174,7 +175,7 @@ Caveat: Kling sometimes preserves the framing of the source photo, including pho
 **Seedance unavailable with a >10s reference.** Do not commit to a full-length render until the route is viable:
 
 1. Prefer a ≤10s alternate reference for the same dance and sound. If the trend menu has one, use that clip with Kling.
-2. If the user accepts segmentation, split the reference into ≤9.8s windows with `mcp__plugin_pika_pika__edit_trim`, run Kling per segment with `provider: kling`, `aspect_ratio: "9:16"`, and `sound: false`, then stitch the generated segment URLs in order with `mcp__plugin_pika_pika__edit_concat`. Tell the user there may be a visible seam and re-run the pre-delivery gates on the stitched output.
+2. If the user accepts segmentation, split the reference into ≤9.8s windows with `mcp__plugin_pika_pika__edit_trim`. If any trimmed segment is <700px wide, call `mcp__plugin_pika_pika__edit_video_upscale` 2× (or until the probed segment is ≥700px wide) before Kling. Run `mcp__plugin_pika_pika__generate_reference_video` per segment with `provider: kling`, `aspect_ratio: "9:16"`, and `sound: false`, then stitch the generated segment URLs in order with `mcp__plugin_pika_pika__edit_concat`. Tell the user there may be a visible setting seam and hand-morph between segments, then re-run the pre-delivery gates on the stitched output.
 3. If neither path is acceptable, surface the >10s / Seedance-unavailable constraint before committing to generation; do not dead-end after collecting the user's photo.
 
 ### Pre-delivery gates (in order)
@@ -253,8 +254,9 @@ Subsequent trends in the same session skip Stage 1+2 and run ~10 min faster.
 |---|---|---|
 | Subject lying horizontal in generated clip | Reference photo has rotation metadata or the generation ignored the portrait prompt | Regenerate with the load-bearing portrait phrases and verify the result with `mcp__plugin_pika_pika__probe_media` + `mcp__plugin_pika_pika__analyze_media` before delivery |
 | Identity drifts to generic AI face | Single full-body ref where face is small relative to frame / fast-tier compression | Stack a tight face crop (~1:1, ≥512px) as a second reference_image AND switch to `fast: false` |
-| Seedance r2v queue stalls >10min | Heavy 1080p + video-reference combo during provider congestion | Cancel; retry once at 720p fast tier (accept identity tradeoff); fall back to Kling if reference ≤10s; for >10s, choose a ≤10s reference, split into ≤9.8s Kling segments and `mcp__plugin_pika_pika__edit_concat`, or surface the constraint before committing |
-| Kling rejects "video width must be ≥700px ≤2160px" | Raw TikTok reference is too low-resolution | Do not use `mcp__plugin_pika_pika__edit_transcode`; it normalizes codec/HDR metadata but does not resize. Switch to Seedance for this trend, choose a higher-resolution reference/creator upload, or ask the user for a clean uploaded copy before retrying Kling. |
+| Seedance rejects `reference_videos` duration outside `[2, 15]s` | Social dance reference is just over the hard input ceiling after probe/rounding, e.g. 15.07s / 15.1s, or a longer trend was passed as one Seedance reference | For near-ceiling clips, trim >~14.8s with `mcp__plugin_pika_pika__edit_trim` to leave rounding headroom, then retry `mcp__plugin_pika_pika__generate_reference_video` with `provider: seedance`. For clearly longer clips where full choreography matters, do not truncate: split into ≥2s/≤14.8s Seedance segments, generate in order, and stitch with `mcp__plugin_pika_pika__edit_concat`; only fall back to Kling segmentation if Seedance is unavailable or rejects for another reason |
+| Seedance r2v queue stalls >10min | Heavy 1080p + video-reference combo during provider congestion | Cancel; retry once at 720p fast tier (accept identity tradeoff); fall back to Kling if reference ≤10s; for >10s, choose a ≤10s reference, or split into ≤9.8s Kling segments, upscale any <700px trimmed segment before Kling, and `mcp__plugin_pika_pika__edit_concat`, or surface the constraint before committing |
+| Kling rejects "video width must be ≥700px ≤2160px" | Raw TikTok reference is too low-resolution | Do not use `mcp__plugin_pika_pika__edit_transcode`; it normalizes codec/HDR metadata but does not resize. If the reference is >10s, split it first with `mcp__plugin_pika_pika__edit_trim`; if the reference or trimmed segment is <700px wide, call `mcp__plugin_pika_pika__edit_video_upscale` 2× (or until `mcp__plugin_pika_pika__probe_media` reports ≥700px) before retrying Kling via `mcp__plugin_pika_pika__generate_reference_video`. If upscale still fails, switch to Seedance for this trend, choose a higher-resolution reference/creator upload, or ask the user for a clean uploaded copy. |
 | Kling rejects "Video duration can not longer than 10s" | Reference clip >10s passed to Kling | Trim reference to ≤9.8s via `mcp__plugin_pika_pika__edit_trim`; if full length matters, generate multiple Kling segments and stitch with `mcp__plugin_pika_pika__edit_concat`, or switch to Seedance |
 | Pika rejects "could not probe video duration" on a transformed reference | The transformed source is not worker-readable or has unsupported metadata | Use the rehosted social URL first; otherwise call `mcp__plugin_pika_pika__edit_transcode` and retry |
 | Scrape_social returns no `video_url` for the trend | Private / age-gated / region-locked TikTok | Ask the user to upload a local copy of the clip |
