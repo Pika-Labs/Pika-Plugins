@@ -24,7 +24,7 @@ required-capabilities:
   - mcp__plugin_pika_pika__extract_audio_from_video
   - mcp__plugin_pika_pika__render_html_animation
   - mcp__plugin_pika_pika__add_captions
-  - mcp__plugin_pika_pika__create_upload_return
+  - mcp__plugin_pika_pika__create_teleprompter_handoff
   - mcp__plugin_pika_pika__task_status
 ---
 
@@ -116,11 +116,11 @@ Do NOT ask: trend count (default 10), niche (derive from scrape), aesthetic (der
 
 Once you have the handle, scrape immediately — the handle IS consent.
 
-1. **Scrape the profile** — `mcp__plugin_pika_pika__scrape_social` on the handle. Pull the most recent 12–20 posts. Capture: captions, hashtags, post types (reel / carousel / static), recurring locations, recurring people, view counts, music choices, whether they already stitch/duet anything.
+1. **Scrape the profile** — `mcp__plugin_pika_pika__scrape_social` on the handle. Prefer `digest: true` with `digest_top_n: 12` for the first profile read so large `user-posts` payloads do not flood the context; fetch raw posts only for specific media URLs you need to verify. Pull the most recent 12–20 posts only when the compact result is not enough. Capture: captions, hashtags, post types (reel / carousel / static), recurring locations, recurring people, view counts, music choices, whether they already stitch/duet anything.
 
 2. **Fallback if scrape_social returns empty / rate-limited** — `mcp__plugin_pika_pika__capture_website` on `https://www.tiktok.com/@{handle}` or `https://www.instagram.com/{handle}/` for at least the bio + grid screenshot. Tell the user the analysis is grid-only.
 
-3. **Identity-confirmation gate before profiling** — confirm the scrape or screenshot is the intended creator before you synthesize the profile. Cross-check display name, verified badge, follower count, bio, platform, and whether recent posts match the user's expected creator. Try common handle variants first: with/without dots, dotless, underscores removed, and cross-platform Instagram / TikTok / YouTube checks. Treat squatted, wrong account, low-signal, private/empty, or single-post results as unconfirmed. When unconfirmed, stop and ask **"Is this you?"** with the evidence you saw (`N followers`, verified badge status, display name, bio snippet, platform URL, recent-post summary) and offer the likely variant; do not synthesize the Creator Profile before identity is confirmed. When identity is confirmed, set `state.identity_confirmed = true`.
+3. **Identity-confirmation gate before profiling** — confirm the scrape or screenshot is the intended creator before you synthesize the profile. Cross-check display name, verified badge, follower count, bio, platform, and whether recent posts match the user's expected creator. Try common handle variants first: with/without dots, dotless, underscores removed, and cross-platform Instagram / TikTok / YouTube checks. Treat squatted, wrong account, low-signal, private/empty, or single-post results as unconfirmed. If the default scrape returns only one stale post but the bio/follower/name signal suggests the account may be real, try `user-reels`/`user-posts` with digest and the common variants before calling the account dead. When unconfirmed, stop and ask **"Is this you?"** with the evidence you saw (`N followers`, verified badge status, display name, bio snippet, platform URL, recent-post summary) and offer the likely variant; do not synthesize the Creator Profile before identity is confirmed. When identity is confirmed, set `state.identity_confirmed = true`.
 
 4. **Synthesize a Creator Profile** (internal, then summarized for the user):
    - **Niche** — primary topic cluster
@@ -146,7 +146,7 @@ Once you have the handle, scrape immediately — the handle IS consent.
    - When you find a stitch/duet getting traction, **trace it back to the ORIGINAL it reacts to** and verify the original's play count.
 
 2. **Viral originals + current moments.** The big videos/claims/clips of the moment that beg for a take.
-   - `tiktok / trending-feed` with `params.region` (user's geo when known, otherwise `US`) and `tiktok / popular-hashtags` — pull the genuinely high-play videos
+   - `tiktok / trending-feed` with `params.region` (user's target posting region when known, otherwise `US`) and `tiktok / popular-hashtags` — pull the genuinely high-play videos. Show the region used on the menu; if the user says another region, re-run the trend scrape for that region before they pick.
    - `WebSearch` for this week's viral videos / viral moments / controversial clips / "everyone is talking about" — then **verify each on-platform for the real view count** (a blog mention is a lead, never proof)
    - `instagram / reels-search` + `instagram / hashtag` for the same
 
@@ -188,6 +188,7 @@ Each card is built around ONE viral original to react to — the proof (the orig
     Show this beat: {which seconds to play before the cut — e.g. "0:00–0:05, the 'no soul' line"}
     Your response (the angle): {one-line preview of the take you'll script in their voice — e.g. "cut to you, deadpan: 'made this in 4 seconds. anyway' + reveal"}
     Layout: {Stitch (default) / Duet}  •  Response density: {single / 2-3 / talking / show-and-tell / real-time}
+    Requirements before picking: {none OR required prop/disclosure/source constraint/portrait filming note, stated plainly}
     Why it's a fit: {1 line — why this original + this angle lands for them}
 ```
 
@@ -263,40 +264,39 @@ Once the user **picks a reaction script variant** from Stage 4a and approves it 
 
 **For DUET (side-by-side):** the script is the live reaction running ALONGSIDE the original. They should play the original on a second device for timing, and the teleprompter scrolls their commentary in sync.
 
-**Build the URL** against the deployed app at `https://teleprompter.pika.bot/`:
+**Create the handoff** through MCP. Do not build a long URL yourself:
 
 ```python
-import urllib.parse
-upload_return = mcp__plugin_pika_pika__create_upload_return(
+handoff = mcp__plugin_pika_pika__create_teleprompter_handoff(
+    script=state.script_text,            # the chosen reaction script variant
+    handle=state.handle.lstrip("@"),
+    trend=state.pick.name,               # e.g. "@calvin.james41 — everything is AI"
+    format="duet",
+    aspect_ratio=getattr(state, "recording_aspect_ratio", "9:16"),
     filename=f"{state.handle.lstrip('@')}-duet-take.webm",
     mime_type="video/webm",          # preferred; upload-return accepts browser mp4/webm variants
     max_size_bytes=350_000_000,
     expires_in_s=86400,
 )
-state.teleprompter_upload_url = upload_return["upload_url"]
-state.teleprompter_status_url = upload_return["status_url"]
-query = urllib.parse.urlencode({
-    "script": state.script_text,            # the chosen reaction script variant
-    "handle": state.handle.lstrip("@"),
-    "trend":  state.pick.name,               # e.g. "@calvin.james41 — everything is AI"
-    "format": "duet",
-})
-fragment = urllib.parse.urlencode({"upload": state.teleprompter_upload_url})
-url = "https://teleprompter.pika.bot/?" + query + "#" + fragment
+state.teleprompter_url = handoff["teleprompter_url"]
+state.teleprompter_qr_image_url = handoff["qr_image_url"]
+state.teleprompter_status_url = handoff["status_url"]
+state.teleprompter_aspect_ratio = handoff["aspect_ratio"]
+url = state.teleprompter_url
 ```
 
-**Do NOT pass raw presigned media URLs** into the teleprompter. Use `create_upload_return` only: it gives a browser-safe `upload_url` and `status_url`, mints the CDN presign only after the user starts uploading, and avoids TTL failures from recording sessions that take more than a few minutes. The hosted page POSTs `{mime_type,size_bytes}` to `upload_url`, receives `direct_upload_url`, `attempt_id`, and `complete_url`, PUTs the Blob to the CDN URL, then completes by POSTing `attempt_id` to `complete_url`. Keep `status_url` in agent state only; do not put it in the browser URL.
+**Do NOT pass raw presigned media URLs** into the teleprompter. Use `create_teleprompter_handoff` only: it creates the browser-safe upload-return session behind the token, gives the agent a `status_url`, mints the CDN presign only after the user starts uploading, and avoids TTL failures from recording sessions that take more than a few minutes. The hosted page fetches `script`, `upload_url`, and `aspect_ratio` from MCP, POSTs `{mime_type,size_bytes}` to `upload_url`, receives `direct_upload_url`, `attempt_id`, and `complete_url`, PUTs the Blob to the CDN URL, then completes by POSTing `attempt_id` to `complete_url`. Keep `status_url` in agent state only; do not put it in the browser URL.
 
-**Emit the URL and, when already available, an approved server/CDN QR image URL** (canonical handoff — see `formats/teleprompter.md`):
+**Emit the URL and returned QR image URL** (canonical handoff — see `formats/teleprompter.md`):
 
 ```python
-qr_image_url = state.teleprompter_qr_image_url  # optional: approved server/CDN QR for this exact url
-qr_block = f"![Scan QR]({qr_image_url})" if qr_image_url else ""
+qr_image_url = state.teleprompter_qr_image_url
+qr_block = f"![Scan QR]({qr_image_url})"
 ```
 
 **Caption to surface to the user** (verbatim, swap the original's reference):
 
-> 📱 **Film your reaction on your phone.** Open the link below; if a QR image is included, scan it. Your reaction script is already loaded, with the read zone at the top right under the camera lens. Play the original on a second device for timing.
+> 📱 **Film your reaction on your phone.** Scan the QR image or open the link below. Your reaction script is already loaded, with the read zone at the top right under the camera lens. Play the original on a second device for timing.
 >
 > {qr_block}
 >
@@ -304,9 +304,8 @@ qr_block = f"![Scan QR]({qr_image_url})" if qr_image_url else ""
 >
 > When the take is ready, hit **Upload**. I'll watch the upload status and compose the stitch/duet as soon as it lands. If upload fails, use Share/Save and send the MP4 back here.
 
-If `qr_image_url` is empty, omit that markdown image line entirely; do not generate a local QR PNG.
-The hosted page intentionally does not generate its own QR because it runs without third-party
-scripts on the same page as the upload-return fragment token.
+Do not generate a local QR PNG and do not call a third-party QR service; use the `qr_image_url`
+returned by `create_teleprompter_handoff`.
 
 After this — poll `state.teleprompter_status_url` until it returns `status="uploaded"` with `public_url`, then save `public_url` as both `state.user_take_url` and `state.user_clip_url`. `state.user_clip_url` is the field Stage 5 probes and Stage 6 trims/reframes, so do not leave it unset after a successful teleprompter upload. If upload fails and the user sends a manual attachment, Stage 5's "Receive + sanity-check the user's footage" begins when the file lands.
 
@@ -323,7 +322,7 @@ This playbook needs **two** video inputs: the original clip (agent fetches) and 
 ### Receive + sanity-check the user's footage
 
 When the user's clip arrives:
-1. **Probe** — save the uploaded clip URL as `state.user_clip_url`, then call `mcp__plugin_pika_pika__probe_media`: confirm portrait orientation, ≥1080×1920, duration, fps.
+1. **Probe** — save the uploaded clip URL as `state.user_clip_url`, then call `mcp__plugin_pika_pika__probe_media`: confirm portrait orientation, ≥1080×1920, duration, fps. The teleprompter should upload a 9:16 take even when the raw camera stream is 16:9; if the clip is still landscape, ask for a phone/portrait reshoot unless the user explicitly accepts a center-crop rescue.
 2. **Sanity-check against the shot list** — was the response captured? For duets, is it ≥ the original's length? If a clip is unusable (wrong orientation, blurry, missing the reaction, too short for a duet), call it out and ask for a reshoot of *only that shot*.
 3. **Phone-cameo gate** — if the user's clip shows a phone (common in reaction content), confirm it's a current-gen iPhone (15 Pro / 16 / Air). See the phone-cameo gate.
 
@@ -395,6 +394,7 @@ After the final caption pass, read the returned `url` and save it as `state.fina
 - `font_color="white"`, `outline_color="black"`, `outline_width=4`
 - `position="bottom"`, `margin_v≈665` for the bottom safe-zone default
 - For duets, keep captions centered across the final composite so they clear the vertical split; use `mcp__plugin_pika_pika__probe_media` after `render_html_animation` before picking margins.
+- Keep caption rows short enough to render without clipping. Split long rows manually before `add_captions`; do not rely on automatic wrapping for long one-line punchlines.
 
 **IG Reels safe zone (1080×1920 stitch/native duet output):** top unsafe y≈0-270, bottom unsafe y≈1480-1920. Captions sit inside y≈270-1475, ~80px margin from left/right edges. Default bottom visual placement is near y≈1255. For explicitly accepted `edit_split_screen` fallback output, scale the same safe-zone intent to the probed output height. **Emoji warning:** decorative emoji can render inconsistently in burned captions; put emoji in the post description at upload.
 
@@ -402,7 +402,7 @@ After the final caption pass, read the returned `url` and save it as `state.fina
 
 **1. Composite-integrity gate** — open the final. For stitches: the cut is clean, the original segment is the right hook, audio doesn't clip at the join. For duets: the split is even inside the 1080×1920 render, neither panel is stretched, both play in sync, output dimensions match `mcp__plugin_pika_pika__probe_media`, and audio mix is balanced (you can hear the user over the original in a reaction duet; you hear the original in a performance duet).
 
-**2. Caption legibility gate** — readable at phone-screen size on first pass; doesn't overlap a face; for duets, centered and clear of the split. Split long captions across two cards. See the caption safe-zone guidance.
+**2. Caption legibility gate** — readable at phone-screen size on first pass; doesn't overlap a face or the mouth/chin; for duets, centered and clear of the split. No row is clipped by the left/right edge. Split long captions across two cards, reduce font size within 50-72, or adjust safe-zone margin and re-render. See the caption safe-zone guidance.
 
 **3. Audio-sync gate** — for stitches, does the user's hook land right after the cut? For duets, do the user's reactions land on the original's beats? Re-trim if not.
 
@@ -430,6 +430,8 @@ If they pick another, return to Stage 4 with that trend. Do NOT re-run trend res
 | Original already has burned captions + narrator audio (AI brainrot, subtitled clips) | Source isn't clean | Keep the stitch beat short (≤ the hook) so it reads as "the chaos"; don't fight it — your captions only go on the user's half |
 | Menu comes back under 10 cards | Few originals clear the ≥500K viral bar this week | Deliver fewer and say "only N viral originals clear the bar right now" — never pad with low-view clips |
 | Original is taller/shorter than 9:16 (e.g. 576×1048, 1:1, landscape) | Source aspect ≠ 1080×1920 | Run `mcp__plugin_pika_pika__edit_reframe(target_aspect="9:16", fill_mode="crop")`; never stretch |
+| User teleprompter take is landscape | User opened the link on a desktop camera or the browser ignored portrait capture | Ask for a phone/portrait reshoot unless the user accepts center-crop rescue; do not treat landscape as the expected path. |
+| Caption row clips at the frame edge | Long punchline sent as one row | Split the caption into shorter timed rows before re-running `mcp__plugin_pika_pika__add_captions`. |
 
 ## Don'ts
 

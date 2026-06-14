@@ -6,7 +6,7 @@ description: >-
   HTTPS required for camera access. The user opens the link on their phone, sees the script
   scrolling in a top-anchored "read zone" right under the camera lens, hits record, gets a 3-2-1
   countdown, can re-shoot as many times as they want, then uploads the take through
-  `create_upload_return` or falls back to Share/Save locally.
+  a short-token MCP handoff or falls back to Share/Save locally.
   This is an ADD-ON — format playbooks produce the
   URL; the page handles everything else.
 argument-hint: "<script> [handle] [trend] [format]"
@@ -21,34 +21,37 @@ they hand the user a script and say *"now film it."* That hand-off used to be a 
 user had to copy the script into a phone teleprompter app, set up framing, fight with prompter
 speed, and remember to send the result back.
 
-The handoff replaces that step with a one-tap link. The agent sends a URL like:
+The handoff replaces that step with a one-tap short link. The agent calls
+`mcp__plugin_pika_pika__create_teleprompter_handoff` and sends the returned URL:
 
 ```
-https://teleprompter.pika.bot/?script=...&handle=...&trend=...&format=talking|duet
+https://teleprompter.pika.bot/r?t=...
 ```
 
 The user taps it → camera + prompter come up → they hit record → re-shoot → **Upload**.
-The page POSTs `{mime_type,size_bytes}` to the browser-safe `upload_url` returned by
-`create_upload_return`. That start response returns `direct_upload_url`, `direct_upload_headers`,
-`attempt_id`, and `complete_url`; the page PUTs the recorded Blob directly to the CDN URL, then
-POSTs the `attempt_id` to `complete_url`. The agent polls the returned `status_url` until it sees
-`public_url`, then resumes its pipeline (captions, edit, etc.). If upload fails, the page falls
-back to Share/Save so the user can still send the take manually.
+The page uses the token to fetch `script`, `upload_url`, and `aspect_ratio` from MCP. It POSTs
+`{mime_type,size_bytes}` to that browser-safe `upload_url`. The start response returns
+`direct_upload_url`, `direct_upload_headers`, `attempt_id`, and `complete_url`; the page PUTs the
+recorded Blob directly to the CDN URL, then POSTs the `attempt_id` to `complete_url`. The agent
+polls the returned `status_url` until it sees `public_url`, then resumes its pipeline (captions,
+edit, etc.). If upload fails, the page falls back to Share/Save so the user can still send the take
+manually.
 
 ### Upload-return flow
 
-The canonical playbook handoff uses `mcp__plugin_pika_pika__create_upload_return`. **Do NOT pass raw `upload_asset` presigned URLs** to the browser:
+The canonical playbook handoff uses `mcp__plugin_pika_pika__create_teleprompter_handoff`. **Do NOT pass raw `upload_asset` presigned URLs** to the browser:
 short-lived presigned URLs can expire during a realistic recording session (open link → adjust
-speed → 2-3 takes → preview → upload), and they put the short-lived storage bearer URL directly in
-the teleprompter link before the user is ready to upload.
+speed → 2-3 takes → preview → upload), and they put a storage bearer URL in front of the user before
+the user is ready to upload.
 
-So for this flow: call `create_upload_return`, pass its `upload_url` into the teleprompter URL as
-the `upload` URL fragment parameter, and keep its `status_url` in agent state only. Do not pass the
-agent-pollable `status_url` to the browser. The page sends a JSON start request, receives
-`direct_upload_url`, `direct_upload_headers`, `attempt_id`, and `complete_url`, PUTs the Blob to the
-CDN URL, then completes the session by POSTing `{attempt_id}`. The MCP upload-return endpoint mints
-the short-lived CDN presign only when upload starts, so recording time no longer races the presign
-TTL.
+So for this flow: call `create_teleprompter_handoff`, emit its short `teleprompter_url`, and keep
+its `status_url` in agent state only. The MCP handoff row stores the script, `upload_url`, and
+`aspect_ratio`; the browser fetches those through `/api/teleprompter-handoff?t=...`. Do not pass the
+agent-pollable `status_url` to the browser. The page sends a JSON start request to `upload_url`,
+receives `direct_upload_url`, `direct_upload_headers`, `attempt_id`, and `complete_url`, PUTs the
+Blob to the CDN URL, then completes the session by POSTing `{attempt_id}`. The MCP upload-return
+endpoint mints the short-lived CDN presign only when upload starts, so recording time no longer
+races the presign TTL.
 
 ### Used by
 
@@ -57,70 +60,72 @@ TTL.
 - ❌ `formats/pov.md` — silent acting, deliverable is on-screen captions + shot list
 - ❌ `formats/dance.md` — AI-generated dance from a photo, no live filming
 
-## The URL contract
+## The short-token contract
 
-| Param | Required | What it does |
+`create_teleprompter_handoff` returns:
+
+| Field | Who uses it | What it does |
 |---|---|---|
-| `script` | ✅ | URL-encoded script text. Newlines (`%0A`) split lines. Long lines auto-split on `.!?`. |
-| `handle` | optional | Shown on the start screen as a chip (e.g. `@ilor_elmaleh`). Strip or include `@` either way. |
-| `trend` | optional | Shown in the start title alongside the handle (e.g. `"Wow, ok" challenge`). |
-| `format` | optional | `talking` / `pov` / `duet` — surfaces as a "Format: talking" chip. |
-| `session` | optional | Stable session ID so retries can be tracked. Page generates one if omitted. |
-| `upload` | optional fragment | Browser-safe `upload_url` from `create_upload_return`, passed after `#upload=...` so it is not sent to the teleprompter static host. When present, the preview button uploads the recorded Blob before falling back to Share/Save on failure. |
+| `teleprompter_url` | User/browser | Short URL, normally `https://teleprompter.pika.bot/r?t=...`. This is what the agent surfaces to the user and QR generator. |
+| `qr_image_url` | User/agent | Browser-viewable SVG QR image for the same `teleprompter_url`. Render this in chat so desktop users can scan with a phone. |
+| `status_url` | Agent only | Poll until it returns `status="uploaded"` with `public_url`. Never show this URL to the browser. |
+| `aspect_ratio` | Agent + browser | Recording ratio used by the page and shown to the user. Supported: `9:16`, `16:9`, `1:1`, `4:5`. Default: `9:16`. |
+| `expires_at` | Agent | User-facing expiry if needed. |
 
-Aliases: `script` can also be passed as `s`.
+The browser then reads `/api/teleprompter-handoff?t=...`, which returns only browser-safe state:
+`script`, optional `handle`/`trend`/`format`, `aspect_ratio`, `upload_url`, and expiry. It does not
+return `status_url`.
+
+Legacy/manual fallback: the page still accepts `script`/`s`, `handle`, `trend`, `format`,
+`aspect_ratio`/`aspect`, and `#upload=...` for local testing. Production playbooks should use the
+short-token MCP tool so QR codes stay sparse.
 
 ## Wiring into the playbooks
 
-In `formats/talking.md` or `formats/duet.md` Stage 4f (or wherever the script is finalized),
-add a step:
+In `formats/talking.md` or `formats/duet.md` Stage 4f (or wherever the script is finalized), add a
+step:
 
-1. Create the browser upload-return session:
+1. Create the teleprompter handoff:
    ```python
-   upload_return = mcp__plugin_pika_pika__create_upload_return(
+   handoff = mcp__plugin_pika_pika__create_teleprompter_handoff(
+       script=state.script_text,
+       handle=state.handle,
+       trend=state.pick.name,
+       format=state.format,              # "talking" or "duet"
+       aspect_ratio=getattr(state, "recording_aspect_ratio", "9:16"),
        filename=f"{state.handle.lstrip('@')}-{state.format}-take.webm",
        mime_type="video/webm",          # preferred; endpoint accepts browser mp4/webm variants in the same family
        max_size_bytes=350_000_000,      # enough for a short 9:16 phone take
        expires_in_s=86400,
    )
-   state.teleprompter_upload_url = upload_return["upload_url"]
-   state.teleprompter_status_url = upload_return["status_url"]
+   state.teleprompter_url = handoff["teleprompter_url"]
+   state.teleprompter_qr_image_url = handoff["qr_image_url"]
+   state.teleprompter_status_url = handoff["status_url"]
+   state.teleprompter_aspect_ratio = handoff["aspect_ratio"]
    ```
-2. Build the teleprompter link against the published app at `https://teleprompter.pika.bot/`:
-   ```
-   query = urlencode({
-       "script": script,
-       "handle": state.handle,
-       "trend": state.trend.name,
-       "format": state.format,
-       "session": state.session_id,
-   })
-   fragment = urlencode({"upload": state.teleprompter_upload_url})
-   url = f"https://teleprompter.pika.bot/?{query}#{fragment}"
-   ```
-3. **Emit the URL and optionally a QR image URL** to the chat — see the next section.
-4. Tell the user to record, hit **Upload**, and return to chat. If upload fails, the page opens the Share/Save fallback.
-5. Poll `state.teleprompter_status_url` until it returns `status="uploaded"` with `public_url`, then resume the pipeline with that uploaded take.
+2. **Emit `state.teleprompter_url` and `state.teleprompter_qr_image_url`** to the chat — see the next section.
+3. Tell the user to record, hit **Upload**, and return to chat. If upload fails, the page opens the Share/Save fallback.
+4. Poll `state.teleprompter_status_url` until it returns `status="uploaded"` with `public_url`, then resume the pipeline with that uploaded take.
 
-The page itself is stateless — no DB, no auth, no analytics. All the agent state lives in the URL.
+The page itself is stateless — no DB, no auth, no analytics. The temporary handoff state lives in
+the MCP jobs registry behind the short token.
 
-## The handoff — URL + optional server/CDN QR (canonical pattern)
+## The handoff — URL + returned QR image (canonical pattern)
 
-Every time the agent hands off the link, show the URL and, when an approved QR image path is
-available, the QR:
+Every time the agent hands off the link, show both values returned by
+`create_teleprompter_handoff`:
 
 1. **The clickable URL** — for desktop users who want to record at their workstation, or who'd
    rather paste the link into their phone manually.
-2. **A server-side QR / CDN QR image URL** — for desktop users who want to record on their phone.
+2. **The `qr_image_url` SVG** — for desktop users who want to record on their phone.
    Scanning it opens the same URL with the same script preloaded. No copy-paste, no typing, and
    no local Python package dependency.
 
-Build `qr_image_url` from the same teleprompter URL only when the workflow already has an approved
-server-side QR endpoint or approved CDN QR helper. Do not invent a local helper name and do not
-hard-code an unapproved third-party service in the skill:
+Do not invent a local helper name and do not hard-code an unapproved third-party service in the
+skill:
 
 ```python
-qr_image_url = state.teleprompter_qr_image_url  # optional: approved server/CDN QR for this exact url
+qr_image_url = state.teleprompter_qr_image_url
 ```
 
 Then render it in the handoff message:
@@ -130,35 +135,34 @@ Then render it in the handoff message:
 ```
 
 Caption the QR with the same message as the URL — e.g. *"Film it on your phone — scan or click."*
-If no approved QR image path is available, omit the chat QR image and surface the clickable URL
-only. The hosted page does not load third-party QR or compression scripts because the upload token
-lives in the URL fragment.
+If the QR image fails to render in a client, keep the clickable URL visible as the fallback.
 
 ### URL length budget
 
-QR codes get progressively denser as URLs grow. Practical thresholds for reliable scanning:
+QR codes get progressively denser as URLs grow. The short-token URL is normally far below the risky
+range, which is why this handoff exists. Practical thresholds:
 
 | URL length | Result |
 |---|---|
 | **< 600 chars** | Sparse QR, scans instantly even in dim light |
-| **600 – 1200** | Dense, still reliable — good for typical scripts (50-150 words) + handle + trend metadata |
+| **600 – 1200** | Dense, still reliable |
 | **1200 – 1800** | Very dense — needs a clean phone screen and steady hand. Last reasonable tier. |
 | **> 1800** | Skip the QR, surface only the clickable URL with a "tap to open on this device" instruction |
 
-If the URL is going to exceed 1500 chars (e.g. the script is very long), skip the chat QR image
-and surface the clickable URL only, or shorten the script into tighter teleprompter chunks. Do not
-rely on a local QR-generation package or a hosted-page QR fallback.
+If the URL is going to exceed 1500 chars, something is wrong: do not put the script or upload URL
+back into the QR. Use `create_teleprompter_handoff` so the script stays server-side behind the
+token.
 
 ### Example handoff message
 
 ```
 🎬 Your script is ready. Film it on your phone:
 
-📱 If a QR image URL was provided, scan it (opens teleprompter.pika.bot with the script preloaded):
+📱 Scan this QR on your phone (opens teleprompter.pika.bot with the script preloaded):
    ![Scan QR]({qr_image_url})
 
 🔗 Or open directly:
-   https://teleprompter.pika.bot/?script=...
+   {state.teleprompter_url}
 
 When you're done, hit Upload. I'll watch the upload status and start the edit as soon as the take lands. If upload fails, use Share/Save and send the MP4 back here.
 ```
@@ -197,10 +201,14 @@ dev loop is `web_publish` to a temporary URL.
   setting means very different pixel speeds in different parts of the script — by design.
 - Picks the best supported MIME (`video/mp4;codecs=h264,aac` first on iOS 17+, falls back to webm
   on Android/desktop).
+- Shows the requested recording ratio on the start screen. Default is `9:16` (`1080×1920`), but the
+  handoff can request `16:9` (`1920×1080`), `1:1` (`1080×1080`), or `4:5` (`1080×1350`). The page
+  records through that target-aspect canvas with cover-crop normalization, so a mismatched physical
+  camera stream still uploads the requested take shape.
 - Records via `MediaRecorder`, plays back the take, and lets the user re-shoot or upload.
-- If `upload` is present, starts the upload-return session with JSON, PUTs the Blob to the returned
-  `direct_upload_url`, POSTs `attempt_id` to `complete_url`, and falls back to Share/Save if any
-  step fails.
+- If the handoff provides `upload_url`, starts the upload-return session with JSON, PUTs the Blob to
+  the returned `direct_upload_url`, POSTs `attempt_id` to `complete_url`, and falls back to
+  Share/Save if any step fails.
 
 ## Controls (built in)
 

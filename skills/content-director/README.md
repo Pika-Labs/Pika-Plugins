@@ -64,8 +64,8 @@ into during Stage 4f (after script approval). Its contract is documented in
       HANDOFF             handed directly)             HANDOFF                no filming)
             │                                                │
             ▼                                                ▼
-      user records on phone (teleprompter.pika.bot)
-      hits Share → AirDrop / Save to Photos / chat attachment
+      user records on phone (teleprompter.pika.bot/r?t=...)
+      hits Upload → MCP upload-return → agent polls status_url
             │                                                │
             └─────────────────┬──────────────────────────────┘
                               ▼
@@ -76,8 +76,10 @@ into during Stage 4f (after script approval). Its contract is documented in
 
 ## The teleprompter — what makes it special
 
-A single static HTML page at `teleprompter.pika.bot`, no backend, fully stateless. The agent
-passes the script via URL params; the page handles everything else.
+A single static HTML page at `teleprompter.pika.bot`, backed by a short-token MCP handoff. The
+agent stores the approved script, browser `upload_url`, and `aspect_ratio` in the MCP jobs registry,
+then gives the user a sparse QR-friendly URL like `https://teleprompter.pika.bot/r?t=...` plus a
+returned `qr_image_url` for phone scanning.
 
 Key behaviors:
 
@@ -94,14 +96,17 @@ Key behaviors:
   (`yeah,` alone) get merged back.
 - **Mirrored output** — when the mirror toggle is on, recording is routed through a hidden
   `<canvas>` with `ctx.scale(-1, 1)`, so the recorded MP4 matches what the user saw in preview.
-- **Native Share button** — `navigator.share({ files: [...] })` opens the iOS share sheet
-  (AirDrop, Save Video to Photos, Messages, Mail) on iOS Safari 14+; falls back to a download
+- **Upload-return first, Share fallback** — the page uploads the take through the browser-safe
+  `upload_url`; if that fails, `navigator.share({ files: [...] })` opens the iOS share sheet
+  (AirDrop, Save Video to Photos, Messages, Mail) on iOS Safari 14+ and falls back to a download
   on desktop browsers.
+- **Protocol-selected recording ratio** — the handoff can request `9:16`, `16:9`, `1:1`, or `4:5`.
+  The page shows that ratio before recording and records through a matching canvas.
 - **Live controls** — SPEED and SIZE sliders always visible above the record button (stacked on
   phone, side-by-side on tablet+). No hunting in menus mid-take.
 
-The deployed URL is **production-stable**. Each script handoff just changes the URL params; the
-underlying app is the same. There is nothing to clean up after a session.
+The deployed URL is **production-stable**. Each session changes only the token; the underlying app
+is the same. The token expires with the MCP handoff/upload-return session.
 
 ## Updating the teleprompter
 

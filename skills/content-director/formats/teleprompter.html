@@ -400,9 +400,8 @@
 <script>
 (() => {
   // ============ PARAMS ============
-  // Plain URL params carry the non-secret script metadata. The upload-return
-  // token is accepted only from the URL fragment so it is not sent to the
-  // teleprompter static host.
+  // Preferred path: /r?t=... fetches script + upload_url + aspect_ratio from MCP.
+  // Legacy/local fallback: plain URL params carry script metadata and #upload carries upload_url.
   const params = new URLSearchParams(location.search);
   const hashParams = new URLSearchParams(location.hash ? location.hash.replace(/^#/, '') : '');
   const pick = (key, fallback) => {
@@ -415,17 +414,28 @@
     if (v !== null && v !== '') return v;
     return fallback;
   };
-  const ALLOWED_UPLOAD_ORIGINS = new Set([
+  const ALLOWED_MCP_ORIGINS = new Set([
     'https://mcp.pika.me',
     'https://staging-mcp.pika.bot',
     'http://localhost:3000',
     'http://127.0.0.1:3000'
   ]);
+  const DEFAULT_MCP_ORIGIN = 'https://mcp.pika.me';
+  function safeMcpOrigin(raw) {
+    const candidate = raw || DEFAULT_MCP_ORIGIN;
+    try {
+      const url = new URL(candidate);
+      const origin = url.origin;
+      return ALLOWED_MCP_ORIGINS.has(origin) ? origin : DEFAULT_MCP_ORIGIN;
+    } catch (e) {
+      return DEFAULT_MCP_ORIGIN;
+    }
+  }
   function safeUploadUrl(raw) {
     if (!raw) return '';
     try {
       const url = new URL(raw);
-      if (!ALLOWED_UPLOAD_ORIGINS.has(url.origin)) return '';
+      if (!ALLOWED_MCP_ORIGINS.has(url.origin)) return '';
       if (!/^\/api\/upload-return\/[A-Za-z0-9_-]{24,128}$/.test(url.pathname)) return '';
       url.hash = '';
       return url.toString();
@@ -445,12 +455,27 @@
       return '';
     }
   }
-  const script = (pick('script', pick('s', "Welcome to the Pika teleprompter.\n\nReplace this default text with your actual script.\n\nThe line you are reading sits at the top — look up there, right under the camera lens."))).trim();
-  const handle = pick('handle', '');
-  const trend = pick('trend', '');
-  const format = pick('format', '');
-  const sessionId = pick('session', (crypto.randomUUID ? crypto.randomUUID() : String(Date.now())));
-  const uploadUrl = safeUploadUrl(pickSecret('upload', ''));
+  let script = (pick('script', pick('s', "Welcome to the Pika teleprompter.\n\nReplace this default text with your actual script.\n\nThe line you are reading sits at the top — look up there, right under the camera lens."))).trim();
+  let handle = pick('handle', '');
+  let trend = pick('trend', '');
+  let format = pick('format', '');
+  let sessionId = pick('session', (crypto.randomUUID ? crypto.randomUUID() : String(Date.now())));
+  let uploadUrl = safeUploadUrl(pickSecret('upload', ''));
+  const DEFAULT_ASPECT_RATIO = '9:16';
+  const ASPECT_RATIO_PRESETS = {
+    '9:16': { width: 1080, height: 1920, label: '9:16 vertical' },
+    '16:9': { width: 1920, height: 1080, label: '16:9 landscape' },
+    '1:1': { width: 1080, height: 1080, label: '1:1 square' },
+    '4:5': { width: 1080, height: 1350, label: '4:5 portrait' }
+  };
+  const RECORD_FPS = 30;
+  function normalizeAspectRatio(value) {
+    return ASPECT_RATIO_PRESETS[value] ? value : DEFAULT_ASPECT_RATIO;
+  }
+  let aspectRatio = normalizeAspectRatio(pick('aspect_ratio', pick('aspect', DEFAULT_ASPECT_RATIO)));
+  function recordPreset() {
+    return ASPECT_RATIO_PRESETS[aspectRatio] || ASPECT_RATIO_PRESETS[DEFAULT_ASPECT_RATIO];
+  }
 
   // ============ STATE ============
   const $ = sel => document.querySelector(sel);
@@ -503,6 +528,34 @@
   let mirrorRAF = 0;
   let mirrorStream = null;
 
+  async function loadRemoteHandoff() {
+    const token = params.get('t');
+    if (!token) return;
+    const mcpOrigin = safeMcpOrigin(params.get('mcp'));
+    const endpoint = mcpOrigin + '/api/teleprompter-handoff?t=' + encodeURIComponent(token);
+    const res = await fetch(endpoint, {
+      method: 'GET',
+      headers: { 'Accept': 'application/json' },
+      cache: 'no-store'
+    });
+    let data = {};
+    try { data = await res.json(); } catch (e) {}
+    if (!res.ok) {
+      throw new Error(data.message || data.error || ('HTTP ' + res.status));
+    }
+    if (typeof data.script !== 'string' || !data.script.trim()) {
+      throw new Error('Handoff response missing script');
+    }
+    script = data.script.trim();
+    handle = typeof data.handle === 'string' ? data.handle : '';
+    trend = typeof data.trend === 'string' ? data.trend : '';
+    format = typeof data.format === 'string' ? data.format : '';
+    aspectRatio = normalizeAspectRatio(typeof data.aspect_ratio === 'string' ? data.aspect_ratio : '');
+    uploadUrl = safeUploadUrl(typeof data.upload_url === 'string' ? data.upload_url : '');
+    sessionId = token.slice(0, 12);
+    if (!uploadUrl) throw new Error('Handoff response missing safe upload_url');
+  }
+
   // ============ INIT START SCREEN ============
   function initStart() {
     const titleParts = [];
@@ -510,6 +563,7 @@
     if (trend) titleParts.push(trend);
     if (titleParts.length) $('#start-title').textContent = titleParts.join(' · ');
     const metaEl = $('#meta');
+    while (metaEl.firstChild) metaEl.removeChild(metaEl.firstChild);
     if (format) {
       const pill = document.createElement('span');
       pill.className = 'chip';
@@ -525,14 +579,28 @@
       pill.textContent = '@' + handle.replace(/^@/, '');
       metaEl.appendChild(pill);
     }
+    const aspectPill = document.createElement('span');
+    aspectPill.className = 'chip';
+    aspectPill.append('Record: ');
+    const aspectText = document.createElement('b');
+    aspectText.textContent = recordPreset().label;
+    aspectPill.appendChild(aspectText);
+    metaEl.appendChild(aspectPill);
     $('#script-preview').textContent = script;
+    refreshShareActionLabel();
   }
 
   // ============ CAMERA ============
   async function startCamera() {
     try {
+      const preset = recordPreset();
       const constraints = {
-        video: { facingMode: 'user', width: { ideal: 1920 }, height: { ideal: 1080 } },
+        video: {
+          facingMode: 'user',
+          width: { ideal: preset.width },
+          height: { ideal: preset.height },
+          aspectRatio: { ideal: preset.width / preset.height }
+        },
         audio: { echoCancellation: true, noiseSuppression: true, sampleRate: 48000 }
       };
       mediaStream = await navigator.mediaDevices.getUserMedia(constraints);
@@ -748,36 +816,55 @@
     countdownEl.classList.remove('show');
   }
 
-  // Build the stream we actually record. If mirror is on, route through a hidden canvas with
-  // scaleX(-1) so the recorded MP4 matches what the user sees in the preview. Audio track is
-  // passed through directly from the mic.
+  function drawVideoCover(ctx, video, canvasW, canvasH, shouldMirror) {
+    const sourceW = video.videoWidth || canvasW;
+    const sourceH = video.videoHeight || canvasH;
+    const sourceRatio = sourceW / sourceH;
+    const targetRatio = canvasW / canvasH;
+    let sx = 0;
+    let sy = 0;
+    let sw = sourceW;
+    let sh = sourceH;
+
+    if (sourceRatio > targetRatio) {
+      sw = sourceH * targetRatio;
+      sx = (sourceW - sw) / 2;
+    } else {
+      sh = sourceW / targetRatio;
+      sy = (sourceH - sh) / 2;
+    }
+
+    ctx.save();
+    if (shouldMirror) {
+      ctx.translate(canvasW, 0);
+      ctx.scale(-1, 1);
+    }
+    ctx.drawImage(video, sx, sy, sw, sh, 0, 0, canvasW, canvasH);
+    ctx.restore();
+  }
+
+  // Build the stream we actually record. Route video through the requested target-aspect canvas.
+  // Audio track is passed through directly from the mic.
   function buildRecordStream() {
-    if (!mirrored) return mediaStream;
     const videoTrack = mediaStream.getVideoTracks()[0];
     if (!videoTrack) return mediaStream;
-    const settings = videoTrack.getSettings ? videoTrack.getSettings() : {};
-    // Use the actual rendered camera video size (fallback if settings doesn't expose it)
-    const W = settings.width || cameraEl.videoWidth || 720;
-    const H = settings.height || cameraEl.videoHeight || 1280;
     mirrorCanvas = document.createElement('canvas');
-    mirrorCanvas.width = W;
-    mirrorCanvas.height = H;
+    if (!mirrorCanvas.captureStream) return mediaStream;
+    const preset = recordPreset();
+    mirrorCanvas.width = preset.width;
+    mirrorCanvas.height = preset.height;
     const ctx = mirrorCanvas.getContext('2d');
     let active = true;
     function tick() {
       if (!active) return;
       if (cameraEl.readyState >= 2) {
-        ctx.save();
-        ctx.translate(W, 0);
-        ctx.scale(-1, 1);
-        ctx.drawImage(cameraEl, 0, 0, W, H);
-        ctx.restore();
+        drawVideoCover(ctx, cameraEl, preset.width, preset.height, mirrored);
       }
       mirrorRAF = requestAnimationFrame(tick);
     }
     mirrorRAF = requestAnimationFrame(tick);
     mirrorCanvas.__stop = () => { active = false; };
-    const canvasStream = mirrorCanvas.captureStream(30);
+    const canvasStream = mirrorCanvas.captureStream(RECORD_FPS);
     mirrorStream = new MediaStream([
       ...canvasStream.getVideoTracks(),
       ...mediaStream.getAudioTracks()
@@ -1007,7 +1094,9 @@
 
   if (window.__PIKA_TELEPROMPTER_E2E__) {
     window.__pikaTeleprompterE2E = {
-      uploadUrl,
+      get uploadUrl() { return uploadUrl; },
+      get aspectRatio() { return aspectRatio; },
+      recordPreset,
       setRecordedBlobForTest(blob) { recordedBlob = blob; },
       uploadRecording
     };
@@ -1088,17 +1177,37 @@
 
   $('#reshoot-from-preview').addEventListener('click', backToRecord);
   $('#share-btn').addEventListener('click', uploadOrShareRecording);
-  // Tweak label based on capability: "Upload" with upload-return, "Share" on iOS/Android, "Save" on desktop browsers
-  if (uploadUrl) {
-    $('#share-btn').textContent = 'Upload';
-  } else if (!canNativeShareFiles()) {
-    $('#share-btn').textContent = 'Save';
+
+  function refreshShareActionLabel() {
+    if (uploadUrl) {
+      $('#share-btn').textContent = 'Upload';
+    } else if (!canNativeShareFiles()) {
+      $('#share-btn').textContent = 'Save';
+    } else {
+      $('#share-btn').textContent = 'Share';
+    }
   }
+
+  // Tweak label based on capability: "Upload" with upload-return, "Share" on iOS/Android, "Save" on desktop browsers
+  refreshShareActionLabel();
 
   window.addEventListener('resize', () => { positionReadZone(); });
   window.addEventListener('orientationchange', () => setTimeout(() => { positionReadZone(); anchorFirstLine(); }, 150));
 
-  initStart();
+  async function boot() {
+    try {
+      await loadRemoteHandoff();
+      initStart();
+    } catch (e) {
+      const err = $('#start-err');
+      err.textContent = 'Could not load teleprompter handoff: ' + (e.message || e.name || 'unknown');
+      err.hidden = false;
+      $('#script-preview').textContent = 'This recording link is unavailable or expired.';
+      $('#start-btn').disabled = true;
+    }
+  }
+
+  boot();
 })();
 </script>
 </body>

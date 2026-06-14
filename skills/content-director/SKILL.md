@@ -16,7 +16,7 @@ argument-hint: "<instagram-or-tiktok-handle> [talking|pov|dance|duet]"
 required-capabilities:
   - mcp__plugin_pika_pika__analyze_media
   - mcp__plugin_pika_pika__capture_website
-  - mcp__plugin_pika_pika__create_upload_return
+  - mcp__plugin_pika_pika__create_teleprompter_handoff
   - mcp__plugin_pika_pika__add_captions
   - mcp__plugin_pika_pika__edit_audio_replace
   - mcp__plugin_pika_pika__edit_audio_mix
@@ -50,7 +50,7 @@ A single front-door content director that packs **four** format playbooks and ro
 
 **This skill ONLY bundles these four.** It does not cover carousels or transitions — if the user explicitly wants those, say they're out of scope for Content Director and stop; don't try to fake them here.
 
-**Teleprompter handoff (talking + duet only).** Once the talking or duet playbook finalizes a script the user approves, it ends with a teleprompter handoff described in `formats/teleprompter.md`: it calls `mcp__plugin_pika_pika__create_upload_return`, emits the live URL `https://teleprompter.pika.bot/?script=...&handle=...&trend=...&format=...#upload=...`, and keeps the returned `status_url` so the agent can poll for the uploaded `public_url`. The page POSTs `{mime_type,size_bytes}` to `upload_url`, receives `direct_upload_url`, `attempt_id`, and `complete_url`, PUTs the recorded Blob directly to the CDN, then POSTs the `attempt_id` to `complete_url`. It falls back to Share/Save if upload fails. When already available, it may also include an approved server/CDN QR image URL so the user can record on their phone (front camera + scrolling prompter + lens-aligned read zone + upload-return output, with Share/Save fallback). If no approved QR image path is available, the playbook surfaces the clickable URL only. The hosted page does not load third-party scripts because the upload token lives in the URL fragment. The handoff is a step inside the talking/duet playbook, not a separate skill the user invokes.
+**Teleprompter handoff (talking + duet only).** Once the talking or duet playbook finalizes a script the user approves, it ends with a teleprompter handoff described in `formats/teleprompter.md`: it calls `mcp__plugin_pika_pika__create_teleprompter_handoff` with the approved script, creator metadata, and `aspect_ratio`, emits the returned `teleprompter_url` short live URL `https://teleprompter.pika.bot/r?t=...`, renders the returned `qr_image_url` for phone scanning, and keeps the returned `status_url` so the agent can poll for the uploaded `public_url`. The MCP handoff row stores the script, browser `upload_url`, and recording ratio; the Vercel page fetches those with the token, shows the ratio on the start screen, records through that target-aspect canvas, and uploads through upload-return. It falls back to Share/Save if upload fails. Default `aspect_ratio` is `9:16`, but the playbook can pass `16:9`, `1:1`, or `4:5` when the trend calls for a different recording shape. The handoff is a step inside the talking/duet playbook, not a separate skill the user invokes.
 
 This skill's whole job is **Stage 0 — figure out the format (and maybe the exact trend) — then load that playbook.** Everything after is the format playbook's pipeline, run verbatim. Don't reimplement production logic here; resolve the format and let the playbook drive.
 
@@ -90,7 +90,7 @@ Once a reply arrives:
 
 ### Step 0b — Recommend a format from their profile
 
-Scrape the profile **once** (`mcp__plugin_pika_pika__scrape_social` on `state.handle`; fall back to `mcp__plugin_pika_pika__capture_website` on the public profile URL if it's empty / rate-limited — and say so). Pull the most recent 12–20 posts.
+Scrape the profile **once** (`mcp__plugin_pika_pika__scrape_social` on `state.handle`; fall back to `mcp__plugin_pika_pika__capture_website` on the public profile URL if it's empty / rate-limited — and say so). Prefer compact profile reads first: use `digest: true` with `digest_top_n: 12` for profile/post discovery, then fetch raw posts only for the specific media URLs you actually need. Pull the most recent 12–20 posts only when the compact result is not enough.
 
 **Identity-confirmation gate before profiling.** Before you synthesize `state.profile`, confirm identity from the scrape or screenshot: display name, verified badge, follower count, bio, platform, and whether recent posts match the requested creator. Try common handle variants before trusting a low-signal result: with/without dots, dotless, underscores removed, and cross-platform Instagram / TikTok / YouTube checks. Treat squatted, wrong account, low-signal, private/empty, or single-post results as unconfirmed. When unconfirmed, stop and ask **"Is this you?"** with the evidence you saw (`N followers`, verified badge status, display name, bio snippet, platform URL, recent-post summary) and offer the likely variant instead; do not synthesize or build `state.profile` before identity is confirmed. Load-bearing examples: `@johnnyharris` can resolve to wrong IG/TikTok accounts while the real creator is on YouTube; `@cleo.abram` should trigger a dotless `@cleoabram` variant check.
 
@@ -126,6 +126,7 @@ Card format:
 [N] {FORMAT BADGE: 🗣️ TALKING / 🎬 POV / 💃 DANCE / 🤝 DUET}  •  {Named trend (≤4 words)}
     Fingerprint: {audio name + artist OR verbatim opener OR (duet) the original's name/what-it-is}
     Template: {one sentence — the structure all replicators follow, OR (duet) the obvious take}
+    Requirements before picking: {none OR required disclosure/prop/location/phone orientation/source constraint, stated plainly}
     Why it fits {handle}: {1 line in the user's-voice terms}
     ▶ Reference {clips/original} (real, openable, above threshold):
        1. {URL} — {play_count} plays, {creator handle}, {date}
@@ -157,7 +158,7 @@ Because this registered skill loads the format playbooks instead of registering 
 - `mcp__plugin_pika_pika__capture_website`
 - `mcp__plugin_pika_pika__transcribe_audio`
 - `mcp__plugin_pika_pika__analyze_media`
-- `mcp__plugin_pika_pika__create_upload_return`
+- `mcp__plugin_pika_pika__create_teleprompter_handoff`
 - `mcp__plugin_pika_pika__probe_media`
 - `mcp__plugin_pika_pika__edit_trim`
 - `mcp__plugin_pika_pika__edit_concat`
