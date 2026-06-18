@@ -1,0 +1,32 @@
+<!--
+  PDF VOICE MODE — body fragment for html_to_pdf. REUSED for all 5 voice modes (one
+  body_pages entry each). Markup only; .voice classes live in pdf-shared-head.template.html.
+  Layout is the load-bearing padded grid: 80px page padding, columns 800 / 160 gap / 800,
+  right tile grid 800x920 with 16px gap, tiles fill cells (do NOT change these numbers).
+  Left half = mode name + "use when" + 2 sample captions. Right half = 2x2 image grid.
+
+  TOKENS:
+    {{MODE_NAME}}   voice-mode name, e.g. Hype, Confessional, Tutorial
+    {{USE_WHEN}}    one-line context for when this mode is used
+    {{CAPTION_1}}   first sample caption in this voice
+    {{CAPTION_2}}   second sample caption in this voice
+    {{TILE_1_URL}}..{{TILE_4_URL}}   four image URLs for the 2x2 grid
+    {{TILE_1_POS}}..{{TILE_4_POS}}   OPTIONAL per-tile background-position (default 50% 50%)
+-->
+<div class="page voice">
+  <div class="left">
+    <div class="eyebrow">Voice Mode</div>
+    <div class="mode-name">{{MODE_NAME}}</div>
+    <div class="usewhen-label">Use when</div>
+    <div class="usewhen">{{USE_WHEN}}</div>
+    <div class="captions-label">Sample captions</div>
+    <div class="caption">{{CAPTION_1}}</div>
+    <div class="caption">{{CAPTION_2}}</div>
+  </div>
+  <div class="grid">
+    <div class="tile" style="background-image:url('{{TILE_1_URL}}');background-position:{{TILE_1_POS}}"></div>
+    <div class="tile" style="background-image:url('{{TILE_2_URL}}');background-position:{{TILE_2_POS}}"></div>
+    <div class="tile" style="background-image:url('{{TILE_3_URL}}');background-position:{{TILE_3_POS}}"></div>
+    <div class="tile" style="background-image:url('{{TILE_4_URL}}');background-position:{{TILE_4_POS}}"></div>
+  </div>
+</div>

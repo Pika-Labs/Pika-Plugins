@@ -1,0 +1,39 @@
+<!--
+  MOOD-BOARD FULL-BLEED TEMPLATE (no header) — rendered by mcp__plugin_pika_pika__html_to_png.
+  Used ONLY for PDF page 3 (edge-to-edge mood board). Zero gutters so tiles touch directly —
+  this is the variant that prevents the 2-4px cream slivers between tiles/rows in the PDF.
+
+  HOW TO FILL: same {{TILES}} loop as mood-board.template.html, same tile URLs + crops.
+    {{COLS}}  6 (portrait, default) → 6x320 x 2x540 = 1920x1080 exactly, no gaps.
+    {{TILES}} the tile loop — exactly 12 tiles.
+
+  RENDER: html_to_png, format "png", raster_options.viewport_px = { width: 1920, height: 1080 }.
+-->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 1920px; height: 1080px; }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat({{COLS}}, 1fr);
+    grid-auto-rows: 1fr;
+    gap: 0;                 /* OUTER_X=0, GUTTER=0, ROW_GAP=0 — load-bearing */
+    width: 1920px; height: 1080px;
+  }
+  .tile {
+    width: 100%; height: 100%;
+    background-size: cover;
+    background-repeat: no-repeat;
+    background-position: 50% 50%;
+  }
+</style>
+</head>
+<body>
+  <div class="grid">
+{{TILES}}
+  </div>
+</body>
+</html>

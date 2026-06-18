@@ -1,0 +1,1214 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Pika Teleprompter</title>
+<style>
+  :root {
+    --bg: #000;
+    --fg: #fff;
+    --dim: rgba(255,255,255,0.55);
+    --accent: #b18cff;
+    --red: #ff3b30;
+    --glass: rgba(0,0,0,0.42);
+    --glass-strong: rgba(0,0,0,0.72);
+    /* Clearance for the "Made on Pika" badge that pika.me overlays bottom-right */
+    --badge-clearance: 52px;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; padding: 0; height: 100%; background: #000; color: #fff; font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", system-ui, sans-serif; overflow: hidden; }
+  body { user-select: none; -webkit-user-select: none; }
+  [hidden] { display: none !important; }
+  button { font-family: inherit; }
+
+  /* ================ START SCREEN ================ */
+  #start {
+    position: fixed; inset: 0; padding: 28px 24px;
+    padding-top: max(28px, env(safe-area-inset-top));
+    padding-bottom: calc(max(28px, env(safe-area-inset-bottom)) + var(--badge-clearance));
+    display: flex; flex-direction: column; gap: 18px;
+    background:
+      radial-gradient(ellipse at top, rgba(177,140,255,0.10) 0%, transparent 55%),
+      #000;
+    overflow-y: auto;
+  }
+  .brand { font-size: 11px; letter-spacing: 0.24em; text-transform: uppercase; color: var(--dim); display: flex; align-items: center; gap: 8px; }
+  .brand b { color: var(--accent); font-weight: 700; }
+  .pika-mark { width: auto; height: 13px; color: var(--accent); display: inline-block; flex: 0 0 auto; }
+  #start h1 { margin: 0; font-size: 30px; font-weight: 700; letter-spacing: -0.01em; line-height: 1.15; }
+  .meta-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip { font-size: 11px; background: rgba(255,255,255,0.06); padding: 5px 10px; border-radius: 999px; color: var(--fg); letter-spacing: 0.02em; }
+  .chip b { color: var(--accent); font-weight: 600; }
+  #script-preview {
+    font-size: 16px; line-height: 1.55; white-space: pre-wrap;
+    background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.07);
+    border-radius: 16px; padding: 18px; max-height: 42vh; overflow-y: auto;
+    flex: 1 1 auto; min-height: 100px;
+  }
+  .start-bottom { display: flex; flex-direction: column; gap: 10px; }
+  .start-tip { font-size: 12px; color: var(--dim); text-align: center; line-height: 1.5; }
+  .btn-primary {
+    width: 100%; padding: 16px; border-radius: 16px; border: 0;
+    background: linear-gradient(135deg, #c8a2ff 0%, #8c5cf6 100%); color: #fff;
+    font-size: 16px; font-weight: 700; cursor: pointer;
+    box-shadow: 0 8px 28px -10px rgba(140,92,246,0.55);
+  }
+  .btn-primary:active { transform: translateY(1px); }
+  .err { color: var(--red); font-size: 13px; text-align: center; padding: 8px 12px; background: rgba(255,59,48,0.08); border: 1px solid rgba(255,59,48,0.25); border-radius: 10px; }
+
+  /* QR section — "Open on phone" */
+  .qr-section {
+    margin-top: 14px;
+    display: flex; flex-direction: row; align-items: center; gap: 14px;
+    padding: 14px 14px 14px 16px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 16px;
+  }
+  .qr-section.hidden { display: none; }
+  .qr-info { flex: 1; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+  .qr-label { font-size: 10px; letter-spacing: 0.2em; text-transform: uppercase; color: var(--accent); font-weight: 600; }
+  .qr-title { font-size: 14px; font-weight: 600; color: var(--fg); }
+  .qr-tip { font-size: 11px; color: var(--dim); line-height: 1.4; }
+  .qr-canvas {
+    width: 96px; height: 96px;
+    background: #fff;
+    padding: 6px;
+    border-radius: 10px;
+    flex: 0 0 96px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .qr-canvas img { width: 100%; height: 100%; display: block; image-rendering: pixelated; }
+  @media (min-width: 560px) {
+    .qr-canvas { width: 128px; height: 128px; flex-basis: 128px; }
+  }
+
+  /* ================ RECORD SCREEN ================ */
+  #stage { position: fixed; inset: 0; background: #000; }
+  #camera {
+    position: absolute; inset: 0; width: 100%; height: 100%;
+    object-fit: cover; background: #000;
+  }
+  #camera.mirror { transform: scaleX(-1); }
+
+  /* Tiny "↑ camera" dot at top center — reminds where to look */
+  #lens {
+    position: absolute; top: max(10px, env(safe-area-inset-top)); left: 50%;
+    transform: translateX(-50%); z-index: 5;
+    display: flex; align-items: center; gap: 6px;
+    font-size: 10px; letter-spacing: 0.2em; text-transform: uppercase;
+    color: rgba(255,255,255,0.7);
+    background: rgba(0,0,0,0.4); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+    padding: 5px 11px 5px 9px; border-radius: 999px; pointer-events: none;
+    border: 1px solid rgba(255,255,255,0.1);
+    transition: opacity 0.3s;
+  }
+  #lens .dot { width: 5px; height: 5px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 8px var(--accent); }
+
+  /* Corner buttons */
+  .corner { position: absolute; z-index: 9; }
+  .corner.tl { top: max(10px, env(safe-area-inset-top)); left: 10px; }
+  .corner.tr { top: max(10px, env(safe-area-inset-top)); right: 10px; }
+  .icon-btn {
+    width: 40px; height: 40px; border-radius: 50%; border: 0;
+    background: var(--glass); color: var(--fg);
+    backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px; cursor: pointer;
+    border: 1px solid rgba(255,255,255,0.08);
+  }
+  .icon-btn:active { transform: scale(0.94); }
+  .icon-btn.on { color: var(--accent); border-color: rgba(177,140,255,0.4); }
+
+  /* Prompter window — anchored to the very top edge of the screen so the dark gradient
+     starts at the top and fades seamlessly into the camera feed. No hard horizontal edge. */
+  #prompter-window {
+    position: absolute; left: 0; right: 0;
+    top: 0;
+    height: 58vh;
+    overflow: hidden;
+    pointer-events: none;
+    /* Fade the bottom edge to transparent so lines dissolve into the camera below */
+    mask-image: linear-gradient(180deg, #000 0%, #000 72%, transparent 100%);
+    -webkit-mask-image: linear-gradient(180deg, #000 0%, #000 72%, transparent 100%);
+  }
+  /* Soft dark vignette — strongest at top, fully clear by the bottom of the window */
+  #prompter-window::before {
+    content: "";
+    position: absolute; inset: 0;
+    background: linear-gradient(180deg, rgba(0,0,0,0.62) 0%, rgba(0,0,0,0.5) 28%, rgba(0,0,0,0.28) 55%, rgba(0,0,0,0) 100%);
+    pointer-events: none;
+  }
+  #prompter {
+    position: absolute; left: 0; right: 0; top: 0;
+    /* Top padding reserves space for the "↑ camera" pill so first line clears it */
+    padding: calc(max(12px, env(safe-area-inset-top)) + 48px) 22px 60vh 22px;
+    text-align: center;
+    will-change: transform;
+  }
+  .line {
+    font-weight: 700; line-height: 1.28; margin: 0 0 0.45em;
+    color: rgba(255,255,255,0.9);
+    text-shadow:
+      0 1px 2px rgba(0,0,0,0.95),
+      0 2px 14px rgba(0,0,0,0.85),
+      0 0 24px rgba(0,0,0,0.6);
+    letter-spacing: -0.005em;
+  }
+
+  /* Read-zone glow — subtle horizontal accent + arrow pointing up at the lens */
+  #readzone {
+    position: absolute; left: 50%; transform: translateX(-50%);
+    width: 56px; height: 0;
+    border-top: 2px solid var(--accent);
+    box-shadow: 0 0 14px var(--accent), 0 -2px 12px var(--accent);
+    border-radius: 2px; pointer-events: none; z-index: 4;
+    opacity: 0.85;
+  }
+
+  /* ================ BOTTOM CONTROL BAR ================ */
+  #controls {
+    position: absolute; left: 0; right: 0; bottom: 0;
+    padding: 10px 16px calc(max(16px, env(safe-area-inset-bottom)) + var(--badge-clearance));
+    z-index: 8;
+    display: flex; flex-direction: column; align-items: stretch; gap: 10px;
+    background: linear-gradient(0deg, rgba(0,0,0,0.72) 0%, rgba(0,0,0,0.42) 60%, rgba(0,0,0,0.0) 100%);
+  }
+  .control-row { display: flex; align-items: center; justify-content: center; gap: 28px; }
+  #reshoot, #settings-btn { width: 48px; height: 48px; font-size: 18px; background: var(--glass); }
+  #reshoot { border: 1px solid rgba(255,255,255,0.1); border-radius: 50%; color: var(--fg); display: flex; align-items: center; justify-content: center; cursor: pointer; backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); }
+  #settings-btn { border: 1px solid rgba(255,255,255,0.1); border-radius: 50%; color: var(--fg); display: flex; align-items: center; justify-content: center; cursor: pointer; backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); }
+  #reshoot:active, #settings-btn:active { transform: scale(0.94); }
+
+  /* Live sliders — sit above the button row, always visible during recording.
+     Stacked vertically on phone screens so SIZE never gets clipped; side-by-side on tablet+. */
+  .live-sliders { display: flex; flex-direction: column; gap: 8px; padding: 0 4px; }
+  @media (min-width: 560px) { .live-sliders { flex-direction: row; align-items: center; gap: 10px; } }
+  .live-slider {
+    flex: 1; display: flex; align-items: center; gap: 10px;
+    background: var(--glass);
+    backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 999px;
+    padding: 7px 14px;
+    min-width: 0;
+  }
+  .live-slider label {
+    font-size: 9px; letter-spacing: 0.2em; text-transform: uppercase;
+    color: rgba(255,255,255,0.55); min-width: 32px;
+  }
+  .live-slider input[type=range] {
+    flex: 1; accent-color: var(--accent);
+    height: 18px; min-width: 0; background: transparent;
+  }
+  .live-slider .val { font-size: 10px; color: var(--fg); min-width: 28px; text-align: right; font-variant-numeric: tabular-nums; opacity: 0.85; }
+
+  #rec-btn {
+    width: 78px; height: 78px; border-radius: 50%;
+    border: 4px solid rgba(255,255,255,0.95);
+    background: var(--red);
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer; transition: transform 0.15s, background 0.15s;
+    box-shadow: 0 0 0 6px rgba(0,0,0,0.25);
+    position: relative;
+  }
+  #rec-btn .core {
+    width: 58px; height: 58px; border-radius: 50%;
+    background: var(--red); transition: all 0.2s ease;
+  }
+  #rec-btn[data-rec="true"] .core { width: 24px; height: 24px; border-radius: 7px; background: #fff; }
+  #rec-btn:active { transform: scale(0.95); }
+
+  /* Recording indicator — lives inside #controls (above the sliders), out of the prompter area */
+  #rec-indicator {
+    align-self: center;
+    background: rgba(255,59,48,0.96); padding: 5px 12px; border-radius: 999px;
+    font-size: 11px; font-weight: 700; letter-spacing: 0.1em;
+    display: none; align-items: center; gap: 7px;
+    font-variant-numeric: tabular-nums;
+    margin-bottom: 2px;
+  }
+  #rec-indicator.show { display: inline-flex; }
+  #rec-indicator .dot { width: 7px; height: 7px; border-radius: 50%; background: #fff; animation: blink 1s infinite; }
+  @keyframes blink { 50% { opacity: 0.25; } }
+
+  /* Countdown overlay */
+  #countdown {
+    position: absolute; inset: 0; display: none;
+    align-items: center; justify-content: center;
+    background: rgba(0,0,0,0.55); z-index: 20;
+  }
+  #countdown.show { display: flex; }
+  #countdown .num {
+    font-size: 200px; font-weight: 800; color: #fff;
+    text-shadow: 0 8px 60px rgba(177,140,255,0.65), 0 0 20px rgba(0,0,0,0.5);
+    font-variant-numeric: tabular-nums;
+    animation: pop 0.9s ease;
+  }
+  @keyframes pop { 0% { transform: scale(0.6); opacity: 0; } 30% { transform: scale(1.0); opacity: 1; } 100% { transform: scale(0.9); opacity: 0; } }
+
+  /* ================ SETTINGS SHEET ================ */
+  #settings-sheet {
+    position: absolute; left: 0; right: 0; bottom: 0;
+    background: rgba(20,20,22,0.94);
+    backdrop-filter: blur(28px); -webkit-backdrop-filter: blur(28px);
+    border-top-left-radius: 28px; border-top-right-radius: 28px;
+    padding: 12px 20px max(28px, env(safe-area-inset-bottom));
+    z-index: 30;
+    transform: translateY(100%); transition: transform 0.28s cubic-bezier(0.32, 0.72, 0, 1);
+    border-top: 1px solid rgba(255,255,255,0.08);
+  }
+  #settings-sheet.open { transform: translateY(0); }
+  .handle { width: 36px; height: 4px; background: rgba(255,255,255,0.22); border-radius: 999px; margin: 0 auto 14px; }
+  .sheet-title { font-size: 12px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--dim); margin-bottom: 14px; text-align: center; }
+  .setting { display: flex; align-items: center; gap: 14px; padding: 10px 0; border-bottom: 1px solid rgba(255,255,255,0.05); }
+  .setting:last-child { border-bottom: 0; }
+  .setting-label { font-size: 14px; color: var(--fg); flex: 0 0 84px; }
+  .setting-control { flex: 1; display: flex; align-items: center; gap: 10px; }
+  .setting-control input[type=range] { flex: 1; accent-color: var(--accent); }
+  .setting-control .val { font-size: 13px; color: var(--dim); min-width: 40px; text-align: right; font-variant-numeric: tabular-nums; }
+  .toggle {
+    width: 44px; height: 26px; background: rgba(255,255,255,0.14); border-radius: 999px;
+    position: relative; cursor: pointer; transition: background 0.18s;
+  }
+  .toggle::after {
+    content: ""; position: absolute; top: 2px; left: 2px;
+    width: 22px; height: 22px; border-radius: 50%; background: #fff;
+    transition: transform 0.18s;
+  }
+  .toggle.on { background: var(--accent); }
+  .toggle.on::after { transform: translateX(18px); }
+  #settings-close { width: 100%; padding: 14px; margin-top: 14px; border-radius: 14px; border: 0; background: rgba(255,255,255,0.1); color: #fff; font-size: 14px; font-weight: 600; cursor: pointer; }
+
+  /* Sheet backdrop */
+  #sheet-backdrop {
+    position: absolute; inset: 0; background: rgba(0,0,0,0.4);
+    z-index: 25; display: none; opacity: 0; transition: opacity 0.2s;
+  }
+  #sheet-backdrop.show { display: block; opacity: 1; }
+
+  /* ================ PREVIEW SCREEN ================ */
+  #preview { position: fixed; inset: 0; background: #000; display: none; flex-direction: column; }
+  #preview.show { display: flex; }
+  #playback { flex: 1; width: 100%; height: 100%; background: #000; object-fit: contain; }
+  .preview-actions {
+    position: absolute; left: 0; right: 0; bottom: 0;
+    padding: 14px 16px calc(max(20px, env(safe-area-inset-bottom)) + var(--badge-clearance));
+    background: linear-gradient(0deg, rgba(0,0,0,0.92) 0%, rgba(0,0,0,0.5) 65%, rgba(0,0,0,0) 100%);
+    display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
+  }
+  .btn-ghost { padding: 14px; border-radius: 14px; border: 1px solid rgba(255,255,255,0.16); background: rgba(255,255,255,0.06); color: #fff; font-size: 14px; font-weight: 600; cursor: pointer; }
+  .share-status { position: absolute; top: max(20px, env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.75); padding: 8px 14px; border-radius: 999px; font-size: 12px; z-index: 7; backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); }
+  .share-status.ok { color: #34c759; }
+  .share-status.err { color: var(--red); }
+</style>
+</head>
+<body>
+
+<!-- ============ START ============ -->
+<div id="start">
+  <div class="brand"><svg class="pika-mark" viewBox="0 0 3000 2097.8" aria-hidden="true"><path fill="currentColor" d="M82.6,2097.9h1083.3c-17.5-175.1-143.1-367-450.2-497.8v-12.9c357.9,109.5,486.6,296.5,539.1,510.6h1336.4 l-215-183.3c125.7-393.4,623.8-579.4,623.8-579.4c-17.6-315.6-180.1-609.8-723.5-848.1L1040.7,0c41.5,519.1,226.5,816.8,690.4,889.8 v12.7c-322.3-7.9-546-151.1-659.5-445.7v-0.1C87.2,636.4-150.1,1385.8,82.6,2097.9z"/></svg> <b>PIKA</b> · TELEPROMPTER</div>
+  <h1 id="start-title">Ready when you are.</h1>
+  <div class="meta-chips" id="meta"></div>
+  <div id="script-preview">Loading…</div>
+  <div class="qr-section hidden" id="qr-section">
+    <div class="qr-info">
+      <div class="qr-label">📱 OPEN ON PHONE</div>
+      <div class="qr-title">Scan to record on mobile</div>
+      <div class="qr-tip">Same script, just better camera and a more comfortable framing.</div>
+    </div>
+    <div class="qr-canvas" id="qr-canvas"></div>
+  </div>
+
+  <div class="start-bottom">
+    <div class="start-tip">The line you're reading will sit right under your camera lens — look there, not down.</div>
+    <button class="btn-primary" id="start-btn">Start camera</button>
+    <div class="err" id="start-err" hidden></div>
+  </div>
+</div>
+
+<!-- ============ RECORD STAGE ============ -->
+<div id="stage" hidden>
+  <video id="camera" autoplay muted playsinline></video>
+
+  <div id="lens"><span class="dot"></span> camera</div>
+
+  <div id="prompter-window">
+    <div id="prompter"></div>
+  </div>
+  <div id="readzone"></div>
+
+  <div class="corner tl">
+    <button class="icon-btn" id="close-btn" title="Back">✕</button>
+  </div>
+  <div class="corner tr">
+    <button class="icon-btn on" id="mirror-btn" title="Mirror">⇋</button>
+  </div>
+
+  <div id="countdown"><div class="num">3</div></div>
+
+  <div id="controls">
+    <div id="rec-indicator"><span class="dot"></span><span id="rec-time">00:00</span></div>
+    <div class="live-sliders">
+      <div class="live-slider">
+        <label>SPEED</label>
+        <input type="range" id="speed-range" min="60" max="240" value="140" step="5" aria-label="Speed">
+        <span class="val"><span id="speed-val">140</span></span>
+      </div>
+      <div class="live-slider">
+        <label>SIZE</label>
+        <input type="range" id="size-range" min="22" max="46" value="30" step="1" aria-label="Size">
+        <span class="val"><span id="size-val">30</span></span>
+      </div>
+    </div>
+    <div class="control-row">
+      <button id="reshoot" title="Re-shoot">⟲</button>
+      <button id="rec-btn" data-rec="false" title="Record"><span class="core"></span></button>
+      <button id="settings-btn" title="Settings">⚙</button>
+    </div>
+  </div>
+
+  <div id="sheet-backdrop"></div>
+  <div id="settings-sheet">
+    <div class="handle"></div>
+    <div class="sheet-title">Settings</div>
+    <div class="setting">
+      <div class="setting-label">Mirror</div>
+      <div class="setting-control"><div class="toggle on" id="mirror-toggle"></div></div>
+    </div>
+    <div class="setting">
+      <div class="setting-label">Manual</div>
+      <div class="setting-control"><div class="toggle" id="manual-toggle"></div></div>
+    </div>
+    <button id="settings-close">Done</button>
+  </div>
+</div>
+
+<!-- ============ PREVIEW ============ -->
+<div id="preview">
+  <video id="playback" controls playsinline></video>
+  <div class="share-status" id="share-status" hidden></div>
+  <div class="preview-actions" id="preview-actions">
+    <button class="btn-ghost" id="reshoot-from-preview">Re-shoot</button>
+    <button class="btn-primary" id="share-btn">Share</button>
+  </div>
+</div>
+
+<script>
+(() => {
+  // ============ PARAMS ============
+  // Preferred path: /r?t=... fetches script + upload_url + aspect_ratio from MCP.
+  // Legacy/local fallback: plain URL params carry script metadata and #upload carries upload_url.
+  const params = new URLSearchParams(location.search);
+  const hashParams = new URLSearchParams(location.hash ? location.hash.replace(/^#/, '') : '');
+  const pick = (key, fallback) => {
+    const v = params.get(key);
+    if (v !== null && v !== '') return v;
+    return fallback;
+  };
+  const pickSecret = (key, fallback) => {
+    const v = hashParams.get(key);
+    if (v !== null && v !== '') return v;
+    return fallback;
+  };
+  const ALLOWED_MCP_ORIGINS = new Set([
+    'https://mcp.pika.me',
+    'https://staging-mcp.pika.bot',
+    'http://localhost:3000',
+    'http://127.0.0.1:3000'
+  ]);
+  const DEFAULT_MCP_ORIGIN = 'https://mcp.pika.me';
+  function safeMcpOrigin(raw) {
+    const candidate = raw || DEFAULT_MCP_ORIGIN;
+    try {
+      const url = new URL(candidate);
+      const origin = url.origin;
+      return ALLOWED_MCP_ORIGINS.has(origin) ? origin : DEFAULT_MCP_ORIGIN;
+    } catch (e) {
+      return DEFAULT_MCP_ORIGIN;
+    }
+  }
+  function safeUploadUrl(raw) {
+    if (!raw) return '';
+    try {
+      const url = new URL(raw);
+      if (!ALLOWED_MCP_ORIGINS.has(url.origin)) return '';
+      if (!/^\/api\/upload-return\/[A-Za-z0-9_-]{24,128}$/.test(url.pathname)) return '';
+      url.hash = '';
+      return url.toString();
+    } catch (e) {
+      return '';
+    }
+  }
+  function safeCompleteUrl(raw, uploadOrigin) {
+    if (!raw) return '';
+    try {
+      const url = new URL(raw);
+      if (url.origin !== uploadOrigin) return '';
+      if (!/^\/api\/upload-return\/[A-Za-z0-9_-]{24,128}\/complete$/.test(url.pathname)) return '';
+      url.hash = '';
+      return url.toString();
+    } catch (e) {
+      return '';
+    }
+  }
+  let script = (pick('script', pick('s', "Welcome to the Pika teleprompter.\n\nReplace this default text with your actual script.\n\nThe line you are reading sits at the top — look up there, right under the camera lens."))).trim();
+  let handle = pick('handle', '');
+  let trend = pick('trend', '');
+  let format = pick('format', '');
+  let sessionId = pick('session', (crypto.randomUUID ? crypto.randomUUID() : String(Date.now())));
+  let uploadUrl = safeUploadUrl(pickSecret('upload', ''));
+  const DEFAULT_ASPECT_RATIO = '9:16';
+  const ASPECT_RATIO_PRESETS = {
+    '9:16': { width: 1080, height: 1920, label: '9:16 vertical' },
+    '16:9': { width: 1920, height: 1080, label: '16:9 landscape' },
+    '1:1': { width: 1080, height: 1080, label: '1:1 square' },
+    '4:5': { width: 1080, height: 1350, label: '4:5 portrait' }
+  };
+  const RECORD_FPS = 30;
+  function normalizeAspectRatio(value) {
+    return ASPECT_RATIO_PRESETS[value] ? value : DEFAULT_ASPECT_RATIO;
+  }
+  let aspectRatio = normalizeAspectRatio(pick('aspect_ratio', pick('aspect', DEFAULT_ASPECT_RATIO)));
+  function recordPreset() {
+    return ASPECT_RATIO_PRESETS[aspectRatio] || ASPECT_RATIO_PRESETS[DEFAULT_ASPECT_RATIO];
+  }
+
+  // ============ STATE ============
+  const $ = sel => document.querySelector(sel);
+  const startEl = $('#start');
+  const stageEl = $('#stage');
+  const previewEl = $('#preview');
+  const cameraEl = $('#camera');
+  const prompterEl = $('#prompter');
+  const prompterWin = $('#prompter-window');
+  const readzoneEl = $('#readzone');
+  const recBtn = $('#rec-btn');
+  const reshootBtn = $('#reshoot');
+  const settingsBtn = $('#settings-btn');
+  const settingsSheet = $('#settings-sheet');
+  const sheetBackdrop = $('#sheet-backdrop');
+  const closeBtn = $('#close-btn');
+  const mirrorBtn = $('#mirror-btn');
+  const mirrorToggle = $('#mirror-toggle');
+  const manualToggle = $('#manual-toggle');
+  const speedRange = $('#speed-range');
+  const sizeRange = $('#size-range');
+  const speedValEl = $('#speed-val');
+  const sizeValEl = $('#size-val');
+  const recIndicator = $('#rec-indicator');
+  const recTimeEl = $('#rec-time');
+  const countdownEl = $('#countdown');
+  const countdownNum = countdownEl.querySelector('.num');
+  const lensEl = $('#lens');
+  const playback = $('#playback');
+  const shareStatus = $('#share-status');
+
+  let mediaStream = null;
+  let mediaRecorder = null;
+  let recordedChunks = [];
+  let recordedBlob = null;
+  let isUploading = false;
+  let isRecording = false;
+  let isScrolling = false; // prompter only scrolls during recording
+  let manualMode = false;
+  let mirrored = true;
+  let lastFrame = 0;
+  let scrollY = 0;
+  let wpm = 140;
+  let fontPx = 30;
+  let recStartTs = 0;
+  let recTimerInt = null;
+  let lineEls = [];
+  // Mirror-recording (canvas-based) state
+  let mirrorCanvas = null;
+  let mirrorRAF = 0;
+  let mirrorStream = null;
+
+  async function loadRemoteHandoff() {
+    const token = params.get('t');
+    if (!token) return;
+    const mcpOrigin = safeMcpOrigin(params.get('mcp'));
+    const endpoint = mcpOrigin + '/api/teleprompter-handoff?t=' + encodeURIComponent(token);
+    const res = await fetch(endpoint, {
+      method: 'GET',
+      headers: { 'Accept': 'application/json' },
+      cache: 'no-store'
+    });
+    let data = {};
+    try { data = await res.json(); } catch (e) {}
+    if (!res.ok) {
+      throw new Error(data.message || data.error || ('HTTP ' + res.status));
+    }
+    if (typeof data.script !== 'string' || !data.script.trim()) {
+      throw new Error('Handoff response missing script');
+    }
+    script = data.script.trim();
+    handle = typeof data.handle === 'string' ? data.handle : '';
+    trend = typeof data.trend === 'string' ? data.trend : '';
+    format = typeof data.format === 'string' ? data.format : '';
+    aspectRatio = normalizeAspectRatio(typeof data.aspect_ratio === 'string' ? data.aspect_ratio : '');
+    uploadUrl = safeUploadUrl(typeof data.upload_url === 'string' ? data.upload_url : '');
+    sessionId = token.slice(0, 12);
+    if (!uploadUrl) throw new Error('Handoff response missing safe upload_url');
+  }
+
+  // ============ INIT START SCREEN ============
+  function initStart() {
+    const titleParts = [];
+    if (handle) titleParts.push('@' + handle.replace(/^@/, ''));
+    if (trend) titleParts.push(trend);
+    if (titleParts.length) $('#start-title').textContent = titleParts.join(' · ');
+    const metaEl = $('#meta');
+    while (metaEl.firstChild) metaEl.removeChild(metaEl.firstChild);
+    if (format) {
+      const pill = document.createElement('span');
+      pill.className = 'chip';
+      pill.append('Format: ');
+      const b = document.createElement('b');
+      b.textContent = format;
+      pill.appendChild(b);
+      metaEl.appendChild(pill);
+    }
+    if (handle) {
+      const pill = document.createElement('span');
+      pill.className = 'chip';
+      pill.textContent = '@' + handle.replace(/^@/, '');
+      metaEl.appendChild(pill);
+    }
+    const aspectPill = document.createElement('span');
+    aspectPill.className = 'chip';
+    aspectPill.append('Record: ');
+    const aspectText = document.createElement('b');
+    aspectText.textContent = recordPreset().label;
+    aspectPill.appendChild(aspectText);
+    metaEl.appendChild(aspectPill);
+    $('#script-preview').textContent = script;
+    refreshShareActionLabel();
+  }
+
+  // ============ CAMERA ============
+  async function startCamera() {
+    try {
+      const preset = recordPreset();
+      const constraints = {
+        video: {
+          facingMode: 'user',
+          width: { ideal: preset.width },
+          height: { ideal: preset.height },
+          aspectRatio: { ideal: preset.width / preset.height }
+        },
+        audio: { echoCancellation: true, noiseSuppression: true, sampleRate: 48000 }
+      };
+      mediaStream = await navigator.mediaDevices.getUserMedia(constraints);
+      cameraEl.srcObject = mediaStream;
+      cameraEl.classList.toggle('mirror', mirrored);
+      return true;
+    } catch (e) {
+      const err = $('#start-err');
+      err.textContent = 'Camera access failed: ' + (e.message || e.name || 'unknown') + '. Make sure this page is loaded over HTTPS (or localhost) and tap Start in response to a tap.';
+      err.hidden = false;
+      return false;
+    }
+  }
+
+  // ============ PROMPTER ============
+  function renderPrompter() {
+    const rawLines = script.split(/\n+/).map(l => l.trim()).filter(Boolean);
+    const lines = [];
+    // Split every line on natural pauses — . , ! ? — and em-dashes — so each beat is its own chunk.
+    // Then merge orphans (< 8 chars OR a leading conjunction/article on its own) into the previous chunk.
+    // Finally, force-break any chunk that's still too long at the most natural break word.
+    const ORPHAN_WORDS = new Set(['and','or','but','so','because','if','when','that','which','a','an','the','to','of','in','on','at']);
+    const BREAK_WORDS = new Set(['and','or','but','so','because','that','which','when','if','to','for','with','of','in','on','at','by','as','from','per','about','into','over','under','than']);
+    const MAX_WORDS_PER_LINE = 7;
+
+    function splitLong(s) {
+      const words = s.split(/\s+/);
+      if (words.length <= MAX_WORDS_PER_LINE) return [s];
+      // Find the best break point in the middle 60% of the chunk, preferring BREAK_WORDS, falling back to the midpoint.
+      const lo = Math.max(1, Math.floor(words.length * 0.35));
+      const hi = Math.min(words.length - 1, Math.ceil(words.length * 0.7));
+      let breakIdx = -1;
+      for (let i = lo; i <= hi; i++) {
+        const w = words[i].toLowerCase().replace(/[^a-z]/g, '');
+        if (BREAK_WORDS.has(w)) {
+          // Prefer the one nearest the center
+          if (breakIdx === -1 || Math.abs(i - words.length / 2) < Math.abs(breakIdx - words.length / 2)) breakIdx = i;
+        }
+      }
+      if (breakIdx < 1) breakIdx = Math.floor(words.length / 2);
+      const left = words.slice(0, breakIdx).join(' ');
+      const right = words.slice(breakIdx).join(' ');
+      return [...splitLong(left), ...splitLong(right)];
+    }
+
+    for (const ln of rawLines) {
+      const parts = ln.split(/(?<=[.!?,—])\s+/).map(s => s.trim()).filter(Boolean);
+      for (const p of parts) {
+        const subChunks = splitLong(p);
+        for (const chunk of subChunks) {
+          if (!lines.length) { lines.push(chunk); continue; }
+          const first = chunk.split(/\s+/)[0].toLowerCase().replace(/[^a-z]/g, '');
+          const isOrphan = chunk.length < 8 || (chunk.length < 18 && ORPHAN_WORDS.has(first));
+          if (isOrphan) {
+            lines[lines.length - 1] = lines[lines.length - 1] + ' ' + chunk;
+          } else {
+            lines.push(chunk);
+          }
+        }
+      }
+    }
+    while (prompterEl.firstChild) prompterEl.removeChild(prompterEl.firstChild);
+    for (const ln of lines) {
+      const div = document.createElement('div');
+      div.className = 'line';
+      div.textContent = ln;
+      prompterEl.appendChild(div);
+    }
+    lineEls = Array.from(prompterEl.querySelectorAll('.line'));
+    refreshWordCounts();
+    applyFontSize();
+    positionReadZone();
+    // Initial state: first line sits right ON the read zone so the user can see what they'll start with.
+    // We compute the offset needed to align line 0's center with the read zone target.
+    requestAnimationFrame(() => {
+      anchorFirstLine();
+      requestAnimationFrame(loop);
+    });
+  }
+
+  function anchorFirstLine() {
+    if (!lineEls.length) return;
+    const targetY = readZoneTargetY();
+    const first = lineEls[0].getBoundingClientRect();
+    const firstCenter = first.top + first.height / 2;
+    // Lead-in: park the first line ~1.5 line heights BELOW the read zone so when scrolling
+    // starts, it travels visibly upward into position before the user has to speak it.
+    // (Without this, line 1 is on the read zone the instant REC fires — too sudden to track.)
+    const lineH = fontPx * 1.28 + fontPx * 0.45;
+    const leadInOffset = lineH * 1.5;
+    scrollY += (firstCenter - targetY) - leadInOffset;
+    applyTransform();
+  }
+
+  function readZoneTargetY() {
+    const wr = prompterWin.getBoundingClientRect();
+    return wr.top + Math.max(40, wr.height * 0.18); // 18% from top of prompter window
+  }
+
+  function positionReadZone() {
+    const y = readZoneTargetY();
+    readzoneEl.style.top = y + 'px';
+  }
+
+  function applyFontSize() {
+    prompterEl.style.fontSize = fontPx + 'px';
+  }
+
+  function applyTransform() {
+    prompterEl.style.transform = 'translateY(' + (-scrollY) + 'px)';
+  }
+
+  // Pixels-per-second is computed PER LINE based on actual word count, so a 1-word line
+  // gets time to breathe and a 20-word line scrolls past at the right pace.
+  // Velocity at any moment = (distance to next line's center) / (dwell time of the active line).
+  let _wordCounts = []; // cached per-line word counts
+  function pixelsPerSecond() {
+    if (!lineEls.length) return 30;
+    const targetY = readZoneTargetY();
+    // Find the active line — the one closest to the read zone.
+    let activeIdx = 0, bestDist = Infinity;
+    for (let i = 0; i < lineEls.length; i++) {
+      const r = lineEls[i].getBoundingClientRect();
+      const center = r.top + r.height / 2;
+      const d = Math.abs(center - targetY);
+      if (d < bestDist) { bestDist = d; activeIdx = i; }
+    }
+    if (activeIdx >= lineEls.length - 1) return 18; // last line — slow drift
+    const wordsHere = _wordCounts[activeIdx] || 1;
+    // Dwell time = how long the speaker should spend on this line, derived from wpm.
+    // Floor at 0.55s so short interjections (e.g. "Cents.") aren't blink-and-miss.
+    const dwellSec = Math.max(0.55, wordsHere / (wpm / 60));
+    const curR = lineEls[activeIdx].getBoundingClientRect();
+    const nxtR = lineEls[activeIdx + 1].getBoundingClientRect();
+    const distance = (nxtR.top + nxtR.height / 2) - (curR.top + curR.height / 2);
+    return distance / dwellSec;
+  }
+
+  function refreshWordCounts() {
+    _wordCounts = lineEls.map(el => el.textContent.trim().split(/\s+/).filter(Boolean).length);
+  }
+
+  function loop(ts) {
+    if (!lastFrame) lastFrame = ts;
+    const dt = Math.min(0.08, (ts - lastFrame) / 1000);
+    lastFrame = ts;
+    if (isScrolling && !manualMode) {
+      scrollY += pixelsPerSecond() * dt;
+      applyTransform();
+    }
+    const targetY = readZoneTargetY();
+    for (const el of lineEls) {
+      const r = el.getBoundingClientRect();
+      const center = r.top + r.height / 2;
+      const dist = Math.abs(center - targetY);
+      const prox = Math.max(0, 1 - dist / 180);
+      const above = center < targetY - 8;
+      const opacity = above ? Math.max(0.12, prox * 0.55) : Math.max(0.34, 0.34 + prox * 0.66);
+      const scale = 0.82 + prox * 0.42;
+      el.style.opacity = opacity.toFixed(3);
+      el.style.transform = 'scale(' + scale.toFixed(3) + ')';
+      el.style.transformOrigin = 'center top';
+      el.style.color = prox > 0.55 ? '#fff' : 'rgba(255,255,255,0.85)';
+    }
+    requestAnimationFrame(loop);
+  }
+
+  function tapAdvance() {
+    if (!lineEls.length) return;
+    const targetY = readZoneTargetY();
+    let currentIdx = 0, bestDist = Infinity;
+    for (let i = 0; i < lineEls.length; i++) {
+      const r = lineEls[i].getBoundingClientRect();
+      const center = r.top + r.height / 2;
+      const d = Math.abs(center - targetY);
+      if (d < bestDist) { bestDist = d; currentIdx = i; }
+    }
+    const nextIdx = Math.min(lineEls.length - 1, currentIdx + 1);
+    if (nextIdx === currentIdx) return;
+    const cur = lineEls[currentIdx].getBoundingClientRect();
+    const nxt = lineEls[nextIdx].getBoundingClientRect();
+    scrollY += (nxt.top + nxt.height / 2) - (cur.top + cur.height / 2);
+    applyTransform();
+  }
+
+  // ============ RECORDING ============
+  function pickMime() {
+    const cands = [
+      'video/mp4;codecs=h264,aac',
+      'video/mp4',
+      'video/webm;codecs=vp9,opus',
+      'video/webm;codecs=vp8,opus',
+      'video/webm'
+    ];
+    for (const c of cands) {
+      if (typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported(c)) return c;
+    }
+    return '';
+  }
+
+  function wait(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+  async function runCountdown() {
+    countdownEl.classList.add('show');
+    for (let i = 3; i >= 1; i--) {
+      countdownNum.textContent = String(i);
+      // re-trigger the pop animation
+      countdownNum.style.animation = 'none';
+      countdownNum.offsetHeight;
+      countdownNum.style.animation = '';
+      await wait(900);
+    }
+    countdownEl.classList.remove('show');
+  }
+
+  function drawVideoCover(ctx, video, canvasW, canvasH, shouldMirror) {
+    const sourceW = video.videoWidth || canvasW;
+    const sourceH = video.videoHeight || canvasH;
+    const sourceRatio = sourceW / sourceH;
+    const targetRatio = canvasW / canvasH;
+    let sx = 0;
+    let sy = 0;
+    let sw = sourceW;
+    let sh = sourceH;
+
+    if (sourceRatio > targetRatio) {
+      sw = sourceH * targetRatio;
+      sx = (sourceW - sw) / 2;
+    } else {
+      sh = sourceW / targetRatio;
+      sy = (sourceH - sh) / 2;
+    }
+
+    ctx.save();
+    if (shouldMirror) {
+      ctx.translate(canvasW, 0);
+      ctx.scale(-1, 1);
+    }
+    ctx.drawImage(video, sx, sy, sw, sh, 0, 0, canvasW, canvasH);
+    ctx.restore();
+  }
+
+  // Build the stream we actually record. Route video through the requested target-aspect canvas.
+  // Audio track is passed through directly from the mic.
+  function buildRecordStream() {
+    const videoTrack = mediaStream.getVideoTracks()[0];
+    if (!videoTrack) return mediaStream;
+    mirrorCanvas = document.createElement('canvas');
+    if (!mirrorCanvas.captureStream) return mediaStream;
+    const preset = recordPreset();
+    mirrorCanvas.width = preset.width;
+    mirrorCanvas.height = preset.height;
+    const ctx = mirrorCanvas.getContext('2d');
+    let active = true;
+    function tick() {
+      if (!active) return;
+      if (cameraEl.readyState >= 2) {
+        drawVideoCover(ctx, cameraEl, preset.width, preset.height, mirrored);
+      }
+      mirrorRAF = requestAnimationFrame(tick);
+    }
+    mirrorRAF = requestAnimationFrame(tick);
+    mirrorCanvas.__stop = () => { active = false; };
+    const canvasStream = mirrorCanvas.captureStream(RECORD_FPS);
+    mirrorStream = new MediaStream([
+      ...canvasStream.getVideoTracks(),
+      ...mediaStream.getAudioTracks()
+    ]);
+    return mirrorStream;
+  }
+
+  function teardownMirrorStream() {
+    if (mirrorRAF) { cancelAnimationFrame(mirrorRAF); mirrorRAF = 0; }
+    if (mirrorCanvas && mirrorCanvas.__stop) mirrorCanvas.__stop();
+    mirrorCanvas = null;
+    if (mirrorStream) {
+      try { mirrorStream.getTracks().forEach(t => { if (t.kind === 'video') t.stop(); }); } catch (e) {}
+      mirrorStream = null;
+    }
+  }
+
+  async function startRecording() {
+    if (isRecording || !mediaStream) return;
+    // Reset prompter to first line
+    anchorFirstLine();
+    isScrolling = false;
+    await runCountdown();
+    recordedChunks = [];
+    const mime = pickMime();
+    const streamToRecord = buildRecordStream();
+    try {
+      mediaRecorder = new MediaRecorder(streamToRecord, mime ? { mimeType: mime } : undefined);
+    } catch (e) {
+      alert('MediaRecorder unavailable: ' + e.message);
+      teardownMirrorStream();
+      return;
+    }
+    mediaRecorder.ondataavailable = e => { if (e.data && e.data.size) recordedChunks.push(e.data); };
+    mediaRecorder.onstop = () => {
+      const type = mime || (recordedChunks[0] && recordedChunks[0].type) || 'video/webm';
+      recordedBlob = new Blob(recordedChunks, { type });
+      showPreview();
+    };
+    mediaRecorder.start(250);
+    isRecording = true;
+    isScrolling = true;
+    recBtn.dataset.rec = 'true';
+    recIndicator.classList.add('show');
+    lensEl.style.opacity = '0';
+    recStartTs = performance.now();
+    recTimeEl.textContent = '00:00';
+    recTimerInt = setInterval(() => {
+      const s = Math.floor((performance.now() - recStartTs) / 1000);
+      recTimeEl.textContent = String(Math.floor(s/60)).padStart(2,'0') + ':' + String(s%60).padStart(2,'0');
+    }, 250);
+  }
+
+  function stopRecording() {
+    if (!isRecording) return;
+    isRecording = false;
+    isScrolling = false;
+    recBtn.dataset.rec = 'false';
+    recIndicator.classList.remove('show');
+    lensEl.style.opacity = '';
+    clearInterval(recTimerInt);
+    try { mediaRecorder.stop(); } catch (e) {}
+    // Stop the canvas mirror pipeline after the recorder fully flushes (onstop)
+    setTimeout(teardownMirrorStream, 250);
+  }
+
+  // ============ PREVIEW & SHARE ============
+  function showPreview() {
+    if (!recordedBlob) return;
+    playback.src = URL.createObjectURL(recordedBlob);
+    stageEl.hidden = true;
+    previewEl.classList.add('show');
+  }
+
+  function backToRecord() {
+    previewEl.classList.remove('show');
+    stageEl.hidden = false;
+    if (playback.src) { URL.revokeObjectURL(playback.src); playback.src = ''; }
+    recordedBlob = null;
+    anchorFirstLine();
+    isScrolling = false;
+    shareStatus.hidden = true;
+  }
+
+  // Pre-detect if the browser supports navigator.share with files — used to decide whether
+  // the Share button opens the native share sheet (iOS AirDrop / Save Video / etc.) or
+  // falls back to a download. Web Share API for files: iOS Safari 14+, Android Chrome.
+  function canNativeShareFiles() {
+    if (!navigator.share || !navigator.canShare) return false;
+    try {
+      const probe = new File(['x'], 'probe.mp4', { type: 'video/mp4' });
+      return navigator.canShare({ files: [probe] });
+    } catch (e) { return false; }
+  }
+
+  async function shareRecording() {
+    if (!recordedBlob) return;
+    const ext = extFor(recordedBlob.type);
+    const fileName = 'pika-take-' + sessionId.slice(0, 8) + '.' + ext;
+    const file = new File([recordedBlob], fileName, { type: recordedBlob.type, lastModified: Date.now() });
+
+    if (canNativeShareFiles()) {
+      try {
+        await navigator.share({ files: [file], title: 'Pika Teleprompter take' });
+        shareStatus.hidden = false;
+        shareStatus.className = 'share-status ok';
+        shareStatus.textContent = '✓ Shared.';
+      } catch (e) {
+        // AbortError = user cancelled the share sheet — silent
+        if (e.name === 'AbortError') return;
+        shareStatus.hidden = false;
+        shareStatus.className = 'share-status err';
+        shareStatus.textContent = 'Share failed: ' + (e.message || e.name);
+      }
+    } else {
+      // Desktop / unsupported browser → download
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(recordedBlob);
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      shareStatus.hidden = false;
+      shareStatus.className = 'share-status ok';
+      shareStatus.textContent = '✓ Saved to downloads.';
+    }
+  }
+
+  async function uploadRecording() {
+    if (!uploadUrl || !recordedBlob || isUploading) return false;
+    isUploading = true;
+    const shareBtn = $('#share-btn');
+    const previousLabel = shareBtn.textContent;
+    shareBtn.disabled = true;
+    shareBtn.textContent = 'Uploading…';
+    shareStatus.hidden = false;
+    shareStatus.className = 'share-status';
+    shareStatus.textContent = 'Uploading take…';
+    try {
+      const uploadOrigin = new URL(uploadUrl).origin;
+      const startRes = await fetch(uploadUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          mime_type: recordedBlob.type || 'video/webm',
+          size_bytes: recordedBlob.size
+        })
+      });
+      let startData = {};
+      try { startData = await startRes.json(); } catch (e) {}
+      if (!startRes.ok) {
+        throw new Error(startData.message || startData.error || ('HTTP ' + startRes.status));
+      }
+      if (startData.uploaded && startData.public_url) {
+        shareStatus.className = 'share-status ok';
+        shareStatus.textContent = '✓ Uploaded. Return to chat.';
+        shareBtn.textContent = 'Uploaded';
+        return true;
+      }
+      if (String(startData.direct_upload_method || 'PUT').toUpperCase() !== 'PUT') {
+        throw new Error('Unexpected direct upload method');
+      }
+      if (String(startData.complete_method || 'POST').toUpperCase() !== 'POST') {
+        throw new Error('Unexpected completion method');
+      }
+      if (!startData.direct_upload_url || !startData.attempt_id) {
+        throw new Error('Upload start response missing direct_upload_url or attempt_id');
+      }
+      const completeUrl = safeCompleteUrl(startData.complete_url, uploadOrigin);
+      if (!completeUrl) {
+        throw new Error('Upload start response missing safe complete_url');
+      }
+      const directHeaders = {};
+      const returnedHeaders = startData.direct_upload_headers;
+      if (returnedHeaders && typeof returnedHeaders === 'object') {
+        for (const [k, v] of Object.entries(returnedHeaders)) {
+          if (typeof v === 'string') directHeaders[k] = v;
+        }
+      }
+      if (!directHeaders['Content-Type']) {
+        directHeaders['Content-Type'] = recordedBlob.type || 'video/webm';
+      }
+      const putRes = await fetch(startData.direct_upload_url, {
+        method: 'PUT',
+        headers: directHeaders,
+        body: recordedBlob
+      });
+      if (!putRes.ok) {
+        throw new Error('Direct upload failed with HTTP ' + putRes.status);
+      }
+      const completeRes = await fetch(completeUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ attempt_id: startData.attempt_id })
+      });
+      let completeData = {};
+      try { completeData = await completeRes.json(); } catch (e) {}
+      if (!completeRes.ok) {
+        throw new Error(completeData.message || completeData.error || ('HTTP ' + completeRes.status));
+      }
+      shareStatus.className = 'share-status ok';
+      shareStatus.textContent = completeData.public_url ? '✓ Uploaded. Return to chat.' : '✓ Uploaded.';
+      shareBtn.textContent = 'Uploaded';
+      return true;
+    } catch (e) {
+      shareStatus.className = 'share-status err';
+      shareStatus.textContent = 'Upload failed: ' + (e.message || e.name || 'unknown') + '. Opening Share/Save fallback.';
+      shareBtn.textContent = previousLabel;
+      return false;
+    } finally {
+      isUploading = false;
+      shareBtn.disabled = false;
+    }
+  }
+
+  async function uploadOrShareRecording() {
+    if (uploadUrl) {
+      const uploaded = await uploadRecording();
+      if (uploaded) return;
+    }
+    await shareRecording();
+  }
+
+  if (window.__PIKA_TELEPROMPTER_E2E__) {
+    window.__pikaTeleprompterE2E = {
+      get uploadUrl() { return uploadUrl; },
+      get aspectRatio() { return aspectRatio; },
+      recordPreset,
+      setRecordedBlobForTest(blob) { recordedBlob = blob; },
+      uploadRecording
+    };
+  }
+
+  function extFor(mime) {
+    if (!mime) return 'webm';
+    if (mime.includes('mp4')) return 'mp4';
+    return 'webm';
+  }
+
+  // ============ SETTINGS SHEET ============
+  function openSheet() { settingsSheet.classList.add('open'); sheetBackdrop.classList.add('show'); }
+  function closeSheet() { settingsSheet.classList.remove('open'); sheetBackdrop.classList.remove('show'); }
+
+  // ============ EVENT WIRING ============
+  $('#start-btn').addEventListener('click', async () => {
+    const ok = await startCamera();
+    if (!ok) return;
+    startEl.hidden = true;
+    stageEl.hidden = false;
+    renderPrompter();
+  });
+
+  recBtn.addEventListener('click', () => { if (isRecording) stopRecording(); else startRecording(); });
+  reshootBtn.addEventListener('click', () => {
+    if (isRecording) stopRecording();
+    recordedBlob = null; recordedChunks = [];
+    anchorFirstLine();
+    isScrolling = false;
+  });
+  settingsBtn.addEventListener('click', openSheet);
+  sheetBackdrop.addEventListener('click', closeSheet);
+  $('#settings-close').addEventListener('click', closeSheet);
+
+  closeBtn.addEventListener('click', () => {
+    if (isRecording) stopRecording();
+    if (confirm('Close the teleprompter? Any unsaved take will be lost.')) {
+      stageEl.hidden = true;
+      startEl.hidden = false;
+    }
+  });
+
+  function setMirror(on) {
+    mirrored = on;
+    cameraEl.classList.toggle('mirror', mirrored);
+    mirrorBtn.classList.toggle('on', mirrored);
+    mirrorToggle.classList.toggle('on', mirrored);
+  }
+  mirrorBtn.addEventListener('click', () => setMirror(!mirrored));
+  mirrorToggle.addEventListener('click', () => setMirror(!mirrored));
+
+  manualToggle.addEventListener('click', () => {
+    manualMode = !manualMode;
+    manualToggle.classList.toggle('on', manualMode);
+  });
+
+  speedRange.addEventListener('input', () => { wpm = parseInt(speedRange.value, 10); speedValEl.textContent = String(wpm); });
+  sizeRange.addEventListener('input', () => {
+    fontPx = parseInt(sizeRange.value, 10);
+    sizeValEl.textContent = String(fontPx);
+    applyFontSize();
+    positionReadZone();
+    // re-anchor so adjusting size doesn't visually jump the active line off-zone
+    requestAnimationFrame(() => { if (!isRecording) anchorFirstLine(); });
+  });
+
+  // Tap on prompter area = advance one line (in manual mode), or pause/resume scroll (normal)
+  prompterWin.addEventListener('click', (e) => {
+    // only react when stage visible
+    if (stageEl.hidden) return;
+    if (manualMode) {
+      tapAdvance();
+    } else if (isRecording) {
+      isScrolling = !isScrolling;
+    }
+  });
+
+  $('#reshoot-from-preview').addEventListener('click', backToRecord);
+  $('#share-btn').addEventListener('click', uploadOrShareRecording);
+
+  function refreshShareActionLabel() {
+    if (uploadUrl) {
+      $('#share-btn').textContent = 'Upload';
+    } else if (!canNativeShareFiles()) {
+      $('#share-btn').textContent = 'Save';
+    } else {
+      $('#share-btn').textContent = 'Share';
+    }
+  }
+
+  // Tweak label based on capability: "Upload" with upload-return, "Share" on iOS/Android, "Save" on desktop browsers
+  refreshShareActionLabel();
+
+  window.addEventListener('resize', () => { positionReadZone(); });
+  window.addEventListener('orientationchange', () => setTimeout(() => { positionReadZone(); anchorFirstLine(); }, 150));
+
+  async function boot() {
+    try {
+      await loadRemoteHandoff();
+      initStart();
+    } catch (e) {
+      const err = $('#start-err');
+      err.textContent = 'Could not load teleprompter handoff: ' + (e.message || e.name || 'unknown');
+      err.hidden = false;
+      $('#script-preview').textContent = 'This recording link is unavailable or expired.';
+      $('#start-btn').disabled = true;
+    }
+  }
+
+  boot();
+})();
+</script>
+</body>
+</html>

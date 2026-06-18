@@ -1,0 +1,61 @@
+<!--
+  PDF NEXT STEPS (roadmap) — body fragment for html_to_pdf. Markup only; .next /
+  .next-grid classes live in pdf-shared-head.template.html. 4-6 cards in a 2-col grid.
+  The grid uses the load-bearing sizing (height 720px, rows 1fr 1fr 1fr, gap 28px 56px,
+  padding 80px 120px 70px, header 72px) that keeps all cards on ONE page and prevents the
+  empty 13th page — do NOT change those numbers.
+
+  Each card = number + section label + headline + 2-3 sentences.
+
+  TOKENS (N = 1..6; render only as many .card blocks as you have content for, 4-6):
+    {{TITLE}}          page header, e.g. Next Steps
+    {{SUBTITLE}}       one-line subhead under the title
+    {{CARD_N_NUM}}     card number, e.g. 01
+    {{CARD_N_LABEL}}   section label, e.g. THIS WEEK
+    {{CARD_N_HEAD}}    headline
+    {{CARD_N_TEXT}}    2-3 sentence body
+
+  To use 4 or 5 cards, delete the trailing unused .card blocks below.
+-->
+<div class="page next">
+  <h1>{{TITLE}}</h1>
+  <div class="sub">{{SUBTITLE}}</div>
+  <div class="next-grid">
+    <div class="card">
+      <div class="num">{{CARD_1_NUM}}</div>
+      <div class="label">{{CARD_1_LABEL}}</div>
+      <div class="headline">{{CARD_1_HEAD}}</div>
+      <div class="text">{{CARD_1_TEXT}}</div>
+    </div>
+    <div class="card">
+      <div class="num">{{CARD_2_NUM}}</div>
+      <div class="label">{{CARD_2_LABEL}}</div>
+      <div class="headline">{{CARD_2_HEAD}}</div>
+      <div class="text">{{CARD_2_TEXT}}</div>
+    </div>
+    <div class="card">
+      <div class="num">{{CARD_3_NUM}}</div>
+      <div class="label">{{CARD_3_LABEL}}</div>
+      <div class="headline">{{CARD_3_HEAD}}</div>
+      <div class="text">{{CARD_3_TEXT}}</div>
+    </div>
+    <div class="card">
+      <div class="num">{{CARD_4_NUM}}</div>
+      <div class="label">{{CARD_4_LABEL}}</div>
+      <div class="headline">{{CARD_4_HEAD}}</div>
+      <div class="text">{{CARD_4_TEXT}}</div>
+    </div>
+    <div class="card">
+      <div class="num">{{CARD_5_NUM}}</div>
+      <div class="label">{{CARD_5_LABEL}}</div>
+      <div class="headline">{{CARD_5_HEAD}}</div>
+      <div class="text">{{CARD_5_TEXT}}</div>
+    </div>
+    <div class="card">
+      <div class="num">{{CARD_6_NUM}}</div>
+      <div class="label">{{CARD_6_LABEL}}</div>
+      <div class="headline">{{CARD_6_HEAD}}</div>
+      <div class="text">{{CARD_6_TEXT}}</div>
+    </div>
+  </div>
+</div>

@@ -1,0 +1,53 @@
+<!--
+  PDF CONTENT CATEGORIES — body fragment for html_to_pdf. Markup only; .categories
+  classes live in pdf-shared-head.template.html. Page title + 2x2 grid of 4 cards.
+  Each card = fixed 300x400 image (grid-template-columns: 300px 1fr) + name + 1-line
+  desc + 3-4 example post types. Per-card background-position via {{CARD_N_POS}}.
+
+  TOKENS:
+    {{CONTENT_CATEGORIES_TITLE}} page title: Content Categories or Proposed Content Categories
+
+  TOKENS (N = 1..4 for the four cards):
+    {{CARD_N_IMG}}    image URL for card N
+    {{CARD_N_POS}}    background-position for card N, e.g. 50% 30%
+    {{CARD_N_NAME}}   category name
+    {{CARD_N_DESC}}   one-line description
+    {{CARD_N_LIST}}   3-4 <li>…</li> example post types (raw HTML, no <ul> wrapper)
+-->
+<div class="page categories">
+  <h1 class="page-title">{{CONTENT_CATEGORIES_TITLE}}</h1>
+  <div class="grid">
+    <div class="card">
+      <div class="img" style="background-image:url('{{CARD_1_IMG}}');background-position:{{CARD_1_POS}}"></div>
+      <div class="text">
+        <div class="name">{{CARD_1_NAME}}</div>
+        <div class="desc">{{CARD_1_DESC}}</div>
+        <ul>{{CARD_1_LIST}}</ul>
+      </div>
+    </div>
+    <div class="card">
+      <div class="img" style="background-image:url('{{CARD_2_IMG}}');background-position:{{CARD_2_POS}}"></div>
+      <div class="text">
+        <div class="name">{{CARD_2_NAME}}</div>
+        <div class="desc">{{CARD_2_DESC}}</div>
+        <ul>{{CARD_2_LIST}}</ul>
+      </div>
+    </div>
+    <div class="card">
+      <div class="img" style="background-image:url('{{CARD_3_IMG}}');background-position:{{CARD_3_POS}}"></div>
+      <div class="text">
+        <div class="name">{{CARD_3_NAME}}</div>
+        <div class="desc">{{CARD_3_DESC}}</div>
+        <ul>{{CARD_3_LIST}}</ul>
+      </div>
+    </div>
+    <div class="card">
+      <div class="img" style="background-image:url('{{CARD_4_IMG}}');background-position:{{CARD_4_POS}}"></div>
+      <div class="text">
+        <div class="name">{{CARD_4_NAME}}</div>
+        <div class="desc">{{CARD_4_DESC}}</div>
+        <ul>{{CARD_4_LIST}}</ul>
+      </div>
+    </div>
+  </div>
+</div>

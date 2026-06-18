@@ -1,0 +1,21 @@
+<!--
+  PDF COVER — body fragment for html_to_pdf body_pages[0]. Markup only; .cover classes
+  live in pdf-shared-head.template.html. One full-bleed hero behind the name block.
+
+  TOKENS:
+    {{NAME}}      display name / handle (rendered 120-180pt display font)
+    {{TAGLINE}}   short tracked-caps vibe line, e.g. STREETWEAR · TOKYO · NIGHT MARKETS
+    {{HERO_URL}}  one hero image URL (full-bleed)
+    {{YEAR}}      4-digit year for the eyebrow
+
+  NOTE: eyebrow is ALWAYS "Influencer Persona · {{YEAR}}" — never "Media Kit".
+-->
+<div class="page cover">
+  <div class="hero" style="background-image:url('{{HERO_URL}}')"></div>
+  <div class="scrim"></div>
+  <div class="copy">
+    <div class="eyebrow">Influencer Persona · {{YEAR}}</div>
+    <div class="name">{{NAME}}</div>
+    <div class="tagline">{{TAGLINE}}</div>
+  </div>
+</div>

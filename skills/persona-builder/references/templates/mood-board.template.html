@@ -1,0 +1,86 @@
+<!--
+  MOOD-BOARD TEMPLATE (title-banded) — rendered by mcp__plugin_pika_pika__html_to_png.
+  This carries ALL the load-bearing layout; the agent only fills {{TOKENS}} and the tile loop.
+  Do NOT re-derive grid math, gutters, or header sizing in the skill — they live here once.
+
+  HOW TO FILL (deterministic — no CSS authoring needed):
+    {{FONT_IMPORT}}   one Google Fonts <link> for the display+body pair (omit if system fonts)
+    {{FONT_DISPLAY}}  display font-family stack, e.g. "Playfair Display", serif
+    {{FONT_BODY}}     body font-family stack, e.g. "Inter", sans-serif
+    {{BG}}            lightest palette tone (page background), hex
+    {{FG}}            primary text color, hex
+    {{MUTED}}         muted gray for subtitle, hex
+    {{BRAND_NAME}}    brand / handle display name
+    {{SUBTITLE}}      tracked vibe words, e.g. BOSTON · WOOL COATS · COCKTAIL BARS
+    {{COLS}}          grid columns: 6 for portrait tiles (default), 4 for landscape-heavy input
+    {{TILES}}         the tile loop — exactly 12 tiles, one .tile per image (see block below); ~50/50 curated:generated
+
+  Each tile block (repeat, fill url + per-image crop focus):
+    <div class="tile" style="background-image:url('IMAGE_URL');background-position:POS"></div>
+  POS examples: 50% 20% (upper-body OOTD), 50% 35% (top-down kitchen), 50% 50% (centered).
+
+  RENDER: html_to_png, format "png", raster_options.viewport_px = { width: 1920, height: 1224 }.
+  (12 portrait tiles at COLS=6 → 320x540 each → 1080 tile area + 144 header = 1224.)
+-->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+{{FONT_IMPORT}}
+<style>
+  :root {
+    --font-display: {{FONT_DISPLAY}};
+    --font-body: {{FONT_BODY}};
+    --bg: {{BG}};
+    --fg: {{FG}};
+    --muted: {{MUTED}};
+    --cols: {{COLS}};
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 1920px; background: var(--bg); }
+  /* Composite = header band (144) + tile area (1080) = 1224, no outer gutter. */
+  .board { width: 1920px; }
+  .header {
+    height: 144px;
+    background: var(--bg);
+    padding: 24px 40px 0;
+    display: flex; flex-direction: column; justify-content: center;
+  }
+  .header .brand {
+    font-family: var(--font-display);
+    font-size: 54px; line-height: 1; color: var(--fg);
+  }
+  .header .sub {
+    margin-top: 14px;
+    font-family: var(--font-body);
+    font-size: 13px; letter-spacing: 0.34em; text-transform: uppercase;
+    color: var(--muted);
+  }
+  /* Tile grid: zero gutter so the PDF full-bleed variant matches exactly. */
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(var(--cols), 1fr);
+    grid-auto-rows: 1fr;
+    gap: 0;
+    width: 1920px; height: 1080px;
+  }
+  .tile {
+    width: 100%; height: 100%;
+    background-size: cover;
+    background-repeat: no-repeat;
+    background-position: 50% 50%;
+  }
+</style>
+</head>
+<body>
+  <div class="board">
+    <div class="header">
+      <div class="brand">{{BRAND_NAME}}</div>
+      <div class="sub">{{SUBTITLE}}</div>
+    </div>
+    <div class="grid">
+{{TILES}}
+    </div>
+  </div>
+</body>
+</html>
