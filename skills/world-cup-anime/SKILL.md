@@ -1,5 +1,5 @@
 ---
-name: anime-match
+name: world-cup-anime
 description: >-
   Put the USER into a ~45s Japanese-anime football short as the hero — from their
   photo + their favorite team + the opponent. Anime-fies the user's face into a
@@ -7,14 +7,14 @@ description: >-
   → winner) with the user scoring, writes three 15s cel-shaded scene prompts (CAPS
   names + Japanese dialogue), generates them on Seedance off the sheets, and stitches
   them. The "anime match" trend (Higgsfield+Claude) rebuilt on the Pika MCP, but the
-  star is YOU. Triggers: "/anime-match", "put me in an anime soccer video", "make me
+  star is YOU. Triggers: "/world-cup-anime", "put me in an anime soccer video", "make me
   the anime football hero", "anime match with my photo". Requires the Pika MCP.
 argument-hint: <your photo> + <your team> vs <opponent>  (+ optional on-screen hero name)
 ---
 
-> INTERNAL-RELEASING SKILL — submitted for internal testing. Loaded as `/creative-growth-internal-releasing:anime-match`.
+> INTERNAL-RELEASING SKILL — submitted for internal testing. Loaded as `/creative-growth-internal-releasing:world-cup-anime`.
 
-# anime-match
+# world-cup-anime
 
 Turn the **user** into the hero of a **3-scene (~45s) Japanese-anime football short** — the format @stevenwommack / @leonrdewa popularized for the 2026 World Cup, but the star is the person running it. Each scene is a 15s cel-shaded anime beat with the user (named, in CAPS) and Japanese dialogue, generated on **Seedance** off an **anime character sheet** made from the user's photo, then stitched.
 
