@@ -1,5 +1,5 @@
 ---
-name: world-cup-anime
+name: anime-soccer
 description: >-
   Put the USER into a ~45s Japanese-anime football short as the hero — from their
   photo + their favorite team + the opponent. Anime-fies the user's face into a
@@ -7,14 +7,12 @@ description: >-
   → winner) with the user scoring, writes three 15s cel-shaded scene prompts (CAPS
   names + Japanese dialogue), generates them on Seedance off the sheets, and stitches
   them. The "anime match" trend (Higgsfield+Claude) rebuilt on the Pika MCP, but the
-  star is YOU. Triggers: "/world-cup-anime", "put me in an anime soccer video", "make me
+  star is YOU. Triggers: "/anime-soccer", "put me in an anime soccer video", "make me
   the anime football hero", "anime match with my photo". Requires the Pika MCP.
 argument-hint: <your photo> + <your team> vs <opponent>  (+ optional on-screen hero name)
 ---
 
-> INTERNAL-RELEASING SKILL — submitted for internal testing. Loaded as `/creative-growth-internal-releasing:world-cup-anime`.
-
-# world-cup-anime
+# anime-soccer
 
 Turn the **user** into the hero of a **3-scene (~45s) Japanese-anime football short** — the format @stevenwommack / @leonrdewa popularized for the 2026 World Cup, but the star is the person running it. Each scene is a 15s cel-shaded anime beat with the user (named, in CAPS) and Japanese dialogue, generated on **Seedance** off an **anime character sheet** made from the user's photo, then stitched.
 
@@ -29,7 +27,7 @@ The magic is in three things, in this order: (1) a **character sheet** so the us
 
 Collect, in one pass (the only things that change per user):
 - **The user's photo** *(required)* — a clear face photo; this becomes the anime hero. Local path or URL. Likeness comes from this. Upload local files via `upload_asset` → use the `public_url`. (If on Claude Desktop where pasted images don't reach MCP, ask once for a URL or a `.zip`.)
-- **On-screen hero name** *(optional)* — what to call them in CAPS in the prompts + Japanese VO (e.g. "MATAN"). Default to their first name, or "THE STRIKER" if they'd rather not use a name.
+- **On-screen hero name** *(optional)* — what to call them in CAPS in the prompts + Japanese VO (e.g. "KAITO"). Default to their first name, or "THE STRIKER" if they'd rather not use a name.
 - **Their team** *(required)* — the hero's side. Capture the **kit colors / stripe pattern** (e.g. "sky-blue and white vertical stripes"), NOT the crest or sponsor (describe colors, not trademarks — see de-branding in failure modes).
 - **The opponent** *(required)* — who they're playing against. Capture the opponent's **kit colors** too. Opponent players (keeper, a defender) are generic — described by kit color, not named.
 
@@ -75,7 +73,7 @@ This is the step the creator did in Claude. **You do it directly.** There's no r
      ```
    - Scene 3 also gets a **final on-screen card**: `Final on-screen card: {TEAM} {SCORE}.`
 
-   *(Proven structural reference — the Undav/Germany edit this format is modeled on; **mirror its SHAPE exactly, swapping in YOUR hero name + YOUR team + the opponent**: Scene 1 cold-graded close-up → strides on under floodlights, a teammate shouts, hero inner-monologue. Scene 2 a cross comes in → the HERO volleys it in, bullet-time + white impact flash, 1-1, keeper frozen. Scene 3 stoppage time, the HERO turn-and-spin finish past the defender, knee-slide, gold confetti, "[TEAM] 2-1" card. Each opens with the cel-shaded style tag and closes on JP dialogue + monologue + commentator. Reuse this shape; swap in your hero + teams + the goal mechanics you designed.)*
+   *(Proven structural reference — the dramatic anime-match edit this format is modeled on; **mirror its SHAPE exactly, swapping in YOUR hero name + YOUR team + the opponent**: Scene 1 cold-graded close-up → strides on under floodlights, a teammate shouts, hero inner-monologue. Scene 2 a cross comes in → the HERO volleys it in, bullet-time + white impact flash, 1-1, keeper frozen. Scene 3 stoppage time, the HERO turn-and-spin finish past the defender, knee-slide, gold confetti, "[TEAM] 2-1" card. Each opens with the cel-shaded style tag and closes on JP dialogue + monologue + commentator. Reuse this shape; swap in your hero + teams + the goal mechanics you designed.)*
 
 ---
 
