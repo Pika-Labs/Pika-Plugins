@@ -6,7 +6,7 @@ description: >-
   consistent character sheet, designs a dramatic 3-act match (come on → equalizer
   → winner) with the user scoring, writes three 15s cel-shaded scene prompts (CAPS
   names + Japanese dialogue), generates them on Seedance off the sheets, and stitches
-  them. The "anime match" trend (Higgsfield+Claude) rebuilt on the Pika MCP, but the
+  them. A Japanese-anime football short built on the Pika MCP, but the
   star is YOU. Triggers: "/anime-soccer", "put me in an anime soccer video", "make me
   the anime football hero", "anime match with my photo". Requires the Pika MCP.
 argument-hint: <your photo> + <your team> vs <opponent>  (+ optional on-screen hero name)
@@ -14,7 +14,7 @@ argument-hint: <your photo> + <your team> vs <opponent>  (+ optional on-screen h
 
 # anime-soccer
 
-Turn the **user** into the hero of a **3-scene (~45s) Japanese-anime football short** — the format @stevenwommack / @leonrdewa popularized for the 2026 World Cup, but the star is the person running it. Each scene is a 15s cel-shaded anime beat with the user (named, in CAPS) and Japanese dialogue, generated on **Seedance** off an **anime character sheet** made from the user's photo, then stitched.
+Turn the **user** into the hero of a **3-scene (~45s) Japanese-anime football short**, but the star is the person running it. Each scene is a 15s cel-shaded anime beat with the user (named, in CAPS) and Japanese dialogue, generated on **Seedance** off an **anime character sheet** made from the user's photo, then stitched.
 
 **The proven pipeline (do not deviate from the order):**
 `user photo → anime CHARACTER SHEET (nano-banana-pro) → DESIGN the dramatic match + WRITE 3×15s scene prompts (you, acting as Claude) → SEEDANCE each scene off the sheet → STITCH`.
@@ -79,7 +79,7 @@ This is the step the creator did in Claude. **You do it directly.** There's no r
 
 ## Stage 3 — Generate each scene (`generate_reference_video`, seedance)
 
-One call per scene. Use the **character sheet as reference** and map the hero name to the image (the Higgsfield "@image" trick → Seedance `@Image1` token).
+One call per scene. Use the **character sheet as reference** and map the hero name to the image via the Seedance `@Image1` token.
 
 Call `generate_reference_video` with:
 - `provider`: **`seedance`** · `seedance_backend`: **`ark`**
@@ -126,5 +126,5 @@ Optional: `seedance-anime` (style help for the prompt voice) and `seedance-direc
 | `content_policy` / `image_generation_user_error` on the character sheet | gpt-image-2 (OpenAI) blocks anime-editing a real person's photo. Use **`nano-banana-pro`** for the sheet (the default); don't retry gpt-image-2 with the same photo. |
 
 ## Notes
-- Provenance: recreates the workflow shown by @stevenwommack (tutorial reel) / inspired by @leonrdewa — image-sheet → Claude prompts → Seedance 15s scenes → stitch — rebuilt entirely on the Pika MCP, generalized so the **user** is the hero (their photo + team + opponent).
+- Pipeline: image-sheet → designed scene prompts → Seedance 15s scenes → stitch — built entirely on the Pika MCP, with the **user** as the hero (their photo + team + opponent).
 - Default output: 3 scenes × 15s = ~45s, 16:9, 1080p, anime cel-shaded, Japanese VO. Aspect/length configurable if the user asks (e.g. 9:16 for reels).
