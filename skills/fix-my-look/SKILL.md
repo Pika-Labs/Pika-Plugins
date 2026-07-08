@@ -15,7 +15,7 @@ required-capabilities:
   - mcp__plugin_pika_pika__upload_asset
   - mcp__plugin_pika_pika__normalize_video
   - mcp__plugin_pika_pika__estimate_cost
-  - mcp__plugin_pika_pika__generate_image
+  - mcp__plugin_pika_pika__generate_image_edit
   - mcp__plugin_pika_pika__generate_reference_video
   - mcp__plugin_pika_pika__edit_concat
   - mcp__plugin_pika_pika__extract_audio_from_video
@@ -58,7 +58,7 @@ arguments.
 
 Start a timer when the source and change prompt are known. Before paid
 generation, call `mcp__plugin_pika_pika__estimate_cost` for the planned
-`mcp__plugin_pika_pika__generate_image`,
+`mcp__plugin_pika_pika__generate_image_edit`,
 `mcp__plugin_pika_pika__generate_reference_video`, any multi-segment
 `mcp__plugin_pika_pika__edit_concat`, and any optional audio/lipsync repair
 call. If cost is not surfaced by the host, say
@@ -104,9 +104,9 @@ reference-size cap. Do not patch this with local shell media commands.
 
 ### Step 2 — Edit the frame with gpt-image-2 (the "change" stage)
 
-`mcp__plugin_pika_pika__generate_image` with `provider="gpt-image-2"`,
+`mcp__plugin_pika_pika__generate_image_edit` with `provider="gpt-image-2"`,
 `aspect_ratio=<aspect_ratio>`, `resolution="2K"`,
-`reference_images=[<face_frame_url>]`, `quality="high"`, prompt:
+`images=[<face_frame_url>]`, `quality="high"`, prompt:
 
 > "Modify the reference photograph as follows: `<change_prompt>`. Keep the
 > person's face, identity, hair, body and pose EXACTLY as in the reference.

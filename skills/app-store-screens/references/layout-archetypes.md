@@ -266,7 +266,7 @@ Big pulled quote dominates the page, with a small device tucked in a corner. Use
       The first app that didn't ruin my morning.
     </blockquote>
     <cite style="font-size: 42px; color: var(--brand-ink); opacity: 0.7; font-style: normal;">
-      — The Verge
+      — sourced user review
     </cite>
   </div>
 
@@ -280,9 +280,9 @@ Big pulled quote dominates the page, with a small device tucked in a corner. Use
 </div>
 ```
 
-**Quote sourcing:** if the user doesn't have real press, write plausible ones tied to the brand's actual differentiator and attribute to outlets that fit the brand's target audience tier (TechCrunch / Verge / NYT / a specific newsletter / a known reviewer). Stay believable; don't fabricate quotes from real specific people.
+**Proof sourcing:** the proof screen must include at least one visible proof artifact. A proof screen is not allowed to be text-only, and a line like "Loved by millions..." is not proof unless the source material backs the claim and the screen renders a visual proof artifact beside it. Use one of: star row, Editors' Choice badge, testimonial card, review-count chip, award badge, or a sourced quote card. Do not fabricate quotes from real publications or real people; if the user has no real press/reviews/award data, make the proof artifact a product-backed differentiator card that points to the screenshot's visible capability.
 
-**Variant — review stars:** swap the quote with a row of "★★★★★ 4.9 — 12,000 reviews" + a tight subhead. Same layout role.
+**Variant — review stars:** when the source provides exact values, swap the quote with a row like "★★★★★ 4.9 — 12,000 reviews" + a tight subhead. Same layout role.
 
 ---
 

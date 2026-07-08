@@ -51,8 +51,9 @@ Each of the 6 screens uses the same skeleton — vary the color, the headline, a
 - Subhead 24-32px below headline. Body sans at weight 500
   - Size: 36-40px
   - Line-height: 1.3
-  - Opacity: 0.7-0.75 of the headline color
+  - Opacity: 0.7-0.75 of the headline color on light backgrounds only
   - Letter-spacing: -0.005 to -0.01em
+  - Dark-mode subhead token: `--subhead-on-dark: #B5B4B0`. On near-black backgrounds, use this light neutral (or an equivalent brand neutral) at full opacity instead of `#787774`-class medium gray; do not apply the light-background opacity rule to the dark token because low-contrast gray subheads fail the thumbnail read.
 
 ### Device zone (y = 580 to 2748)
 - Width: **1000px** (~78% of canvas).
@@ -81,6 +82,7 @@ The default is **same template, different color + content per screen**. If a cam
 2. **Small brand mark above headline.** Best on the HOOK screen (sets the brand stamp).
 3. **Wordmark at the bottom.** Best on the close (signs off).
 4. **Tracked-caps tagline** below the device. Best on connections/feature screens that need a one-line claim ("— CONTEXT, KEPT CURRENT").
+5. **Proof artifact row** on the proof screen. Keep the default skeleton, but place one visible sourced artifact inside the y=180..2616 safe-zone: star row, Editors' Choice badge, testimonial card, review-count chip, or award badge. Use a compact row/card overlay in the lower safe area or shorten/raise the proof-screen device so the artifact bottom stays at or above y=2616.
 
 Anything more — generated lifestyle photos, parallax shapes, quote cards — should only enter the campaign if the user explicitly wants more drama or supplies a reference that demands it.
 
@@ -89,7 +91,7 @@ Anything more — generated lifestyle photos, parallax shapes, quote cards — s
 - **Not parallax.** Big shapes floating behind devices look great in mockups, terrible at App Store thumbnail scale. Skip.
 - **Not full-bleed UI.** Showing the screenshot at canvas size without a device frame works on paper but reads as "a poster" not "an app." Skip unless you have the source app's UI designed to bleed.
 - **Not side-by-side device + photo.** Tried it, devices get small (≤ 560px wide), violates the "device is the hero" rule.
-- **Not quote cards.** No fabricated press quotes by default. If the user has real proof to feature, add it as a tracked-caps tagline on a feature screen, not a dedicated screen.
+- **Not fabricated quote cards.** No fabricated press quotes by default. The dedicated proof screen still needs a visible proof artifact; keep it in the default skeleton as a compact star row, badge, review-count chip, testimonial card, or award badge rather than a text-only claim.
 - **Not SVG iPhone bezels.** See `render-pipeline.md`.
 
 ## The squint test (apply before delivering)

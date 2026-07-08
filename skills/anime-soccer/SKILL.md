@@ -35,13 +35,13 @@ Confirm in one line ("Putting YOU in an anime match — [TEAM] vs [OPPONENT], yo
 
 ---
 
-## Stage 1 — Anime character sheet (`generate_image`, nano-banana-pro)
+## Stage 1 — Anime character sheet (`generate_image_edit`, nano-banana-pro)
 
 Generate ONE anime **character sheet** of the user from their photo. The sheet (multiple angles + full body + close-ups) is what keeps the face consistent across all three scenes.
 
-Call `generate_image` with:
+Call `generate_image_edit` with:
 - `provider`: **`nano-banana-pro`** (REQUIRED default). It does reference-identity → anime stylization cleanly for any real face. **Don't use `gpt-image-2`** here — OpenAI's safety system rejects anime-editing a real photo of an identifiable person (`content_policy` / `image_generation_user_error`).
-- `reference_images`: `[<the user's photo url>]`
+- `images`: `[<the user's photo url>]`
 - `aspect_ratio`: `16:9` · `quality`: `high` · `output_format`: `png`
 - `prompt` (verbatim template — fill `{NAME}`; put them in their team kit):
   ```
@@ -105,7 +105,7 @@ Concatenate Scene 1 → 2 → 3 in order into the final ~45s, 16:9 1080p cut (`e
 
 | Step | Tool | Key settings |
 |---|---|---|
-| Character sheet | `generate_image` | **`nano-banana-pro`** (gpt-image-2 rejects real-person photos), ref = user's photo, hero in team kit, `16:9` |
+| Character sheet | `generate_image_edit` | **`nano-banana-pro`** (gpt-image-2 rejects real-person photos), ref = user's photo, hero in team kit, `16:9` |
 | Design + prompts | you (acting as Claude) | a specific dramatic match → 3×15s scenes in the formula above |
 | Scene video | `generate_reference_video` | `seedance`/`ark`, sheet as ref, name→`@ImageN` map, `16:9`, `1080p`, `15s`, `sound:true` |
 | Stitch | `edit_concat` / ffmpeg | scenes in order, keep audio, ~45s |

@@ -11,12 +11,14 @@ description: >
   store screens", "app-store-screens".
 argument-hint: <brand-md-or-brand-spec-or-app-store-url> [product-screenshots-or-figma-url] [reference=<url-or-path>] [count=5|6] [--quick] [--config <path>]
 required-capabilities:
-  - mcp__pika__analyze_media
-  - mcp__pika__capture_website
-  - mcp__pika__fetch_appstore_screens
-  - mcp__pika__generate_image
-  - mcp__pika__html_to_png
-  - mcp__pika__upload_asset
+  - mcp__claude_ai_pika__analyze_media
+  - mcp__claude_ai_pika__capture_website
+  - mcp__claude_ai_pika__fetch_appstore_screens
+  - mcp__claude_ai_pika__generate_image
+  - mcp__claude_ai_pika__generate_image_edit
+  - mcp__claude_ai_pika__html_to_png
+  - mcp__claude_ai_pika__identity_balance
+  - mcp__claude_ai_pika__upload_asset
 ---
 
 # App Store Screens
@@ -24,6 +26,14 @@ required-capabilities:
 Take a brand plus real product screens and produce a 5–6 screen App Store campaign at iPhone 6.9" size (1290×2796). The product screens can come from raw exports, Figma/source files, or a public App Store listing fetched through Pika MCP. Story-driven, splashy, strict to the brand.
 
 This is a sister skill to `build-a-brand` — it consumes that skill's `brand.md` spec, but works equally well with any brand spec the user supplies.
+
+## Cost transparency gate
+
+Before any paid MCP call, call `mcp__claude_ai_pika__identity_balance({verbose: true})` once. Surface the current balance, recent burn rate, and remaining runway, then gate the run with this exact message:
+
+> Estimated cost: about 150-300 credits (~$1.50-$3.00) for a typical 5-6 screen set using GPT-image-2, PNG renders, post-render analyze_media QA, and full-resolution individual PNG QA. This is below $5, but Reply `proceed` to continue or `cancel` to stop.
+
+Do not call any paid MCP tool until the user replies `proceed`. If the user replies `cancel`, stop without generating. For non-interactive `--quick` or `--config` callers, require `cost_ack=proceed` in the config; if it is absent, stop with the estimate instead of spending credits.
 
 ## The deliverable
 
@@ -134,7 +144,7 @@ If the user can't or won't supply a reference but still wants more than default,
 
 #### App Store listing path
 
-If the user supplies an `apps.apple.com` URL, numeric App Store app ID, or app-name search term as the product source, try Pika MCP `mcp__pika__fetch_appstore_screens` first because it is faster, more stable, and returns hosted screenshot/icon assets ready for later render steps:
+If the user supplies an `apps.apple.com` URL, numeric App Store app ID, or app-name search term as the product source, try Pika MCP `mcp__claude_ai_pika__fetch_appstore_screens` first because it is faster, more stable, and returns hosted screenshot/icon assets ready for later render steps:
 
 ```
 fetch_appstore_screens(
@@ -145,7 +155,7 @@ fetch_appstore_screens(
 )
 ```
 
-Use the returned `metadata`, `icon`, and `screenshots` as the product source. The returned screenshot `url` values are already Pika-hosted HTTPS assets and can be used directly in later `mcp__pika__html_to_png` stages.
+Use the returned `metadata`, `icon`, and `screenshots` as the product source. The returned screenshot `url` values are already Pika-hosted HTTPS assets and can be used directly in later `mcp__claude_ai_pika__html_to_png` stages.
 
 If the user provided a country-specific App Store URL, preserve that storefront country when calling the tool when possible. If the country is unclear, default to `"us"` unless the user asked for another storefront.
 
@@ -165,16 +175,67 @@ Expected result shape:
 }
 ```
 
+#### Source screenshot prep
+
+Before choosing the default phone layout, classify each fetched or user-supplied source screenshot and record the `source_treatment` you will use:
+
+- `clean_ui_capture` - raw in-app UI suitable for a device mockup.
+- `composed_marketing` - a finished App Store marketing screen, not a clean in-app screenshot.
+- `legacy_footer_cleanup` - clean UI that only needs listing-brand footer or watermark cleanup before device embedding.
+
+A composed-marketing source is a pre-composed marketing screen. Common signals: a baked headline or subhead already sits above the phone, the phone bleeds or clips against the source edge, the background is already campaign art, and the source image is already a finished 1290x2796 App Store screen rather than clean product UI. The 2025 Notion listing uses this pattern.
+
+When a source is `composed_marketing`, do not reframe it inside another device mockup and do not add, write, or generate a second headline/subhead on top of the baked headline. Prefer a `clean_ui_capture` instead: use `mcp__claude_ai_pika__capture_website` on the product website, onboarding, or web app when a captureable real UI surface exists, or ask for simulator/Figma/raw UI exports. If no clean UI surface is available, use `source_treatment=composed_passthrough`: present the composed source as-is as the screen/background with only minimal delivery framing, numbering, or contact-sheet labeling. Do not rely on a bottom 6-8% crop to fix composed sources; it removes the wrong area and leaves the double-headline failure intact.
+
+For legacy source screenshots that are otherwise clean UI, inspect them for footer watermark bleed or listing-brand footers that will become clutter inside the generated campaign. The R4 Notion listing exposed this as a raw footer reading `NOTION · NOTES, TASKS, AI` overlapping the bottom content. If a fetched or user-supplied clean UI source screenshot has this kind of footer watermark, crop or mask the bottom 6-8% before embedding it; do not place the raw screenshot directly into the device.
+
+Use a prepared screenshot wrapper in the HTML stage and keep the top of the source anchored. The wrapper must define its own geometry; do not rely on `height:100%` unless every parent up to the device has an explicit height.
+
+```html
+<div class="source-screen-crop source-screen-crop--phone" style="
+  width:100%;
+  aspect-ratio:1290 / 2796;
+  overflow:hidden;
+  position:relative;
+">
+  <img src="s://screen01" style="
+    width:100%;
+    height:calc(100% / 0.92);   /* shows the top 92% while cropping the bottom 8% */
+    object-fit:cover;
+    object-position:top center;
+    display:block;
+  ">
+</div>
+```
+
+If an 8% crop would remove real product UI, use a brand-color fade over the bottom footer instead, but still remove the watermark bleed before the screenshot enters the final device mockup.
+
+#### Handling Mac-app or hybrid-app screenshots
+
+`fetch_appstore_screens` may return landscape Mac screenshots (for example 1290×806) instead of iPhone portrait screenshots (1290×2796) for Mac-only or hybrid iOS/Mac apps such as Things 3, Drafts, Numbers, Day One, OmniFocus, or BBEdit. Detect this before choosing the default iPhone-portrait layout:
+
+The orientation rule is `aspect_ratio_w > aspect_ratio_h`, or `width > height` when only pixel dimensions are present.
+
+```
+mac_shots = [s for s in screenshots if s.aspect_ratio_w > s.aspect_ratio_h]
+# Equivalent when explicit aspect ratios are not present:
+mac_shots = [s for s in screenshots if s.width > s.height]
+```
+
+If `mac_shots` is non-empty, use the embedded-card layout in `references/mac-app-layout.md` rather than full-frame device shots. For Mac-only or hybrid apps, embed each landscape screenshot as a rounded-corner UI card inside the 1290×2796 portrait canvas rather than cropping it into an iPhone frame, letterboxing it, or treating it as a full-frame device. The Things 3 round-2 benchmark validated this approach: the Mac screenshots stayed readable and the portrait campaign still fit App Store Connect.
+
+Source screenshot prep still applies to Mac cards: inspect landscape screenshots for listing-brand footers or footer watermark bleed before embedding them. Do not use the phone portrait crop on Mac UI. Keep the landscape aspect ratio with a dedicated card wrapper such as `source-screen-crop--mac`; if cleanup is needed, prefer a narrow bottom mask/fade or a small landscape-preserving bottom crop inside the card.
+
 #### Thin App Store listing guardrail
 
-After `mcp__pika__fetch_appstore_screens`, count usable screenshots that show real
+After `mcp__claude_ai_pika__fetch_appstore_screens`, count usable screenshots that show real
 product UI. If the listing returns fewer than 3 real product screenshots, treat it
 as a thin App Store listing.
 
 - Do not create a 5-6 screen campaign by hallucinating UI. Real product UI is the
   default requirement for device frames.
 - Interactive mode: stop before strategy and offer two choices:
-  1. **Website-capture path** — use `mcp__pika__capture_website` or supplied
+  1. **Website-capture path** — use `mcp__claude_ai_pika__capture_website` or supplied
      website/onboarding URLs to capture real product surfaces, then continue with
      those captures as product screenshots.
   2. **Real screenshot path** — ask for simulator exports, Figma frames, or other
@@ -208,7 +269,7 @@ The reference describes WHAT THE LAYOUT/STYLE LOOKS LIKE. The brand describes WH
 - Photography direction (any generated imagery follows the brand's photo rules — for DeltaStream that's documentary 35mm, golden hour, real apartments, butter accent in every frame, real cast diversity)
 - Mood (warm vs. clinical, playful vs. expert, etc.)
 
-**For generated hero imagery: pass the reference as `reference_images` to `gpt-image-2`.** The tool supports up to 16 reference images. Use this when the reference uses a distinctive photo composition (hand-holding-phone, over-the-shoulder, person breaking out of screen, 3D character emerging). Combine with the brand's photography rules in the prompt:
+**For generated hero imagery: pass the reference as `images` to `gpt-image-2` via `generate_image_edit`.** The tool supports up to 16 reference images. Use this when the reference uses a distinctive photo composition (hand-holding-phone, over-the-shoulder, person breaking out of screen, 3D character emerging). Combine with the brand's photography rules in the prompt:
 
 ```
 Reference: [user's reference photo — e.g., insect app's hand-holding-phone with butterfly]
@@ -228,7 +289,7 @@ Then actually read:
 
 - **`brand.md`** — extract: brand name, tagline, palette (with hex), display font + body font, voice adjectives, voice examples, forbidden words, photography/illustration direction, mood words. If the file is a different format (PDF, plain notes), parse what's there and ask about gaps in interactive mode. In the non-interactive fast lane, record reasonable assumptions for non-critical gaps — don't invent a brand.
 - **Product screenshots** — open each one and form an honest mental model: *what does this app actually do?* Note the core UI patterns (feed, chat, canvas, list, map, etc.), the primary action surface, and any "wow moment" screens (a generative result, a beautiful state, a unique interaction).
-- If you can use `mcp__pika__analyze_media` to inspect screenshots without loading them as images, do — it's faster for a quick scan.
+- If you can use `mcp__claude_ai_pika__analyze_media` to inspect screenshots without loading them as images, do — it's faster for a quick scan.
 
 **Then read back what you found** (3-5 lines, conversational):
 
@@ -249,6 +310,7 @@ Before designing anything, write out the narrative arc as plain text. Each scree
 - **Optional subhead** (one short line)
 - **Layout archetype** (see below — name it, don't draw it yet)
 - **Which raw screenshot it features** (filename) — or "none, full-bleed typography"
+- **Proof artifact** for proof screens only — at least one visible proof artifact such as a star row, Editors' Choice badge, testimonial card, review-count chip, award badge, or other sourced visual proof. The proof screen must not be text-only.
 
 Present it like:
 
@@ -266,9 +328,11 @@ Headline: "One tap. Then quiet."
 
 Interactive mode: ask the user to sign off on the arc before you generate or composite anything. Iterate on copy here — it's the cheapest moment to fix it. In the non-interactive fast lane, generate from the configured or inferred arc without stopping for signoff.
 
+**Proof screen rule:** the proof screen needs a visible proof artifact, not just a claim. Do not ship a proof screen that only says "Loved by millions..." or another text-only social-proof line. If the App Store listing or brand spec provides real proof, render it visibly as a star row, Editors' Choice badge, testimonial card, review-count chip, award badge, or sourced quote card. If no real proof exists, make the proof beat a visual differentiator backed by the product screenshot instead of inventing reviews, awards, ratings, or customer counts.
+
 ### Step 3 — Generate brand-world imagery
 
-For any screen that calls for splashy background/hero imagery, generate it with `mcp__pika__generate_image`.
+For any screen that calls for splashy background/hero imagery, generate it with `mcp__claude_ai_pika__generate_image` (or `mcp__claude_ai_pika__generate_image_edit` when passing a reference image per the reference-driven path above).
 
 **Defaults that work for App Store splash:**
 - `provider: gpt-image-2`
@@ -285,20 +349,24 @@ For any screen that calls for splashy background/hero imagery, generate it with 
 
 **Reserve upper third for the headline.** Tell the image model where the type will go so it leaves room.
 
-Keep generated image URLs as HTTPS/CDN URLs for server-side rendering. If the user provides local product screenshots or background images, upload them with `mcp__pika__upload_asset` first and use the returned `public_url`; `mcp__pika__html_to_png` cannot read local `file://` paths.
+Keep generated image URLs as HTTPS/CDN URLs for server-side rendering. If the user provides local product screenshots or background images, upload them with `mcp__claude_ai_pika__upload_asset` first and use the returned `public_url`; `mcp__claude_ai_pika__html_to_png` cannot read local `file://` paths. When a stage repeats long CDN URLs, place short tokens such as `s://screen01` in HTML/CSS and pass the full URLs through `short_link_map`; malformed asset URLs with whitespace or missing `https://` are rejected before render.
 
 ### Step 4 — Composite each screen at 1290×2796
 
-Write one HTML stage per screen, then render to PNG via Pika MCP `mcp__pika__html_to_png`. See `references/render-pipeline.md` for:
-- The exact `mcp__pika__html_to_png` request shape
+Write one HTML stage per screen, then render to PNG via Pika MCP `mcp__claude_ai_pika__html_to_png`. See `references/render-pipeline.md` for:
+- The exact `mcp__claude_ai_pika__html_to_png` request shape
 - Server-side asset/font rules
 - Safe-zone guides
 - Common gotchas (font loading, retina text sharpness, mid-curve crop)
 
-Each HTML stage should be exactly 1290×2796px. Use `@font-face` with HTTPS raw font URLs or inline `data:font/...` sources. Local brand-kit font files must be exposed through a public HTTPS URL or inlined; `mcp__pika__upload_asset` does not accept font mime types.
+Each HTML stage should be exactly 1290×2796px. Use `@font-face` with direct `fonts.gstatic.com` WOFF2 font-file URLs or inline `data:font/...` sources. Do not use GitHub raw Google Fonts links in renderer HTML; they can resolve as `text/html` and fail the font MIME allowlist. Local brand-kit font files must be exposed through a public HTTPS URL or inlined; `mcp__claude_ai_pika__upload_asset` does not accept font mime types. See `references/fonts.md` for copy-pasteable Google Fonts snippets.
+
+For CJK or other non-Latin app names, headlines, testimonials, or UI labels, every CSS `font-family` stack must add broad-script fallbacks such as `"Noto Sans SC", "Noto Sans TC", "Noto Sans JP", "Noto Sans KR", "Noto Sans Arabic", system-ui, sans-serif`. Chromium will use the brand font for supported Latin glyphs and per-glyph fallback for missing scripts instead of rendering tofu boxes.
+
+For dark backgrounds, set a dark-mode subhead token instead of reusing medium gray. Use `--subhead-on-dark: #B5B4B0` or an equivalent light neutral from the brand palette at full opacity; never use `#787774`-class gray on near-black and never dim the dark token with the light-background `opacity: 0.7-0.75` rule. `#787774`-class gray is for light backgrounds only. The headline can flip to cream/white, but the subhead must also flip to a readable dark-mode color.
 
 After each render, run a pre-delivery QA pass before accepting the PNG. Use
-`mcp__pika__analyze_media` on the rendered image and inspect the authored HTML
+`mcp__claude_ai_pika__analyze_media` on the rendered image and inspect the authored HTML
 positions when available. Reject and rerender any screen whose text block
 bounding boxes put load-bearing headline, eyebrow, subhead, CTA, or product UI
 outside the safe content area documented in `references/render-pipeline.md`.
@@ -307,7 +375,7 @@ outside the safe content area documented in `references/render-pipeline.md`.
 
 Once all 6 PNGs render cleanly:
 
-1. Build a `_preview.png` contact sheet with `mcp__pika__html_to_png` — 6 thumbnails in a 3×2 grid at ~25% size, on a neutral background, labeled by role.
+1. Build a `_preview.png` contact sheet with `mcp__claude_ai_pika__html_to_png` — 6 thumbnails in a 3×2 grid at ~25% size, on a neutral background, labeled by role.
 2. Present the contact sheet URL plus each individual screenshot `file_url`. If you also saved local copies, include those local paths separately.
 3. Ask: anything to revise? Common revisions are copy tweaks (cheap) or layout swaps (medium) or new imagery (most expensive).
 
@@ -315,6 +383,51 @@ Do not report the screenshot set complete until `_preview.png` exists and is
 included in the delivery. If the contact sheet render fails, fix the sheet HTML
 or rerender the missing PNGs first; do not deliver only the individual PNGs and
 call the campaign finished.
+
+## Post-flight quality gate
+
+Before declaring success, call `mcp__claude_ai_pika__analyze_media` on the `_preview.png` contact sheet for campaign-level variety, then inspect any screen with proof copy, dark background, or prepared source screenshots as a full-resolution individual PNG. The 25% contact sheet is too small to validate footer watermark bleed, dark-background subhead contrast, fine proof artifacts, or double-headline failures on composed-marketing sources by itself.
+
+Run the full-resolution individual PNG check on:
+
+- the proof screen
+- every screen using a near-black/dark background
+- every screen that embeds a fetched or user-supplied source screenshot with possible listing-brand footer text
+- every screen with `source_treatment=composed_passthrough` or a source classified as `composed_marketing`
+- every Mac landscape card screen where `mac_shots` were used
+
+For the contact sheet, ask for a structured verdict:
+
+```
+Return JSON only: {
+  "verdict": "clean" | "degraded" | "catastrophic",
+  "observations": string[],
+  "quality_warning": string | null,
+  "re_roll_suggestion": string | null
+}
+Check that the contact sheet shows every requested screenshot, App Store safe zones are respected, product UI is readable, headlines are legible at thumbnail scale, and no generated text is garbled.
+```
+
+For each targeted individual rendered PNG, ask:
+
+```
+Return JSON only: {
+  "proof_artifact_visible": boolean | null,
+  "dark_subhead_contrast_ok": boolean | null,
+  "footer_watermark_bleed_visible": boolean,
+  "composed_source_double_headline_visible": boolean | null,
+  "mac_card_preserves_landscape_ui": boolean | null,
+  "verdict": "clean" | "degraded" | "catastrophic",
+  "observations": string[],
+  "re_roll_suggestion": string | null
+}
+Check at readable resolution. The proof screen must include a visible proof artifact such as a star row, Editors' Choice badge, testimonial card, review-count chip, award badge, or sourced quote card. Dark-background subheads must use a light dark-mode token and remain readable. Source screenshots and Mac cards must not show footer watermark bleed or listing-brand footer clutter. For composed-marketing sources, verify there is no generated headline stacked above a baked headline and no extra device mockup wrapped around the source.
+```
+
+- If `verdict` is `clean`, deliver the contact sheet plus individual PNG URLs.
+- If `verdict` is `degraded`, deliver the URLs with the `quality_warning` so the user can review before publishing.
+- If `verdict` is `catastrophic`, do not call the campaign complete; surface the verdict and `re_roll_suggestion` instead of declaring success.
+- If the proof screen lacks a visible proof artifact, if dark-background subheads are low contrast, if source screenshot footer watermark bleed is still visible, or if `composed_source_double_headline_visible` is true, treat the verdict as `degraded` at minimum and rerender the affected screen before normal delivery. Do not call the campaign complete while a composed source has both a baked headline and a generated headline.
 
 ## The 5 layout archetypes
 
@@ -389,7 +502,7 @@ These anchors keep the generated campaign legible and on-brand:
 
 ## Engine choice: HTML-first render, gpt-image-2 only for brand-world imagery
 
-The final screenshots should be deterministic HTML/CSS composites rendered through `mcp__pika__html_to_png`, because App Store copy, device masks, safe zones, and brand typography need exact control. Use `gpt-image-2` only for splash/background/brand-world imagery where generation adds visual richness; keep real product UI as screenshots. Bump `gpt-image-2` to its 2K/4K tier (or escalate to `seedream`) only when a specific generated background genuinely needs higher resolution than 1K.
+The final screenshots should be deterministic HTML/CSS composites rendered through `mcp__claude_ai_pika__html_to_png`, because App Store copy, device masks, safe zones, and brand typography need exact control. Use `gpt-image-2` only for splash/background/brand-world imagery where generation adds visual richness; keep real product UI as screenshots. Bump `gpt-image-2` to its 2K/4K tier (or escalate to `seedream`) only when a specific generated background genuinely needs higher resolution than 1K.
 
 ## Runtime Expectations
 
@@ -416,7 +529,7 @@ Typical run time is 10-25 minutes, depending on how much user confirmation is ne
 | Load-bearing text appears too close to the top or bottom edge | Safe-zone QA was skipped or checked only the rendered look, not text block bounding boxes | Reject and rerender with text block bounding boxes inside the strict safe-zone margin |
 | Device corners look uneven | Source screenshot already contains background in the rounded corner area, or CSS radius does not match the source | Ask for transparent/high-res source exports, use a real mockup cutout, or apply one consistent CSS mask and visually QA. A server-side uniform corner cleaner is still a tool gap. |
 | Brand feels generic after hiding the screenshots | Surrounding design ignores `brand.md` voice, palette, or imagery rules | Rebuild the screen shell from the brand spec before rerendering |
-| Render is blurry or scaled | Stage dimensions or raster options are wrong | Verify 1290x2796 stage size and `mcp__pika__html_to_png` `viewport_px:1290x2796`, `device_scale:1` |
+| Render is blurry or scaled | Stage dimensions or raster options are wrong | Verify 1290x2796 stage size and `mcp__claude_ai_pika__html_to_png` `viewport_px:1290x2796`, `device_scale:1` |
 
 ## When to push back on the user
 
@@ -429,5 +542,6 @@ Typical run time is 10-25 minutes, depending on how much user confirmation is ne
 ## References
 
 - `references/default-layout.md` — **the visual system the skill produces when the user supplies no reference.** Read this first for any run. Codifies the headline-top + device-dominant + full-frame composition, color rotation, and squint-test checklist. This is what the skill delivers well.
+- `references/mac-app-layout.md` — portrait App Store layout for landscape Mac screenshots from Mac-only or hybrid listings. Use when `fetch_appstore_screens` returns landscape screenshots such as 1290×806.
 - `references/layout-archetypes.md` — vocabulary list of layout patterns found in real App Store campaigns. Use only to analyze a user-supplied reference. Not a free-choice menu.
-- `references/render-pipeline.md` — `mcp__pika__html_to_png` render request, server-side asset/font rules, safe-zone overlay, font-loading checklist, pre-delivery checklist.
+- `references/render-pipeline.md` — `mcp__claude_ai_pika__html_to_png` render request, server-side asset/font rules, safe-zone overlay, font-loading checklist, pre-delivery checklist.

@@ -10,14 +10,14 @@ description: >
   person AND background photoreal, float Minecraft loot-tag labels), background-only
   (voxelize the background/environment, keep the person and any incidental object
   photoreal, no tags), or object+background (voxelize everything except the person).
-  Single still-image edit via one generate_image call. This skill absorbs the old
+  Single still-image edit via one generate_image_edit call. This skill absorbs the old
   minecraft-food and minecraft-world trends. Triggers: "voxel it", "voxelize this",
   "minecraft world", "minecraft food", "minecraftify this", "minecraftify the
   background", "voxel food", "minecraft my photo", "put me in minecraft but keep me
   real", "loot tags on my food", "minecraft everything but the person", "/voxel-it".
 required-capabilities:
   - mcp__plugin_pika_pika__upload_asset
-  - mcp__plugin_pika_pika__generate_image
+  - mcp__plugin_pika_pika__generate_image_edit
   - mcp__plugin_pika_pika__remove_background
 ---
 
@@ -184,9 +184,9 @@ response (`curl -X PUT -H "content-type: <type>" --upload-file <file>
 
 ### Step 3 — Run the edit (branch on the Step 0 mode)
 
-`mcp__plugin_pika_pika__generate_image` with `provider="gpt-image-2"`,
+`mcp__plugin_pika_pika__generate_image_edit` with `provider="gpt-image-2"`,
 `quality="high"`, `output_format="png"`, `background=true` (poll), the CDN URL in
-`reference_images`, and `aspect_ratio` matched to source orientation (9:16 / 3:4 /
+`images`, and `aspect_ratio` matched to source orientation (9:16 / 3:4 /
 4:3 / 1:1). Fill the COLOR GRADING mood line from your read of the photo.
 
 **Pick the prompt block for the mode you committed to in Step 0.**

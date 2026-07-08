@@ -13,6 +13,7 @@ description: >-
 argument-hint: <the two fighters, e.g. "ninja vs ninja" | "samurai vs demon" | "frost mage vs ember knight">
 required-capabilities:
   - mcp__plugin_pika_pika__generate_image
+  - mcp__plugin_pika_pika__generate_image_edit
   - mcp__plugin_pika_pika__generate_video
   - mcp__plugin_pika_pika__task_status
   - mcp__plugin_pika_pika__edit_audio_mix
@@ -70,7 +71,7 @@ Bakes the stage, both performers, and the filming crowd into frame 0 so Step 2 o
 A recording from the audience at an outdoor theater performance at [TIME-OF-DAY/SETTING]. [STAGE: a wooden stage recreating <themed set> — <2-4 concrete set pieces, lanterns/gate/fog/water/etc>, <backdrop>]. On stage, two performers in high-quality live-action cosplay face off several meters apart: on the LEFT, [PERFORMER A — cosplay: hair, costume, prop, stance]; on the RIGHT, [PERFORMER B — cosplay: hair, costume, prop, stance]. A large audience fills the foreground — dark silhouetted heads, many holding up phones recording with glowing screens. The camera films from far back in the crowd, slightly off-center, performers small on the wide stage, slight handheld tilt. Realistic phone-camera look, faint digital noise, [natural light note]. High resolution, no text, no UI.
 ```
 
-**Call `mcp__plugin_pika_pika__generate_image`.** **Call params:** `provider: gpt-image-2` · `aspect_ratio: 16:9` (default; `9:16` if vertical) · `quality: medium` (high exceeds the proxy timeout) · `output_format: png`. **No `reference_images`** unless the user supplied a specific character sheet/costume to anchor (then pass it and keep the text describing only the *cosplay*, not a name). On `moderation_blocked`: re-roll; if it persists, soften the costume language (more "performer/stunt", less "demon/claws"). Save the returned URL → `state.still_<n>_url`. Self-check: two costumed performers clearly facing off, crowd + phones in foreground, no text — else re-roll.
+**Call `mcp__plugin_pika_pika__generate_image`.** **Call params:** `provider: gpt-image-2` · `aspect_ratio: 16:9` (default; `9:16` if vertical) · `quality: medium` (high exceeds the proxy timeout) · `output_format: png`. **No input image** unless the user supplied a specific character sheet/costume to anchor — in that case call `mcp__plugin_pika_pika__generate_image_edit` instead, passing the sheet as `images`, and keep the text describing only the *cosplay*, not a name. On `moderation_blocked`: re-roll; if it persists, soften the costume language (more "performer/stunt", less "demon/claws"). Save the returned URL → `state.still_<n>_url`. Self-check: two costumed performers clearly facing off, crowd + phones in foreground, no text — else re-roll.
 
 ## Step 2 — Fight clip (`generate_video`, image→video, 10s)
 Locks the still as the start frame and animates the clash. At **10s** there's room for a fuller beat — give the `[ACTION]` a small arc (square-off → clash → the live-stage effect → recoil/second exchange → crowd erupts) rather than a single hit. **Template — verbatim wrapper, fill only `[ACTION + EFFECT]`:**

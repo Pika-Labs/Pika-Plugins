@@ -13,20 +13,32 @@ description: >
   NOT for: short-form consumer content like GRWM, vlogs, UGC, or non-app product
   ads (use content-video); app-sizzle is specifically for iOS app teaser videos
   sourced from App Store screens or real app UI.
-argument-hint: <app-name-or-url> [screens=<app-store-url|website-url|paths>] [logo=<path-or-url>] [aspect=16:9|9:16|1:1]
+argument-hint: <app-name-or-url> [screens=<app-store-url|website-url|paths>] [logo=<path-or-url>] [aspect=16:9|9:16|1:1] [variants=16:9,9:16,1:1]
 required-capabilities:
-  - mcp__pika__capture_website
-  - mcp__pika__fetch_appstore_screens
-  - mcp__pika__generate_image
-  - mcp__pika__generate_reference_video
-  - mcp__pika__edit_text_overlay
-  - mcp__pika__task_status
-  - mcp__pika__upload_asset
+  - mcp__claude_ai_pika__analyze_media
+  - mcp__claude_ai_pika__capture_website
+  - mcp__claude_ai_pika__fetch_appstore_screens
+  - mcp__claude_ai_pika__generate_image_edit
+  - mcp__claude_ai_pika__generate_reference_video
+  - mcp__claude_ai_pika__identity_balance
+  - mcp__claude_ai_pika__edit_reframe
+  - mcp__claude_ai_pika__edit_text_overlay
+  - mcp__claude_ai_pika__task_status
+  - mcp__claude_ai_pika__task_cancel
+  - mcp__claude_ai_pika__upload_asset
 ---
 
 # App Sizzle — GPT-Image-2 Enhanced iOS App Teaser
 
 Generate a polished 15-second app teaser from real app screens. Each selected screen is passed through GPT-image-2 before Seedance so compressed captures become cleaner references without inventing UI.
+
+## Cost transparency gate
+
+Before any paid MCP call, call `mcp__claude_ai_pika__identity_balance({verbose: true})` once. Surface the current balance, recent burn rate, and remaining runway, then gate the run with this exact message:
+
+> Estimated cost: about 3,000-4,000 credits (~$30-$40) for a typical run with screenshot enhancement plus Seedance video. This exceeds $5, so Reply `proceed` to continue or `cancel` to stop.
+
+Do not call any paid MCP tool until the user replies `proceed`. If the user replies `cancel`, stop without generating. For non-interactive `--quick` or `--config` callers, require `cost_ack=proceed` in the config; if it is absent, stop with the estimate instead of spending credits.
 
 **Generation contract:** use `resolution="1080p"`, `duration=15`, and `sound=True`. Skip `fast=true` because it caps Seedance at 720p. The skill owns duration and sound so the user only has to supply app identity, screens, logo, and aspect ratio.
 
@@ -34,9 +46,31 @@ The visual aesthetic is **derived from the app's personality** — not defaulted
 
 ---
 
+## Pre-generation wall-clock guard
+
+Start a timer at skill start once the required app identity and screen/logo source are available and the cost gate has passed. Time spent waiting for the user's `proceed` reply, or for non-interactive `cost_ack=proceed`, is not prep time and must not trigger this guard. If required inputs or real assets are missing, stop at Stage 0 or Stage 0.5 and ask for them; do not bypass the asset gate. For runs with required inputs in hand, the first paid generation call is the GPT-image-2 `generate_image_edit` enhancement pass, and it must be invoked within 5 minutes of skill start. If you have not invoked the first `generate_image_edit` enhancement within 5 minutes of skill start, stop before any paid generation call and report `failed_pre_generation_timeout` with what you have so far: fetched assets, selected screens, feature map, arc, enhancement-prompt status, Seedance prompt draft if any, and the exact blocker. Do not keep refining analysis, enhancement wording, prompt wording, or camera language.
+
+Print a single-line progress checkpoint after each prep stage and right before the paid generation call:
+- `Stage 1/3 done — assets sourced and screened, analyzing screenshots.`
+- `Stage 2/3 done — feature map and arc written, locking enhancement prompts.`
+- `Stage 3/3 done — enhancement prompts locked, calling GPT-image-2 now.`
+
+Feature-map and enhancement-prompt writing is maximum 2 passes before the first `generate_image_edit` call. After the max 2 passes, ship what you have to `generate_image_edit`; do not continue polishing enhancement wording, screen analysis, or arc language. Seedance prompt writing is maximum 2 passes after enhancements complete; then ship what you have to `generate_reference_video`.
+
+## Long-running task_status polling
+
+When any long-running generation or edit call returns a `task_id` with or without an initial status, including `{task_id}`, `{task_id, status: "queued"}`, or an initial `queued`, `running`, or `processing` status, record the task id and start time immediately.
+
+- Call `mcp__claude_ai_pika__task_status({task_id})` in a tight loop until terminal (`completed | failed | cancelled`). No manual sleep and no Bash polling; the worker holds each status call open.
+- Emit ONE visible progress line every 60s while status is `queued`, `running`, or `processing`: `Seedance i2v queued for {N}m {S}s... still processing`. Replace the provider/stage label when polling Kling, GPT-image-2, overlay, or edit tasks.
+- On `completed`, unwrap the returned result URL and continue.
+- On `failed` or `cancelled`, surface failure to the user with `task_id`, status, and the last status message.
+- After 15 min total from the original submit, call `mcp__claude_ai_pika__task_cancel({task_id})` if the task is still non-terminal, then surface failure to the user. If cancel reports the task is already terminal, call status once more and report that terminal result.
+- Do not submit a duplicate request while the original task is still `queued`, `running`, or `processing`.
+
 ## Mode: Reference-to-Video
 
-Primary: `mcp__pika__generate_reference_video(provider="seedance", resolution="1080p")` with 3–5 screenshots + the app icon/logo as the final reference.
+Primary: `mcp__claude_ai_pika__generate_reference_video(provider="seedance", resolution="1080p")` with 3–5 screenshots + the app icon/logo as the final reference.
 
 Fallback to `provider="kling", quality_mode="pro"` (= 1080p) when:
 - Seedance returns non-audio `partner_validation_failed` (celebrity faces, screen-recording UI)
@@ -61,7 +95,7 @@ To make your app promo, I need:
 
 2. Where should I pull the app screens from?
    — iOS App Store: give me the App Store URL or app name → I'll use
-     `mcp__pika__fetch_appstore_screens` to fetch screenshots, metadata, and icon
+     `mcp__claude_ai_pika__fetch_appstore_screens` to fetch screenshots, metadata, and icon
    — Web app / website: give me the URL → I'll capture it with Pika MCP
    — Local files / URLs: drop the paths and I'll upload them
 
@@ -69,7 +103,7 @@ To make your app promo, I need:
    The logo anchors the end card and prevents Seedance from hallucinating brand text.
    If you don't have a logo file, use the fetched App Store icon as the fallback.
 
-4. Aspect ratio: 16:9 (landscape/YouTube) / 9:16 (Reels/TikTok) / 1:1
+4. Aspect ratio: 16:9 (landscape/YouTube) / 9:16 (Reels/TikTok) / 1:1. Optional: `variants=16:9,9:16,1:1` to export multiple deliverables from one render.
 ```
 
 If the trigger message or prior context already supplies part of this, ask only for the missing required fields before touching any tool. These are the only questions the user needs to answer; the agent decides mode, prompt, camera, and style.
@@ -92,7 +126,7 @@ Before calling any generation tool, verify both assets are in hand:
 | Asset | Required | If missing |
 |-------|----------|------------|
 | Real app screenshots (≥1 actual sourced image) | Yes | Stop and ask for screenshots |
-| Brand logo OR app icon | Yes | Use the `mcp__pika__fetch_appstore_screens` icon when App Store sourcing is used; otherwise stop and ask for a logo/icon |
+| Brand logo OR app icon | Yes | Use the `mcp__claude_ai_pika__fetch_appstore_screens` icon when App Store sourcing is used; otherwise stop and ask for a logo/icon |
 
 If either is missing, tell the user exactly what's needed and wait. Real assets are what keep the teaser grounded; text-to-video placeholders make Seedance invent UI.
 
@@ -106,13 +140,31 @@ The only acceptable path forward is real assets from the user. If MCP fetching o
 capturing failed (App Store returned nothing, website screenshot errored), report
 what happened and ask the user to provide the screens manually. Never invent them.
 
+### Avatar-type probe for human or character assets
+
+App screenshots and app icons are the only default visual anchors. App-sizzle is not a founder/creator-face skill, so a missing screen or logo is never filled with a user avatar.
+
+Before any paid `mcp__claude_ai_pika__generate_image_edit` or `mcp__claude_ai_pika__generate_reference_video` call, run this Avatar-type probe only when a user-supplied screen, logo, promo image, mascot, founder photo, or character asset includes a prominent person or character that would become an enhancement or video reference. For ordinary app screenshots with incidental faces, prefer a different screenshot or crop the face before upload.
+
+Call `mcp__claude_ai_pika__analyze_media` once on that asset:
+
+```
+query: "Classify this image for paid video generation. Is it a photograph of a real human face, an AI-generated realistic portrait, a stylized / illustrated character, or a recognizable trademarked / copyrighted character such as Batman, Pikachu, or Mickey Mouse? Return strict JSON only: { \"avatar_type\": \"real_human\" | \"ai_realistic\" | \"stylized_illustrated\" | \"recognized_ip\", \"recognized_character\": string | null, \"moderation_risk\": \"low\" | \"medium\" | \"high\", \"recommendation\": \"proceed\" | \"warn\" | \"reject\" }. Use null for `recognized_character` when no specific character is recognized; never write \"none\", \"unknown\", or explanatory prose in that field."
+```
+
+Route from the result:
+- **recognized IP / copyright risk** -> **STOP only when** `avatar_type` is `"recognized_ip"`, or `recognized_character` names a specific character (for example `"Batman"`), or when both `moderation_risk` is `"high"` and `recommendation` is `"reject"`. Treat `recognized_character: null`, empty string, `"none"`, `"unknown"`, `"n/a"`, and low/medium `moderation_risk` as not enough to stop by themselves. Run this check before the real/stylized routes. A chibi Batman is still Batman even when `avatar_type` is stylized / illustrated.
+- **real human / AI-generated realistic** -> proceed only if this is a legitimate app screenshot or user-supplied promo asset; otherwise ask for app UI instead.
+- **stylized / illustrated** -> proceed with a visible warning that stylized characters may reduce Seedance reliability, but do not substitute them for missing screens.
+- **trademarked / copyrighted** -> **STOP** before generation. Surface this message: `The supplied avatar appears to be a trademarked character ([X]). Most video providers will moderate this and refuse to generate. Pass --avatar <real-looking-photo-url> to override.` For app-sizzle, ask for non-IP app screenshots/logo instead of using the avatar override as a screen substitute.
+
 ---
 
 ## Screen Sourcing
 
 ### iOS App Store
 
-Use Pika MCP `mcp__pika__fetch_appstore_screens`; do not use a local scraper. It accepts a full App Store URL, numeric app ID, or app-name search term:
+Use Pika MCP `mcp__claude_ai_pika__fetch_appstore_screens`; do not use a local scraper. It accepts a full App Store URL, numeric app ID, or app-name search term:
 
 ```
 fetch_appstore_screens(
@@ -137,7 +189,7 @@ Expected result shape:
 }
 ```
 
-If `mcp__pika__fetch_appstore_screens` returns no screenshots, report the error and ask the user for 3-5 real screenshots plus a logo/icon. Do not fall back to Playwright/headless App Store capture and do not invent UI.
+If `mcp__claude_ai_pika__fetch_appstore_screens` returns no screenshots, report the error and ask the user for 3-5 real screenshots plus a logo/icon. Do not fall back to Playwright/headless App Store capture and do not invent UI.
 
 After App Store assets are fetched, pick the 3–5 screens that show the core UI. Skip:
 - Pure text/splash screens (no UI)
@@ -172,7 +224,7 @@ For each screenshot, record:
 - **What feature it represents** — e.g. "creation entry", "agent at work", "output/share"
 - **Emotional register** — is this the power moment, the ease moment, the aha moment?
 
-Also pull the app metadata from the `mcp__pika__fetch_appstore_screens` result, or from the user-provided description:
+Also pull the app metadata from the `mcp__claude_ai_pika__fetch_appstore_screens` result, or from the user-provided description:
 - App name, subtitle, one-line value prop
 - Category and target user
 
@@ -233,10 +285,10 @@ After the arc is defined and the 3–5 screens are selected, enhance each one wi
 For each selected screen (including the logo/end card reference):
 
 ```python
-result = generate_image(
+result = generate_image_edit(
     provider="gpt-image-2",
     prompt="High quality version, preserve all content exactly",
-    reference_images=["<original_cdn_url>"],
+    images=["<original_cdn_url>"],
     aspect_ratio="16:9",   # match the capture — use 9:16 for portrait screens
     quality="medium",
 )
@@ -293,6 +345,8 @@ generate_reference_video(
 
 If Seedance finishes generation and then returns a 422 whose body includes `type: "content_policy_violation"`, `reason: "partner_validation_failed"`, `loc: ["body", "generated_video"]`, and `msg: "Output audio has sensitive content."`, treat it as a recoverable generated-audio moderation false positive.
 
+Retry budget: generated-audio recovery gets at most 3 recovery renders after the original failed Seedance call: one `sound=False` probe, one `sound=True` replay, and one Kling fallback. After that cap is exhausted, stop or route the successful silent URL exactly as documented; do not keep probing Seedance.
+
 1. Retry the exact same prompt and `reference_images` with `sound=False` and the same `seed`.
 2. If the silent probe succeeds, retry the exact same prompt/reference set with `sound=True` and the same seed.
 3. If the `sound=True` replay succeeds, route the recovered sound-on URL into Stage 4 as `generated_teaser_url`. Keep the silent probe URL only as debugging context.
@@ -303,9 +357,11 @@ Do not change the prompt, references, aspect ratio, duration, or seed during thi
 
 ### Seedance timeout recovery
 
-If task status remains queued or running until Seedance returns a timeout such as `seedance timed out after 900s` or `seedance timed out after 1200s`, treat it as provider queue saturation, not a prompt/content failure.
+If Seedance returns a terminal timeout before the 15 min total polling ceiling, treat it as provider queue saturation, not a prompt/content failure. Do not wait for provider timeout strings such as `seedance timed out after 900s` or `seedance timed out after 1200s`.
 
 When this happens, run the Kling fallback with the same selected references, same beat structure, `duration=15`, `sound=True`, and `quality_mode="pro"`. Convert `@ImageN` prompt tokens to `<<<image_N>>>` before calling Kling.
+
+At 15 min total, follow the polling contract above: cancel the non-terminal task and surface failure instead of starting a fallback while the original may still be active.
 
 Do not keep retrying Seedance after a timeout unless the user explicitly asks to wait for Seedance. The timeout path has already spent the launch-demo wall-clock budget; switching provider is the documented recovery.
 
@@ -330,15 +386,15 @@ Kling constraint: use `quality_mode="pro"` for 1080p; Kling rejects `resolution=
 
 ### Kling queued/handoff recovery
 
-Kling fallback is async. If `generate_reference_video(provider="kling")` returns a `task_id`, follow the task until terminal.
+Kling fallback is async. If `generate_reference_video(provider="kling")` returns a `task_id`, follow the task until terminal using the long-running polling contract above.
 
-If `task_status` returns status: `queued` with `statusMessage` containing `Worker handoff: task was requeued for retry on another worker.`, treat it as a worker restart handoff, not a failed render. Keep polling `mcp__pika__task_status(task_id)`; the next worker should reclaim the same task.
+If `task_status` returns status: `queued` with `statusMessage` containing `Worker handoff: task was requeued for retry on another worker.`, treat it as a worker restart handoff, not a failed render. Keep polling `mcp__claude_ai_pika__task_status(task_id)`; the next worker should reclaim the same task.
 
-If `statusMessage` starts with `Kling is at capacity`, treat it as provider capacity wait. Keep polling the same task while `lastUpdatedAt` continues moving.
+If `statusMessage` starts with `Kling is at capacity`, treat it as provider capacity wait. Keep polling the same task while `lastUpdatedAt` continues moving and the task is still under the 15 min total ceiling.
 
 Do not submit a duplicate Kling request while the original task is still `queued` or `running`. Duplicates can burn provider quota and make artifact provenance unclear.
 
-If `status` stays `queued` for more than 10 minutes with no `lastUpdatedAt` movement, capture the `task_id`, `status`, `statusMessage`, and `lastUpdatedAt`, then cancel the stalled original with `mcp__pika__task_cancel(task_id)` before retrying. Only after cancel returns `cancelled`, retry the exact same Kling request once with the same prompt, references, shots, aspect ratio, duration, and quality mode. If cancel fails because the task already completed or failed, inspect that terminal result instead of retrying. If the retry also stalls, stop and report both task IDs instead of changing the creative prompt.
+If `status` stays `queued` for more than 10 minutes with no `lastUpdatedAt` movement, capture the `task_id`, `status`, `statusMessage`, and `lastUpdatedAt`, then continue the same task until the 15 min total ceiling. At 15 min total, cancel the stalled original with `mcp__claude_ai_pika__task_cancel({task_id})` and surface failure. Do not retry a new Kling request from this path; changing providers or resubmitting after a paid call risks duplicate spend and unclear artifact provenance.
 
 ---
 
@@ -347,7 +403,7 @@ If `status` stays `queued` for more than 10 minutes with no `lastUpdatedAt` move
 If the user provides local file paths, convert them to public URLs before calling generate:
 
 1. Read the file size and MIME type.
-2. Call `mcp__pika__upload_asset(filename, mime_type, size_bytes)`.
+2. Call `mcp__claude_ai_pika__upload_asset(filename, mime_type, size_bytes)`.
 3. Upload the bytes to the returned `presigned_url` using the host client's file-upload capability.
 4. Use the returned `public_url` as the reference URL in generation calls.
 
@@ -375,7 +431,7 @@ edit_text_overlay(
 )
 ```
 
-If `edit_text_overlay` returns `{ task_id }`, poll `mcp__pika__task_status`
+If `edit_text_overlay` returns `{ task_id }`, poll `mcp__claude_ai_pika__task_status`
 until it reaches `completed`, `failed`, or `cancelled`, then unwrap the returned
 URL. Save the returned URL as `final_url`. If the overlay call fails, surface
 that failure and the unoverlaid teaser URL as a diagnostic preview; do not
@@ -383,9 +439,49 @@ deliver a teaser whose only `COMING SOON` text was generated by the video model.
 
 ---
 
+## Aspect-ratio variants
+
+Use optional `variants=16:9,9:16,1:1` when the user wants the same app teaser for YouTube, Reels/TikTok, and square feed without paying for separate generations. Keep legacy `aspect=` as the single-output shorthand; when `variants` is present, use native `16:9` as the source aspect unless the user explicitly asks for one variant only.
+
+Call `mcp__claude_ai_pika__generate_reference_video` once for the native `16:9` teaser, then run Stage 4 once to produce `final_url`. Do not re-run screenshot sourcing, GPT-image-2 enhancement, Seedance/Kling generation, or any other expensive provider call for extra variants.
+
+After `final_url` exists, build a flat `variant_urls` object:
+
+```json
+{
+  "16:9": "<final_url>",
+  "9:16": "<edit_reframe url>",
+  "1:1": "<edit_reframe url>"
+}
+```
+
+- For `16:9`, set `variant_urls["16:9"] = final_url`.
+- For `9:16` and `1:1`, call `mcp__claude_ai_pika__edit_reframe(video_url=final_url, target_aspect="<aspect>", fill_mode="blur")` so the full teaser remains visible over a blurred background instead of being center-cropped.
+- Treat `mcp__claude_ai_pika__edit_reframe` as the cheap final composite / reframe stage. If a reframe fails, return the successful variant URLs plus the failed aspect and tool error; do not resubmit the expensive generation.
+
+> **Heads up — variants use blur fill.** `9:16` and `1:1` keep the full native `16:9` teaser visible over a blurred background. Keep key subjects (product, logo, headline) centered for readability, but do not describe these outputs as cropped variants.
+
+## Post-flight quality gate
+
+Before declaring success, call `mcp__claude_ai_pika__analyze_media` on `final_url` and ask for a structured verdict. If `variants` was requested, run the same gate on each `variant_urls` value and key any warning by aspect ratio.
+
+```
+Return JSON only: {
+  "verdict": "clean" | "degraded" | "catastrophic",
+  "observations": string[],
+  "quality_warning": string | null,
+  "re_roll_suggestion": string | null
+}
+Check that COMING SOON is visible and spelled correctly in the final overlay, the brand color is present, the app screen / product screen remains readable, and there are no black frames or wrong-product shots.
+```
+
+- If `verdict` is `clean`, return the final URL normally.
+- If `verdict` is `degraded`, return the final URL plus the `quality_warning` so the user can review before publishing.
+- If `verdict` is `catastrophic`, do not call the run complete; surface the verdict and `re_roll_suggestion` instead of declaring success.
+
 ## Result Delivery
 
-Return the final Pika CDN URL as the primary deliverable. If the host client requires local media markers, create that local preview outside this skill flow after confirming the CDN URL is reachable.
+Return the final Pika CDN URL as the primary deliverable. If `variants` was requested, return the flat `variant_urls` object in the same response. If the host client requires local media markers, create that local preview outside this skill flow after confirming the CDN URL is reachable.
 
 **If generation completes asynchronously:** follow the MCP tool's returned status handle until the video reaches a terminal state, then deliver the final URL.
 
@@ -463,13 +559,13 @@ These phrases are empirical prompt/flow anchors. Keep them when simplifying the 
 
 ## Runtime Expectations
 
-Typical run time is 4-8 minutes:
+Typical run time is 4-8 minutes. All pre-generation stages before the first paid `generate_image_edit` enhancement call must fit inside the 5-minute guard above. If they do not, stop and report partial prep instead of continuing.
 
 | Step | Wall clock | Notes |
 |---|---:|---|
-| Asset sourcing | 10-60s | App Store via `mcp__pika__fetch_appstore_screens`; website capture depends on page load |
-| Screen analysis + arc | 2-5 min | User confirmation can add time |
-| GPT-image-2 enhancement | 30-90s | Run selected screens in parallel |
+| Asset sourcing | 10-60s | App Store via `mcp__claude_ai_pika__fetch_appstore_screens`; website capture depends on page load |
+| Screen analysis + arc | <=2 min | Keep this bounded by the max 2 prompt/analysis passes |
+| GPT-image-2 enhancement | 30-90s | Run selected screens in parallel only while still inside the 5-minute pre-generation guard |
 | Seedance generation | 3-5 min | Generated-audio moderation recovery adds one silent probe plus one same-seed sound replay |
 | Kling fallback | 5-15 min | Capacity wait or worker handoff may temporarily show `queued`; follow the Kling queued/handoff recovery runbook |
 | Download verification | <30s | Local sanity check before delivery |
@@ -480,11 +576,60 @@ Seedance is the default because it handles polished motion-graphics references a
 
 ## Failure Modes
 
+### Recovering from upstream 5xx on generate_image_edit / generate_reference_video / upload_asset
+
+If any paid generation or asset MCP call returns:
+- `code: "provider_5xx"` AND `retry_class: "retry_after_backoff"`
+- Or HTTP 502 / 503 / 504 from any upstream provider (OpenAI, Seedance, Kling, storage)
+
+Do this:
+1. Wait 5 seconds.
+2. Re-call the exact same MCP tool with the exact same arguments. Do not change selected screens, prompt text, seed, `sound`, provider, image order, or upload payload.
+3. If the retry also fails with 5xx, abort and surface to the user: "Provider returned a transient upstream error twice. Try again in 1-2 minutes; this usually clears on its own."
+
+Do not retry more than once. Do not treat a 5xx as a content or moderation issue; rewriting the app arc can spend credits without addressing the outage.
+
+### Recovering from upstream 4xx / moderation_blocked
+
+If `mcp__claude_ai_pika__generate_image_edit` with `provider="gpt-image-2"` returns an upstream 4xx or `moderation_blocked` while enhancing screenshots:
+1. Do NOT retry the same prompt; moderation and most 4xx validation failures are deterministic.
+2. If the reference still works without enhancement, skip the enhancement and use the original screen. If quality is too low, try a fallback provider once for enhancement only; do not alter the selected app screens or Seedance prompt.
+3. If the fallback provider also fails, surface to the user: "Image provider declined this screenshot-enhancement prompt. Provide cleaner screenshots, crop faces/recording UI, or continue with the original screens."
+
+For Seedance non-audio content-policy failures, use the documented Kling fallback below; that is the video fallback provider path for this skill.
+
+### Recovering from upstream 429 (rate limit)
+
+If any upstream returns HTTP 429 with a backoff hint:
+1. Wait the hinted backoff, or 30 seconds if no hint is provided.
+2. Re-call the exact same MCP tool with the exact same arguments.
+3. Do not retry more than once. If it still returns 429, abort and surface the rate-limit message instead of submitting duplicate paid renders.
+
+### `capture_website` returning empty / page-not-loaded
+
+If website mode calls `capture_website` and it returns 200 but `action_bboxes` is empty or `recording_viewport` is 0x0:
+1. Do NOT retry; the site failed to render in the capture environment.
+2. Surface: "Could not capture <url>. The page may be blocked / paywalled / require auth. Please provide 3-5 screenshots and a logo/icon instead."
+
+### `upload_asset` network / auth failure
+
+If `mcp__claude_ai_pika__upload_asset` fails while converting local screens, logos, or overlays to hosted URLs, do not continue with local paths in `reference_images` or HTML. Retry once only for the 5xx or 429 classes above. For `auth_error`, unsupported MIME, network failure, or repeated upload failure, stop and ask for hosted PNG/JPEG/WebP assets.
+
+### Long-running `task_status` exceeding ceiling
+
+Each async MCP call returns either an inline result or `{task_id, status}` for polling. Use these ceilings before deciding a task is stuck:
+- Seedance i2v: 10 min per call
+- Kling fallback: 15 min per call
+- gpt-image-2 high quality: 3 min per call
+- Upload/edit/render helpers: 5 min per call
+
+Use whichever is earlier: the provider's ceiling x 1.5 or any skill-specific hard polling cap, including the 15 min total cap in the Long-running task_status polling contract above. If `mcp__claude_ai_pika__task_status` returns `status: "processing"` or `status: "queued"` past that earlier limit, call `mcp__claude_ai_pika__task_cancel({task_id})` and surface: "Provider taking unusually long; aborting. Try again."
+
 | Symptom | Cause | Fix |
 |---|---|---|
 | `fast=True` with `resolution="1080p"` | Seedance caps fast mode at 720p | Remove `fast`; keep `resolution="1080p"` |
 | `negative_prompt` rejected | Seedance does not accept this field | Use positive framing such as "smooth motion, stable camera" |
-| Seedance generated-audio moderation: `content_policy_violation` / `partner_validation_failed`, `generated_video`, "Output audio has sensitive content." | Often a false positive on non-sensitive app-sizzle references | Follow the generated-audio recovery runbook: same-seed `sound=False` probe, then same-seed `sound=True` replay |
+| Seedance generated-audio moderation: `content_policy_violation` / `partner_validation_failed`, `generated_video`, "Output audio has sensitive content." | Often a false positive on non-sensitive app-sizzle references | Follow the capped generated-audio recovery runbook: same-seed `sound=False` probe, same-seed `sound=True` replay, then at most one Kling fallback |
 | Seedance timeout such as `seedance timed out after ...` | Provider queue saturation or tail latency exceeded the tool budget | Run the Kling fallback; do not keep retrying Seedance unless the user explicitly asks to wait |
 | Seedance `partner_validation_failed` on video | Screen content includes recording UI, celebrity faces, or similar moderation triggers | Switch to `provider="kling"` and convert tokens to `<<<image_N>>>` |
 | Faces in screenshots trigger content policy | Screenshot includes real people | Crop faces out before upload, or use Kling |
@@ -492,7 +637,7 @@ Seedance is the default because it handles polished motion-graphics references a
 | Prompt tail ignored | Prompt exceeds about 200 words | Trim to the beat structure and the concrete UI details |
 | Text in output is garbled | Video model is asked to render new text | Keep text as existing reference-image content; overlay any new branding in post |
 | Logo reveal hallucinates letterforms | "assemble/build/construct" language triggers per-glyph rendering | Use "materializes whole", "crystallizes as a single form", or "fades in as a complete element" |
-| Task returns `{ task_id }` instead of inline | Long-running generation exceeded inline budget | Poll `mcp__pika__task_status(task_id)` until `completed`, `failed`, or `cancelled`; unwrap `result.structuredContent` when present |
-| Kling task returns status: `queued` after previously running | Worker handoff or provider capacity wait | Follow the Kling queued/handoff recovery runbook; do not duplicate-submit unless queued for more than 10 minutes with no `lastUpdatedAt` movement |
+| Task returns `{ task_id }` instead of inline | Long-running generation exceeded inline budget | Follow the long-running polling contract: poll `mcp__claude_ai_pika__task_status({task_id})`, emit 60s progress lines, cancel/surface at 15 min total, and unwrap `result.structuredContent` on completion |
+| Kling task returns status: `queued` after previously running | Worker handoff or provider capacity wait | Follow the Kling queued/handoff recovery runbook and the long-running polling contract. Do not submit a duplicate; keep polling until terminal or cancel/surface at 15 min total |
 | Kling rejects `resolution=` | Kling uses a different quality knob | Use `quality_mode="pro"` |
-| App Store icon URL points to promo art | App Store metadata fallback found feature artwork | Prefer the `icon.url` returned by `mcp__pika__fetch_appstore_screens`; if missing, ask for a logo/icon file |
+| App Store icon URL points to promo art | App Store metadata fallback found feature artwork | Prefer the `icon.url` returned by `mcp__claude_ai_pika__fetch_appstore_screens`; if missing, ask for a logo/icon file |

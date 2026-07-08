@@ -19,7 +19,7 @@ The user uploads **one photo of themselves** and gives their **favorite team**. 
 
 2. **Fill the team.** From the team name, fill `{team}` and `{kit colors}` (two main colors + stripe pattern, e.g. Argentina → "sky-blue and white vertical stripes"). Describe colors, not crests/logos.
 
-3. **Generate the 6 photos.** Make **6 separate `generate_image` calls**, one per prompt below, passing the same `photo` as `reference_images` on every call (this keeps the face identical). Settings each call: `provider: gpt-image-2`, `reference_images: [photo]`, `aspect_ratio: 3:4`, `quality: medium`, `output_format: png`.
+3. **Generate the 6 photos.** Make **6 separate `generate_image_edit` calls**, one per prompt below, passing the same `photo` as `images` on every call (this keeps the face identical). Settings each call: `provider: gpt-image-2`, `images: [photo]`, `aspect_ratio: 3:4`, `quality: medium`, `output_format: png`.
 
 4. **Deliver the 6 separate images** in order. Six files — never one image split into panels.
 

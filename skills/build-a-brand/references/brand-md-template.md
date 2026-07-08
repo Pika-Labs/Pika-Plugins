@@ -1,6 +1,6 @@
 # brand.md — Template Reference
 
-This template defines the structure of the `brand.md` file delivered in Step 5's brand kit zip. It's a comprehensive, machine-readable brand spec that lets users (or downstream AI tools) produce on-brand work without needing the 15-page guidelines PDF.
+This template defines the structure of the `brand.md` file delivered in Step 4's brand kit zip. It's a comprehensive, machine-readable brand spec that lets users (or downstream AI tools) produce on-brand work without needing the 14–16-page guidelines PDF.
 
 ## Why this format
 
@@ -157,28 +157,44 @@ This template defines the structure of the `brand.md` file delivered in Step 5's
 
 ### Wordmark
 
-[Description of the wordmark — typeface, treatment, custom touches, what it feels like.]
+[Description of the wordmark — which Google Font (or commercial font) it's set in, weight, letterspacing, why it matches the brand vibe. The wordmark is ALWAYS real font rendering, never a generated image.]
 
 Files (in `logo/wordmark/`):
-- `wordmark-[primary].svg/.png/.pdf` — for use on background color
-- `wordmark-on-dark.svg/.png/.pdf` — for use on dark backgrounds
+- `wordmark-[primary].svg` — Google Font converted to text-as-paths (renders without the font file installed)
+- `wordmark-[primary].png` — 1024-wide raster fallback
+- `wordmark-on-dark.svg/.png` — variants for dark backgrounds
 - [etc — list all variants]
 
 ### Symbol
 
-[Description of the symbol/mark — shape, what it evokes, how it relates to the brand metaphor.]
+[Description of the symbol/mark — shape, what it evokes, how it relates to the brand. The symbol was generated via gpt-image-2 and ships as a high-resolution transparent PNG (NOT traced to SVG — only the wordmark gets vectorized). Style can be flat, dimensional, painted, photographic, gradient-rich — whatever fits the brand. Concept lane (mascot / product-feature / abstract / monogram / hybrid / container): [name the lane and explain how it links to the brand].]
+
+Symbol output checks (all must pass):
+- Conceptually linked to brand
+- Feels unique (would fit ONLY this brand)
+- Recognizable at 16×16 favicon size (passed mandatory PIL favicon test)
+- No more than 3 dominant colors: [list them with hex]
+- Shipped at 2048×2048+ master resolution
+- No text inside the image
+- True alpha=0 transparency verified
 
 Files (in `logo/symbol/`):
-- `symbol-[primary].svg/.png/.pdf` — primary color on transparent
-- `symbol-on-dark.svg/.png/.pdf` — reversed for dark backgrounds
-- [etc]
+- `symbol-[primary]-16.png` through `symbol-[primary]-2048.png` — primary color at 8 sizes, transparent background
+- `symbol-on-dark-[sizes].png` — variant for dark backgrounds (if needed)
+- [etc — variants ship as PNG only; symbol is NEVER vectorized to SVG]
 
 ### Lockup
 
-[Description of how wordmark + symbol combine. Primary lockup (stacked or horizontal). Secondary lockups. When to use each.]
+[Description of how wordmark + symbol combine. Primary lockup (stacked or horizontal). Secondary lockups. When to use each. Measurements are PERFECTLY MEASURED and PERMANENTLY FIXED across all color variants — never let the wordmark drift between cream / pink / dark versions.]
+
+**Locked measurements (specify both lockups):**
+- Horizontal: symbol [WxH px], gap [X px], wordmark font-size [X px], alignment [optical center / baseline]
+- Stacked: symbol [WxH px], vertical gap [X px], wordmark font-size [X px]
 
 Files (in `logo/lockup/horizontal/` and `logo/lockup/stacked/`):
-- [List variants]
+- `lockup-[orientation]-[color].svg` — symbol PNG embedded inline + wordmark as text-as-paths at locked measurements
+- `lockup-[orientation]-[color].png` — assembled lockup as raster, 1024-wide
+- [List all color variants]
 
 **Clear space rule:** [Minimum space around the lockup — e.g. "Minimum one symbol-height of space on all sides."]
 
@@ -187,6 +203,8 @@ Files (in `logo/lockup/horizontal/` and `logo/lockup/stacked/`):
 ---
 
 ## Icons
+
+*(This section only applies to digital brands — app, web, SaaS, software platform. For non-digital brands (product, fashion, restaurant, service), delete this section entirely and skip the `/icons/` folder in the kit.)*
 
 **Stroke weight:** [e.g. 1.5px / 2px / 3px]
 **Corner radius:** [sharp / 2px / round]
@@ -357,6 +375,6 @@ These prompts encode the brand voice rules from this spec into instructions the 
 
 ## What NOT to include
 
-- Don't include the full 15-page guidelines verbatim. The brand.md is the SPEC, not the manual. Keep it tight.
+- Don't include the full 14–16-page guidelines verbatim. The brand.md is the SPEC, not the manual. Keep it tight.
 - Don't include marketing fluff. Every section should be either directly usable copy or actionable rules.
 - Don't include build mechanics (WeasyPrint quirks, prompt templates, etc.). Those are skill-internal.
