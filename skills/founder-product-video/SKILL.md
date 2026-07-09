@@ -10,25 +10,25 @@ description: >-
   `brand.md`, tokens, logo assets); if no kit exists, run build-a-brand first.
 argument-hint: <product-url> --founder "<name, role>" [--photo <path|url|generate>] [brand-kit=<path>] [aspect=16:9|9:16|1:1] [--quick] [--config <path>]
 required-capabilities:
-  - mcp__claude_ai_pika__add_captions
-  - mcp__claude_ai_pika__analyze_brief
-  - mcp__claude_ai_pika__analyze_media
-  - mcp__claude_ai_pika__capture_website
-  - mcp__claude_ai_pika__edit_audio_mix
-  - mcp__claude_ai_pika__edit_concat
-  - mcp__claude_ai_pika__edit_video_compose
-  - mcp__claude_ai_pika__edit_text_overlay
-  - mcp__claude_ai_pika__extract_frame
-  - mcp__claude_ai_pika__generate_image
-  - mcp__claude_ai_pika__generate_music
-  - mcp__claude_ai_pika__generate_reference_video
-  - mcp__claude_ai_pika__generate_slide_animation
-  - mcp__claude_ai_pika__html_to_png
-  - mcp__claude_ai_pika__identity_balance
-  - mcp__claude_ai_pika__render_html_animation
-  - mcp__claude_ai_pika__task_status
-  - mcp__claude_ai_pika__task_cancel
-  - mcp__claude_ai_pika__upload_asset
+  - add_captions
+  - analyze_brief
+  - analyze_media
+  - capture_website
+  - edit_audio_mix
+  - edit_concat
+  - edit_video_compose
+  - edit_text_overlay
+  - extract_frame
+  - generate_image
+  - generate_music
+  - generate_reference_video
+  - generate_slide_animation
+  - html_to_png
+  - identity_balance
+  - render_html_animation
+  - task_status
+  - task_cancel
+  - upload_asset
 ---
 
 # founder-product-video
@@ -39,7 +39,7 @@ No cutaways. No website CSS extraction. AI generation, deterministic render, cap
 
 ## Cost transparency gate
 
-Before any paid MCP call, call `mcp__claude_ai_pika__identity_balance({verbose: true})` once. Surface the current balance, recent burn rate, and remaining runway, then gate the run with this exact message:
+Before any paid MCP call, call `identity_balance({verbose: true})` once. Surface the current balance, recent burn rate, and remaining runway, then gate the run with this exact message:
 
 > Estimated cost: about 4,000 credits (~$40) for a typical four-act Seedance founder video plus supporting assets. This exceeds $5, so Reply `proceed` to continue or `cancel` to stop.
 
@@ -93,15 +93,15 @@ intake unless `url` or founder name/role is truly missing.
 **3. Founder identity** *(required)* — interactive mode: ask all three together:
 - `founder_name` — e.g. "Avery"
 - `founder_role` — e.g. "CEO, ExampleCo"
-- `founder_photo` — local path / https URL / OR the literal string `generate` to auto-create a portrait. If `generate`, prompt the user for a 1-line vibe ("warm, casual smart attire" / "Pixar-style 3D animation" / etc.) — this becomes the seed prompt for `mcp__claude_ai_pika__generate_image` in step [4].
+- `founder_photo` — local path / https URL / OR the literal string `generate` to auto-create a portrait. If `generate`, prompt the user for a 1-line vibe ("warm, casual smart attire" / "Pixar-style 3D animation" / etc.) — this becomes the seed prompt for `generate_image` in step [4].
 - Fast lane: use founder values from args/config. If `founder_photo` is omitted, set `founder_photo = "generate"` and use a neutral founder-portrait vibe derived from the product tone; do not stop for a separate photo-vibe prompt.
 
-Default to no lower-third so the happy path stays lean. If the user explicitly asks for a lower-third, record `state.lower_third = true`; in interactive mode confirm that `mcp__claude_ai_pika__edit_video_compose` will add the transparent overlay after rendering.
+Default to no lower-third so the happy path stays lean. If the user explicitly asks for a lower-third, record `state.lower_third = true`; in interactive mode confirm that `edit_video_compose` will add the transparent overlay after rendering.
 
 **4. Optional extras** — interactive mode: offer these once as a single message, then proceed without waiting if no answer comes back in the same turn. Fast lane: use the defaults below without asking.
-- *Custom imagery* — list of `assets` (product photos / app screenshots) shown on the founder's phone. **Default if omitted:** use screenshots from `brand.json.screenshots` when present, otherwise look for obvious screenshots or product images inside the brand kit, otherwise capture the product URL with `mcp__claude_ai_pika__capture_website(mode:"screenshot")` before step [2]. Do not proceed to script or SeeDance without real product UI / product imagery unless `product_type` is explicitly `service` and the user accepts an environment-only video. In the fast lane, if no supplied/brand-kit/captured asset exists, stop once with a compact missing-assets error instead of silently shipping a generic talking-head video.
+- *Custom imagery* — list of `assets` (product photos / app screenshots) shown on the founder's phone. **Default if omitted:** use screenshots from `brand.json.screenshots` when present, otherwise look for obvious screenshots or product images inside the brand kit, otherwise capture the product URL with `capture_website(mode:"screenshot")` before step [2]. Do not proceed to script or SeeDance without real product UI / product imagery unless `product_type` is explicitly `service` and the user accepts an environment-only video. In the fast lane, if no supplied/brand-kit/captured asset exists, stop once with a compact missing-assets error instead of silently shipping a generic talking-head video.
 - *Music* — local path / https URL / OR `generate` (instrumental, ~60s). Default: `generate` via Kling background mode.
-- *Lower-third* — optional. Default: off. If enabled, render the transparent `.mov` through MCP and overlay it onto the body with `mcp__claude_ai_pika__edit_video_compose`.
+- *Lower-third* — optional. Default: off. If enabled, render the transparent `.mov` through MCP and overlay it onto the body with `edit_video_compose`.
 - *Aspect ratio* — `16:9` (default), `9:16`, `1:1`.
 - *Location* — defaults to a flat seamless backdrop in `state.brand.colors.accent` (clean studio-shoot look, character against a single brand color, whatever the brand's accent is). Override with a path / URL / text description if the user wants office, outdoor, etc.
 - *Voice style* — VO direction string for SeeDance, e.g. "warm authentic founder energy, conversational". Default: derived from `brief.tone`.
@@ -111,9 +111,9 @@ After Stage 0 completes, store all gathered values in `state.inputs`. If you alr
 
 ### [0.6] Avatar-type probe for founder photos
 
-Before any paid `mcp__claude_ai_pika__generate_reference_video` call, run this Avatar-type probe on the resolved founder photo/avatar URL after local upload or user-supplied URL normalization. This applies to any founder photo used as the character reference — whether supplied via `--photo` or generated.
+Before any paid `generate_reference_video` call, run this Avatar-type probe on the resolved founder photo/avatar URL after local upload or user-supplied URL normalization. This applies to any founder photo used as the character reference — whether supplied via `--photo` or generated.
 
-Call `mcp__claude_ai_pika__analyze_media` once:
+Call `analyze_media` once:
 
 ```
 query: "Classify this image for paid video generation. Is it a photograph of a real human face, an AI-generated realistic portrait, a stylized / illustrated character, or a recognizable trademarked / copyrighted character such as Batman, Pikachu, or Mickey Mouse? Return strict JSON only: { \"avatar_type\": \"real_human\" | \"ai_realistic\" | \"stylized_illustrated\" | \"recognized_ip\", \"recognized_character\": string | null, \"moderation_risk\": \"low\" | \"medium\" | \"high\", \"recommendation\": \"proceed\" | \"warn\" | \"reject\" }. Use null for `recognized_character` when no specific character is recognized; never write \"none\", \"unknown\", or explanatory prose in that field."
@@ -141,17 +141,17 @@ After Stage 0, these are the fields downstream steps consume:
 
 ## State
 
-Keep a simple `state` object as you work and save every CDN URL there so a partial run can be resumed. Treat `mcp__claude_ai_pika__task_status` value `completed` as the successful terminal state (`failed` and `cancelled` are the failure terminals), then unwrap `result.structuredContent` when present. The final video lives on Pika's CDN; no local workspace is required unless MCP compose is unavailable and you explicitly trigger the local lower-third fallback in step [8b].
+Keep a simple `state` object as you work and save every CDN URL there so a partial run can be resumed. Treat `task_status` value `completed` as the successful terminal state (`failed` and `cancelled` are the failure terminals), then unwrap `result.structuredContent` when present. The final video lives on Pika's CDN; no local workspace is required unless MCP compose is unavailable and you explicitly trigger the local lower-third fallback in step [8b].
 
 ## Long-running task_status polling
 
 When any long-running generation or edit call returns a `task_id` with or without an initial status, including `{task_id}`, `{task_id, status: "queued"}`, or an initial `queued`, `running`, or `processing` status, record the task id and start time immediately in `state`.
 
-- Call `mcp__claude_ai_pika__task_status({task_id})` in a tight loop until terminal (`completed | failed | cancelled`). No manual sleep and no Bash polling; the worker holds each status call open.
+- Call `task_status({task_id})` in a tight loop until terminal (`completed | failed | cancelled`). No manual sleep and no Bash polling; the worker holds each status call open.
 - Emit ONE visible progress line every 60s while status is `queued`, `running`, or `processing`: `Seedance i2v queued for {N}m {S}s... still processing`. Replace the provider/stage label when polling music, captions, render, concat, mix, or edit tasks.
 - On `completed`, unwrap the returned result URL and save it into `state`.
 - On `failed` or `cancelled`, surface failure to the user with `task_id`, status, and the last status message.
-- After 15 min total from the original submit, call `mcp__claude_ai_pika__task_cancel({task_id})` if the task is still non-terminal, then surface failure to the user. If cancel reports the task is already terminal, call status once more and report that terminal result.
+- After 15 min total from the original submit, call `task_cancel({task_id})` if the task is still non-terminal, then surface failure to the user. If cancel reports the task is already terminal, call status once more and report that terminal result.
 - Do not submit a duplicate request while the original task is still `queued`, `running`, or `processing`.
 
 ## Pipeline overview
@@ -185,9 +185,9 @@ Keep the main workflow focused on sequencing. Historical server validation detai
 - Use a unique `seed` per SeeDance act (101, 202, 303, 404). Identical generation params can replay cached failures.
 - Kling music bed generation uses `provider: "kling-audio"`, `mode: "text_to_audio"`, `background: true`, and `duration_seconds: 60`; the MCP worker generates one 10s Kling seed and extends it locally.
 - If SeeDance rejects a real-person founder photo, re-roll the founder ref with stronger stylization rather than retrying the same rejected reference.
-- For local brand-kit logos, upload only logo-appropriate raster assets (`image/png`, `image/jpeg`, or `image/webp`). Do not send SVGs to `mcp__claude_ai_pika__upload_asset`; choose the PNG export from `build-a-brand` or rasterize first.
+- For local brand-kit logos, upload only logo-appropriate raster assets (`image/png`, `image/jpeg`, or `image/webp`). Do not send SVGs to `upload_asset`; choose the PNG export from `build-a-brand` or rasterize first.
 - Use CSS `background-image: url(...)` for CDN-hosted logo/photo assets in end-card HTML; `<img crossorigin>` is blocked by CDN CORS.
-- Use server-side deterministic tools for captions, lower-third compose, concat, and mix. Local ffmpeg is only the fallback if `mcp__claude_ai_pika__edit_video_compose` is unavailable while `state.lower_third = true`.
+- Use server-side deterministic tools for captions, lower-third compose, concat, and mix. Local ffmpeg is only the fallback if `edit_video_compose` is unavailable while `state.lower_third = true`.
 - Decompose every 15s act into 3 time-coded sub-shots. Single-shot acts look static.
 - Open each act with the style-match location framing and repeat the same `WARDROBE LOCK:` sentence across all 4 act prompts.
 
@@ -208,7 +208,7 @@ Before analyzing assets, normalize `assets` so product reveal shots have a real 
 1. Use any caller-provided `assets` first.
 2. If none were supplied, read screenshots from `brand.json.screenshots` when present.
 3. If `brand.json` has no screenshots, look for obvious raster screenshots or product images inside the brand kit (`screenshots/`, `assets/`, `product/`, or image files named like `hero`, `screen`, `app`, `dashboard`, `product`).
-4. **When `assets` is empty after those checks, call `mcp__claude_ai_pika__capture_website` on the product URL**:
+4. **When `assets` is empty after those checks, call `capture_website` on the product URL**:
 
 ```
 capture_website(
@@ -223,7 +223,7 @@ If the product is likely mobile-first, also run a second capture with `mobile: t
 
 Do not proceed to script writing, `generate_reference_video`, or any paid SeeDance call without at least one real product UI / product imagery asset, unless the caller explicitly set `product_type: "service"` and accepted an environment-only video. If capture fails or returns no `image_url`, surface: `Could not capture <url>. Please provide screenshots or hosted product assets; founder-product-video will not silently ship without real product UI.`
 
-For each entry in `assets`, run `mcp__claude_ai_pika__analyze_media` to extract content + visual style + **asset type**. Run all in parallel in one tool batch:
+For each entry in `assets`, run `analyze_media` to extract content + visual style + **asset type**. Run all in parallel in one tool batch:
 
 ```
 analyze_media(
@@ -270,7 +270,7 @@ usable_product_assets = asset_analyses
   ])
 ```
 
-If `usable_product_assets` is empty and you have not already tried a URL capture, call `mcp__claude_ai_pika__capture_website(mode:"screenshot")` on the product URL, append the returned `image_url` to `assets`, run `mcp__claude_ai_pika__analyze_media` on that capture, save the analysis at the same new index, and rebuild `usable_product_assets`. The captured screenshot must therefore have its own `asset_index`; do not reuse a logo/hero/infographic index for a product reveal.
+If `usable_product_assets` is empty and you have not already tried a URL capture, call `capture_website(mode:"screenshot")` on the product URL, append the returned `image_url` to `assets`, run `analyze_media` on that capture, save the analysis at the same new index, and rebuild `usable_product_assets`. The captured screenshot must therefore have its own `asset_index`; do not reuse a logo/hero/infographic index for a product reveal.
 
 Do not auto-derive `product_type = "service"` from logo-only, hero-only, infographic, abstract brand, or `other` assets. Those are not real product reveal anchors. If `usable_product_assets` is empty after the capture attempt, stop unless the caller explicitly set `product_type: "service"` and accepted an environment-only video. Surface the missing-assets error instead of falling through to the service reveal pattern.
 
@@ -619,8 +619,8 @@ The fix in every case is **plain language about what the camera sees**, not film
 Prepare `character_url` before any SeeDance call:
 
 - If `founder_photo` is an HTTPS URL, set `founder_photo_url = character_url = founder_photo`.
-- If `founder_photo` is a local path, upload it with `mcp__claude_ai_pika__upload_asset`, then set `founder_photo_url = character_url = public_url`.
-- If `founder_photo` is `generate`, call `mcp__claude_ai_pika__generate_image` and use the returned URL:
+- If `founder_photo` is a local path, upload it with `upload_asset`, then set `founder_photo_url = character_url = public_url`.
+- If `founder_photo` is `generate`, call `generate_image` and use the returned URL:
 
 ```
 generate_image(
@@ -633,8 +633,8 @@ generate_image(
 Handle location only when the user supplied a custom location:
 
 - If `location_image_url` is an HTTPS URL, set `location_url = location_image_url`.
-- If it is a local path, upload it with `mcp__claude_ai_pika__upload_asset` and set `location_url = public_url`.
-- If it is a text description, generate a custom location reference with `mcp__claude_ai_pika__generate_image`.
+- If it is a local path, upload it with `upload_asset` and set `location_url = public_url`.
+- If it is a text description, generate a custom location reference with `generate_image`.
 - If no custom location was supplied, do nothing here. Step [4.5] generates the default brand-accent backdrop after `state.brand` exists.
 
 Save the resulting URLs into `state`. If SeeDance later rejects the founder ref on content policy, see "Known infra quirks" — re-roll with stronger stylization.
@@ -653,8 +653,8 @@ Extract into `state.brand`:
 | `state.brand` field | Source | Notes |
 |---|---|---|
 | `name` | `brand.json.name` or `brand.md` quick reference | brand display name |
-| `wordmark_path` | `logo.wordmark.path` or best raster `logo/wordmark/*.{png,jpg,jpeg,webp}` | upload local raster asset via `mcp__claude_ai_pika__upload_asset`, save `public_url` as `state.brand.wordmark_url`; do not upload SVG |
-| `icon_url` | `logo.icon_mark.path` or best raster `logo/symbol/*.{png,jpg,jpeg,webp}` | upload local raster asset via `mcp__claude_ai_pika__upload_asset`, save `public_url` as `state.brand.icon_url`; do not upload SVG |
+| `wordmark_path` | `logo.wordmark.path` or best raster `logo/wordmark/*.{png,jpg,jpeg,webp}` | upload local raster asset via `upload_asset`, save `public_url` as `state.brand.wordmark_url`; do not upload SVG |
+| `icon_url` | `logo.icon_mark.path` or best raster `logo/symbol/*.{png,jpg,jpeg,webp}` | upload local raster asset via `upload_asset`, save `public_url` as `state.brand.icon_url`; do not upload SVG |
 | `colors.primary` | palette role `ink_primary`, `surface_dark`, or `tokens.color.text` | text and border color |
 | `colors.surface` | palette role `surface_page_bg`, `surface_white`, or `tokens.color.background` | page/background color |
 | `colors.accent` | CTA/primary brand color from palette or `tokens.color.primary` | end-card CTA pill bg + lower-third accent |
@@ -663,9 +663,9 @@ Extract into `state.brand`:
 | `fonts.text_family` | typography body/text token or `brand.md` | fall back to system sans |
 | `fonts.mono_family` | typography mono token if present | fall back to Space Mono |
 
-**Upload step is required** when the brand-kit assets are local files. Without public wordmark/icon URLs, the HTML rendered by `mcp__claude_ai_pika__render_html_animation` can't reach them. Use the MCP `mcp__claude_ai_pika__upload_asset` flow with raster logo files only and save the returned `public_url` values on `state.brand`. `mcp__claude_ai_pika__upload_asset` rejects `image/svg+xml`; if the best logo is an SVG, pick the sibling PNG export from the brand kit or rasterize the SVG to PNG via `mcp__claude_ai_pika__html_to_png` by inlining the SVG inside an HTML `<svg>` block and using the returned PNG `public_url`.
+**Upload step is required** when the brand-kit assets are local files. Without public wordmark/icon URLs, the HTML rendered by `render_html_animation` can't reach them. Use the MCP `upload_asset` flow with raster logo files only and save the returned `public_url` values on `state.brand`. `upload_asset` rejects `image/svg+xml`; if the best logo is an SVG, pick the sibling PNG export from the brand kit or rasterize the SVG to PNG via `html_to_png` by inlining the SVG inside an HTML `<svg>` block and using the returned PNG `public_url`.
 
-**Brand-accent backdrop default location** — when `location_url` was not set by Step [4], render a solid-color PNG via `mcp__claude_ai_pika__html_to_png` using `state.brand.colors.accent`. Match the requested video aspect so the reference is not cropped later:
+**Brand-accent backdrop default location** — when `location_url` was not set by Step [4], render a solid-color PNG via `html_to_png` using `state.brand.colors.accent`. Match the requested video aspect so the reference is not cropped later:
 
 | `aspect_ratio` | Backdrop size |
 |---|---|
@@ -687,7 +687,7 @@ html_to_png(
 
 ## [5] Generate 4 SeeDance acts in parallel
 
-**CRITICAL**: Step [5] requires `mcp__claude_ai_pika__generate_reference_video` (multi-ref). The `@Image1` / `@Image2` / `@Image3` tokens in this skill's prompt template are **only resolved by** `mcp__claude_ai_pika__generate_reference_video`. If you call `mcp__claude_ai_pika__generate_video` (single-image i2v) by mistake, `@ImageN` tokens are silently ignored and Seedance will hallucinate UI from prompt text alone, typically misspelling the product name. Stop and fix the tool call before firing any paid video generation.
+**CRITICAL**: Step [5] requires `generate_reference_video` (multi-ref). The `@Image1` / `@Image2` / `@Image3` tokens in this skill's prompt template are **only resolved by** `generate_reference_video`. If you call `generate_video` (single-image i2v) by mistake, `@ImageN` tokens are silently ignored and Seedance will hallucinate UI from prompt text alone, typically misspelling the product name. Stop and fix the tool call before firing any paid video generation.
 
 For `product_type: "digital"`, this is now a style/gesture generation step, not the final readable UI step. Do not ask Seedance to spell the product name, render a readable brand wordmark, or reproduce product-screen copy. Phone reveals must ask for a blank neutral screen placeholder, because real product UI is composited in step [5.5]. Do not pass `digital_screen` assets in `reference_images`; any `digital_screen` asset index is an overlay pointer for step [5.5] only, even if a mixed or explicitly non-digital run also has physical assets.
 
@@ -835,12 +835,12 @@ If `product_type === "digital"`:
 
    If `digital_reveal_plan` is empty, stop and surface the script shots plus `usable_product_assets`; do not silently ship a digital product video without real UI. If any scripted C/E digital reveal points at a missing or non-`digital_screen` asset, stop before composing. Do not copy raw `act_urls` through when a digital reveal is missing its overlay; only acts with no digital reveal shot may pass through unchanged.
 
-2. For each unique `asset_url`, render a 15-second overlay clip with `mcp__claude_ai_pika__render_html_animation` using `format: "mov"` when alpha is needed. Save the returned URL as `ui_overlay_clip_url`.
+2. For each unique `asset_url`, render a 15-second overlay clip with `render_html_animation` using `format: "mov"` when alpha is needed. Save the returned URL as `ui_overlay_clip_url`.
    - The HTML should place the real screenshot / captured UI inside a rounded phone-screen frame with the correct aspect ratio.
    - If the real screenshot's brand wordmark is too small to read after scaling, include an exact deterministic wordmark row using `state.brand.name`; do not invent a shorter alias.
    - Keep the overlay background transparent or visually isolated so it works as a deterministic phone/UI overlay over the generated act.
 
-3. Composite the overlay onto each planned act with `mcp__claude_ai_pika__edit_video_compose`:
+3. Composite the overlay onto each planned act with `edit_video_compose`:
 
 ```
 edit_video_compose(
@@ -855,9 +855,9 @@ edit_video_compose(
 
 Use the phone-screen placement when the generated phone target is stable. If the phone target is not stable enough to cover cleanly, use a stable overlay-panel placement that does not cover the founder's face or the caption area. Save each edited result into `ui_grounded_act_urls[act - 1]`; untouched acts copy through from `act_urls`.
 
-4. When a short exact brand label is still needed after the compose pass, call `mcp__claude_ai_pika__edit_text_overlay` on that act with `text: state.brand.name`. This is only for deterministic brand spelling, not captions. Save the updated URL back into `ui_grounded_act_urls[act - 1]`.
+4. When a short exact brand label is still needed after the compose pass, call `edit_text_overlay` on that act with `text: state.brand.name`. This is only for deterministic brand spelling, not captions. Save the updated URL back into `ui_grounded_act_urls[act - 1]`.
 
-5. Run OCR QA on each overlaid reveal act before concat with `mcp__claude_ai_pika__extract_frame` and `mcp__claude_ai_pika__analyze_media`:
+5. Run OCR QA on each overlaid reveal act before concat with `extract_frame` and `analyze_media`:
 
 ```
 extract_frame(video_url: ui_grounded_act_urls[act - 1], time_s: <midpoint of the reveal shot>)
@@ -879,7 +879,7 @@ Only `brand_name_visible: "yes"`, `brand_name_exact: "yes"`, `visible_copy_ok: "
 
 ### Cross-act identity QA before step [6]
 
-Before `mcp__claude_ai_pika__edit_concat`, run a cross-act identity check on a single comparable visual artifact. The goal is to catch a founder swap while the bad act can still be regenerated, not after the 60s body is already stitched.
+Before `edit_concat`, run a cross-act identity check on a single comparable visual artifact. The goal is to catch a founder swap while the bad act can still be regenerated, not after the 60s body is already stitched.
 
 1. Extract one representative frame from each of the three sub-shot windows in every act. One frame at the middle of the act is not enough; a founder swap can happen in the first or final sub-shot and still pass.
 
@@ -895,7 +895,7 @@ for each act_urls[i]:
 # ]
 ```
 
-2. Render a single identity contact sheet with `mcp__claude_ai_pika__html_to_png`. Use CSS `background-image: url(...)` for each remote image. The sheet must include thirteen labeled panels in one image: `founder reference` (`founder_photo_url` / `character_url`), then `act 1 shot 1`, `act 1 shot 2`, `act 1 shot 3`, through `act 4 shot 3`. Save the returned file as `identity_contact_sheet_url`.
+2. Render a single identity contact sheet with `html_to_png`. Use CSS `background-image: url(...)` for each remote image. The sheet must include thirteen labeled panels in one image: `founder reference` (`founder_photo_url` / `character_url`), then `act 1 shot 1`, `act 1 shot 2`, `act 1 shot 3`, through `act 4 shot 3`. Save the returned file as `identity_contact_sheet_url`.
 
 ```
 html_to_png(
@@ -906,7 +906,7 @@ html_to_png(
 )
 ```
 
-3. Run one `mcp__claude_ai_pika__analyze_media` call on `identity_contact_sheet_url`:
+3. Run one `analyze_media` call on `identity_contact_sheet_url`:
 
 ```
 analyze_media(
@@ -947,7 +947,7 @@ other acts completed:
 
 Do not retry a stalled act while its original task is still `queued`, `running`,
 or `processing`. Continue polling it with visible progress, then call
-`mcp__claude_ai_pika__task_cancel({task_id})` at the 15 min total ceiling before
+`task_cancel({task_id})` at the 15 min total ceiling before
 using the one missing-act retry.
 
 ## [6] Stitch acts into 60s base
@@ -1019,24 +1019,24 @@ Save as `music_url`. Read `result.duration_seconds`:
 
 > **Pipeline ordering note** — music mix happens in step [10], AFTER end-card concat. Mixing music into the body before the end card is concatenated leaves the end card silent (the music track ends at the cut). Always: overlays on body → end card → concat → THEN mix music over the full assembled clip.
 
-Use MCP tools first. `mcp__claude_ai_pika__add_captions` handles subtitle timing and burn-in server-side; `mcp__claude_ai_pika__render_html_animation` handles authored HTML motion; `mcp__claude_ai_pika__edit_video_compose` handles transparent lower-third overlays.
+Use MCP tools first. `add_captions` handles subtitle timing and burn-in server-side; `render_html_animation` handles authored HTML motion; `edit_video_compose` handles transparent lower-third overlays.
 
 ### Default paths
 
 | Requested layer | Default action |
 |---|---|
 | No lower-third, no subtitles | `body_with_overlays_url = base_url` |
-| Subtitles only | call `mcp__claude_ai_pika__add_captions(video_url: base_url, caption_mode:"auto", style:"classic", position:"bottom", font:"inter")`; save returned `url` as `body_with_overlays_url` |
-| Lower-third only | render lower-third `.mov` via `mcp__claude_ai_pika__render_html_animation`, then call `mcp__claude_ai_pika__edit_video_compose`; save returned `url` as `body_with_overlays_url` |
-| Lower-third + subtitles | render and compose the lower-third first, then call `mcp__claude_ai_pika__add_captions` on the composed checkpoint URL |
+| Subtitles only | call `add_captions(video_url: base_url, caption_mode:"auto", style:"classic", position:"bottom", font:"inter")`; save returned `url` as `body_with_overlays_url` |
+| Lower-third only | render lower-third `.mov` via `render_html_animation`, then call `edit_video_compose`; save returned `url` as `body_with_overlays_url` |
+| Lower-third + subtitles | render and compose the lower-third first, then call `add_captions` on the composed checkpoint URL |
 
 If `state.lower_third` is false or unset, skip [8a] and [8b]. This keeps the default path fully MCP-native.
 
-Do not call local Whisper/caption scripts or chained `mcp__claude_ai_pika__edit_text_overlay` for captions. If exact original-script spelling matters, pass manual `subtitles[]` only when you already have exact timed segments from a trusted source; otherwise prefer the `mcp__claude_ai_pika__add_captions` auto waterfall.
+Do not call local Whisper/caption scripts or chained `edit_text_overlay` for captions. If exact original-script spelling matters, pass manual `subtitles[]` only when you already have exact timed segments from a trusted source; otherwise prefer the `add_captions` auto waterfall.
 
 ### [8a] Render the lower-third (only if `state.lower_third = true`)
 
-Skip this sub-step unless `state.lower_third = true`. Render via `mcp__claude_ai_pika__render_html_animation` with `format: "mov"` (ProRes 4444 with yuva420p — preserves alpha). **Do NOT use `format: "webm"`** — HyperFrames currently emits webm as VP9 `pix_fmt=yuv420p` with no alpha channel, so "transparent" areas come out as literal black pixels and the composited LT shows a black box outside the pill. The `.mov` ProRes path is the only reliable alpha path right now.
+Skip this sub-step unless `state.lower_third = true`. Render via `render_html_animation` with `format: "mov"` (ProRes 4444 with yuva420p — preserves alpha). **Do NOT use `format: "webm"`** — HyperFrames currently emits webm as VP9 `pix_fmt=yuv420p` with no alpha channel, so "transparent" areas come out as literal black pixels and the composited LT shows a black box outside the pill. The `.mov` ProRes path is the only reliable alpha path right now.
 
 - Native dimensions: 800×220 (matches the placement size on a 1280×720 frame, so no scaling artifacts)
 - Pill: `state.brand.colors.primary` bg (default `#0d0d0d`), `state.brand.colors.highlight` border (default `#fefbcf`), `state.brand.colors.accent` drop shadow (default `#cfc3ff`), 18px border-radius
@@ -1072,9 +1072,9 @@ Local fallback contract, only if MCP compose is unavailable:
 - Overlay the 800×220 lower-third at `x=50`, `y=video_height - 220 - 100`, enabled for `t=0..5s`.
 - Preserve the original body audio without re-encoding so lip-sync stays exact.
 - Use visually lossless H.264 settings for the local checkpoint.
-- Upload the checkpoint with `mcp__claude_ai_pika__upload_asset` and save the returned `public_url` as `body_with_lower_third_url`.
+- Upload the checkpoint with `upload_asset` and save the returned `public_url` as `body_with_lower_third_url`.
 
-If subtitles are requested too, call `mcp__claude_ai_pika__add_captions(video_url: body_with_lower_third_url, ...)` and save its returned `url` as `body_with_overlays_url`. If not, `body_with_overlays_url = body_with_lower_third_url`.
+If subtitles are requested too, call `add_captions(video_url: body_with_lower_third_url, ...)` and save its returned `url` as `body_with_overlays_url`. If not, `body_with_overlays_url = body_with_lower_third_url`.
 
 ### [8c] Captions via MCP
 
@@ -1098,7 +1098,7 @@ Save returned `url` as `body_with_overlays_url`. The returned `transcript` is us
 
 ## [9] Animated end card (5s) — author inline HTML, render via HyperFrames
 
-We do NOT use `mcp__claude_ai_pika__generate_slide_animation` here. That tool delegates HTML authoring to a slide-card LLM, which routinely adds corner clutter (top-left wordmarks, bottom-right URLs), picks wrong aspects, and produces animations that don't reliably play through HyperFrames' per-frame seek. Instead, the orchestrator authors the end-card HTML directly and renders it via `mcp__claude_ai_pika__render_html_animation`. Same engine the lower-third uses.
+We do NOT use `generate_slide_animation` here. That tool delegates HTML authoring to a slide-card LLM, which routinely adds corner clutter (top-left wordmarks, bottom-right URLs), picks wrong aspects, and produces animations that don't reliably play through HyperFrames' per-frame seek. Instead, the orchestrator authors the end-card HTML directly and renders it via `render_html_animation`. Same engine the lower-third uses.
 
 ### Hard rules — empirically verified, do not deviate
 
@@ -1202,7 +1202,7 @@ All implemented as CSS `animation: name duration easing delay forwards` on the c
 | 2.80–4.80 | accent-top | `opacity:1 → 0.55 → 1`, alternate (gentle shimmer) |
 | 4.80–5.00 | hold | (final readable state) |
 
-Reference implementation pattern: use a centered-stack HTML recipe. Author the filled HTML inline in the orchestrator and pass it directly to `mcp__claude_ai_pika__render_html_animation`; do not call a bundled helper script or rely on a separate `presets/` directory.
+Reference implementation pattern: use a centered-stack HTML recipe. Author the filled HTML inline in the orchestrator and pass it directly to `render_html_animation`; do not call a bundled helper script or rely on a separate `presets/` directory.
 
 If the brand-kit lacks fonts (`state.brand.fonts` is null) — fall back to system `-apple-system, sans-serif` for tagline/CTA but DROP the title down to a system-display weight. Don't render brand-typography end cards with fallback fonts; they always look wrong. Flag this in the deliver step so the user knows the brand-kit is incomplete.
 
@@ -1210,7 +1210,7 @@ Save the returned MP4 URL as `end_card_url`. `end_card_url` must be an MP4 video
 
 ## [10] Assemble body + end card + music via MCP
 
-Use the server-side deterministic edit tools for final assembly. The current MCP server `mcp__claude_ai_pika__edit_concat` normalizes mismatched inputs before concat, and `mcp__claude_ai_pika__edit_audio_mix` preserves the original video audio while mixing the music track.
+Use the server-side deterministic edit tools for final assembly. The current MCP server `edit_concat` normalizes mismatched inputs before concat, and `edit_audio_mix` preserves the original video audio while mixing the music track.
 
 ```
 assembled = edit_concat(video_urls=[body_with_overlays_url, end_card_url])
@@ -1223,14 +1223,14 @@ else:
   final_url = assembled_url
 ```
 
-Mix music after concat, never before, so the score continues through the end card. If `mcp__claude_ai_pika__edit_audio_mix` fails because the music file is too short or malformed, set `final_url = assembled_url`, surface the music issue, and still run step [10.5] before delivery; do not rerun expensive SeeDance acts.
+Mix music after concat, never before, so the score continues through the end card. If `edit_audio_mix` fails because the music file is too short or malformed, set `final_url = assembled_url`, surface the music issue, and still run step [10.5] before delivery; do not rerun expensive SeeDance acts.
 
 ### [10.5] Final duration floor
 
 Before reporting `final_url` to the user, probe the assembled result:
 
 ```
-mcp__claude_ai_pika__analyze_media(
+analyze_media(
   media: final_url,
   query: "Return JSON with duration_seconds for this video."
 )
@@ -1246,11 +1246,11 @@ investigation instead of padding with unrelated footage.
 
 ## [11] Final URL
 
-Save `final_url` into `state`. If a local fallback assembly produced the final MP4, upload that checkpoint through `mcp__claude_ai_pika__upload_asset` and replace `final_url` with the returned `public_url`.
+Save `final_url` into `state`. If a local fallback assembly produced the final MP4, upload that checkpoint through `upload_asset` and replace `final_url` with the returned `public_url`.
 
 ## Post-flight quality gate
 
-Before declaring success, call `mcp__claude_ai_pika__analyze_media` on `final_url` and ask for a structured verdict:
+Before declaring success, call `analyze_media` on `final_url` and ask for a structured verdict:
 
 ```
 Return JSON only: {
@@ -1301,13 +1301,13 @@ Report `final_url` to the user. Include:
 | Asset analyses | One JSON object per asset, each with non-empty `content_description` and `best_for_act` |
 | Script | 4 acts; total dialogue 100–180 words; each asset is referenced by at least one act, OR explicitly noted as unused |
 | Refs | `character_url` and `location_url` are https URLs |
-| Acts | All 4 act_urls returned (each with a unique seed); for acts containing shots with non-null `asset_index`, vision-check ONE such act with `mcp__claude_ai_pika__analyze_media` to confirm the asset is actually visible AND the reveal pattern is correct for `product_type` (e.g. for `physical_apparel`, verify the founder is HOLDING/WEARING the actual t-shirt with the right print — NOT showing it on a phone screen) |
+| Acts | All 4 act_urls returned (each with a unique seed); for acts containing shots with non-null `asset_index`, vision-check ONE such act with `analyze_media` to confirm the asset is actually visible AND the reveal pattern is correct for `product_type` (e.g. for `physical_apparel`, verify the founder is HOLDING/WEARING the actual t-shirt with the right print — NOT showing it on a phone screen) |
 | Stitch | `base_url` returned |
 | Music | URL returned; `duration_seconds >= 55` from the `kling-audio` background-bed path; retry once if under 55, then stop and surface |
 | Overlays | `body_with_overlays_url` returned (or `body_with_overlays_url = base_url` if step [8] skipped) |
-| End card | `end_card_url` returned as an MP4; inspect early frames with `mcp__claude_ai_pika__extract_frame`/`mcp__claude_ai_pika__analyze_media`: frame 0 should show the empty background before entrance, and a later first-second frame should show partial entrance — confirms CSS @keyframes are firing, not static |
-| Final assembly | `assembled_url` returned by `mcp__claude_ai_pika__edit_concat`; `final_url` returned by `mcp__claude_ai_pika__edit_audio_mix` when music is present, otherwise `final_url = assembled_url` |
-| Final duration | `mcp__claude_ai_pika__analyze_media` reports `final_duration_seconds >= 55` and `<= 75` before delivery |
+| End card | `end_card_url` returned as an MP4; inspect early frames with `extract_frame`/`analyze_media`: frame 0 should show the empty background before entrance, and a later first-second frame should show partial entrance — confirms CSS @keyframes are firing, not static |
+| Final assembly | `assembled_url` returned by `edit_concat`; `final_url` returned by `edit_audio_mix` when music is present, otherwise `final_url = assembled_url` |
+| Final duration | `analyze_media` reports `final_duration_seconds >= 55` and `<= 75` before delivery |
 | Local fallback upload | Only if local fallback assembly was used: `final_url` replaced with an uploaded `public_url` |
 
 ## Failure modes
@@ -1329,7 +1329,7 @@ Do not retry more than once. This path is for transient provider outages; changi
 
 ### Recovering from upstream 4xx / moderation_blocked
 
-If `mcp__claude_ai_pika__generate_image` returns an upstream 4xx or `moderation_blocked` while creating a founder/location/product reference:
+If `generate_image` returns an upstream 4xx or `moderation_blocked` while creating a founder/location/product reference:
 1. Do NOT retry the same prompt; moderation and most 4xx validation failures are deterministic.
 2. If the asset is not user-critical, try a fallback provider once only when the substitute still matches the brief. For founder identity photos, no fallback provider should alter the user's identity; ask for a safer/user-supplied reference instead.
 3. If the fallback provider also fails or would change the product/founder identity, surface to the user: "Image provider declined this reference prompt. Provide a different reference image or choose a less recognizable/stylized direction."
@@ -1351,7 +1351,7 @@ This skill usually extracts product facts with `analyze_brief`, but URL brief he
 
 ### `upload_asset` network / auth failure
 
-If `mcp__claude_ai_pika__upload_asset` fails while converting founder photos, product assets, brand logos, lower-thirds, or fallback local assemblies to hosted URLs, do not continue with local filesystem paths in `reference_images` or HTML. Retry once only for the 5xx or 429 classes above. For `auth_error`, unsupported MIME, network failure, or repeated upload failure, stop and ask for a hosted URL or supported raster export.
+If `upload_asset` fails while converting founder photos, product assets, brand logos, lower-thirds, or fallback local assemblies to hosted URLs, do not continue with local filesystem paths in `reference_images` or HTML. Retry once only for the 5xx or 429 classes above. For `auth_error`, unsupported MIME, network failure, or repeated upload failure, stop and ask for a hosted URL or supported raster export.
 
 ### Long-running `task_status` exceeding ceiling
 
@@ -1361,11 +1361,11 @@ Each async MCP call returns either an inline result or `{task_id, status}` for p
 - gpt-image-2 high quality: 3 min per call
 - render/edit/upload helpers: 5 min per call
 
-Use whichever is earlier: the provider's ceiling x 1.5 or any skill-specific hard polling cap, including the 15 min total cap in the Long-running task_status polling contract above. If `mcp__claude_ai_pika__task_status` returns `status: "processing"` or `status: "queued"` past that earlier limit, call `mcp__claude_ai_pika__task_cancel({task_id})` and surface: "Provider taking unusually long; aborting. Try again."
+Use whichever is earlier: the provider's ceiling x 1.5 or any skill-specific hard polling cap, including the 15 min total cap in the Long-running task_status polling contract above. If `task_status` returns `status: "processing"` or `status: "queued"` past that earlier limit, call `task_cancel({task_id})` and surface: "Provider taking unusually long; aborting. Try again."
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| `mcp__claude_ai_pika__generate_reference_video` returns 402 "insufficient balance" with a familiar UUID | Idempotency cache replaying an old failed result for identical params | Pass a unique `seed` per call (101 / 202 / 303 / 404 for 4 acts) so the hash differs. |
+| `generate_reference_video` returns 402 "insufficient balance" with a familiar UUID | Idempotency cache replaying an old failed result for identical params | Pass a unique `seed` per call (101 / 202 / 303 / 404 for 4 acts) so the hash differs. |
 | SeeDance returns 422 "may contain likenesses of real people" on founder ref | Content-policy filter tripped (intermittent — same photo may pass next attempt) | Re-roll the founder portrait with stronger stylization ("Pixar / Disney 3D animation aesthetic"). Don't auto-retry the same ref — burns credits. |
 | Founder shirt changes between acts | @Image1 read fresh each act, no wardrobe lock | Add a `WARDROBE LOCK:` line to every act prompt, identical sentence verbatim. |
 | All 4 acts have the same physical backdrop | Opening line says "inside the location matching @Image2" — read literally | Open with "in a setting whose visual style, palette, lighting and materials match @Image2" + add per-shot `Background context:` line. |
@@ -1376,7 +1376,7 @@ Use whichever is earlier: the provider's ceiling x 1.5 or any skill-specific har
 | Music overpowers dialogue | Prompt asked for foreground melody instead of a bed | Regenerate once with "soft instrumental background bed, no vocals, leave room for narration" and keep `audio_volume` at 0.16 or lower in step [10]. |
 | Captions misspell product names | Auto transcription normalized the spoken audio | Use manual `subtitles[]` only if you already have trusted timestamped segments; otherwise surface the transcript limitation instead of running local Whisper by default. |
 | Lower-third overlay shows a black box outside the pill | webm format encoded without alpha (yuv420p) | Re-render with `format: "mov"` (ProRes 4444 yuva). Verify with `ffprobe \| grep pix_fmt` showing `yuva*`. |
-| Final video audio shorter than video | Local fallback concat used `-c copy` with mismatched audio params | Prefer MCP `mcp__claude_ai_pika__edit_concat`. If local concat is unavoidable, normalize all inputs to aac/44100/stereo/192k before concat. |
+| Final video audio shorter than video | Local fallback concat used `-c copy` with mismatched audio params | Prefer MCP `edit_concat`. If local concat is unavoidable, normalize all inputs to aac/44100/stereo/192k before concat. |
 | End card renders identical at t=0 and t=2s (no entrance animation) | GSAP `tl.from()` used instead of CSS `@keyframes` | Convert entrance to CSS `@keyframes`; keep the GSAP shim only for duration seeking. |
 | End-card tagline renders as serif fallback | woff2 font failed to load in HyperFrames Chrome | Use unique `font-family` names per face (not weight-matching); subset + base64-inline the woff2; verify by extracting frame 30 before shipping. |
 | `render_html_animation` fails with `window.__hf not ready after 45000ms` | End-card HTML did not expose the runtime readiness hook or valid nested `class="clip"` composition | Add/fix the `window.__hf` hook and `class="clip"` child, then rerender the MP4. Do not fall back to a static PNG and do not proceed to concat until `end_card_url` is a video URL. |
@@ -1401,9 +1401,9 @@ These strings go into the SeeDance prompt (or HTML render) verbatim. Each was em
 - **Don't describe the character in prompt prose** — @Image1 carries identity. Prose conflicts produce phantom figures or wrong outfits. Exception: the `WARDROBE LOCK:` line.
 - **Don't use film-industry shot terms** — "Two-shot" / "Three-shot" / "Over-shoulder" / "OTS" / "Master shot" trigger SeeDance phantom-subject artifacts. Describe what the camera sees in plain language.
 - **Don't render the lower-third as webm** — alpha not preserved (HyperFrames emits yuv420p). Use `format: "mov"` (ProRes 4444 yuva). Verify with `ffprobe \| grep pix_fmt`.
-- **Don't use `mcp__claude_ai_pika__generate_slide_animation` for the end card** — that tool's slide-card LLM adds corner clutter and produces animations that don't seek deterministically. Author inline HTML and render via `mcp__claude_ai_pika__render_html_animation`.
-- **Don't chain pika MCP `mcp__claude_ai_pika__edit_text_overlay` / overlay calls for arbitrary text/caption composition** — that cascades quality loss and can introduce lip-sync drift. Use `mcp__claude_ai_pika__add_captions` for captions and a single compose/local pass for bounded lower-thirds. Exception: step [5.5] deterministic digital UI overlays deliberately uses one bounded `mcp__claude_ai_pika__edit_video_compose` pass plus optional exact-brand `mcp__claude_ai_pika__edit_text_overlay`, followed by OCR QA, to prevent Seedance-rendered brand/UI text.
-- **Don't use local `ffmpeg concat -c copy` for final assembly unless MCP is unavailable** — the old audio-drop bug was in local concat behavior. Default to MCP `mcp__claude_ai_pika__edit_concat` + `mcp__claude_ai_pika__edit_audio_mix`.
+- **Don't use `generate_slide_animation` for the end card** — that tool's slide-card LLM adds corner clutter and produces animations that don't seek deterministically. Author inline HTML and render via `render_html_animation`.
+- **Don't chain pika MCP `edit_text_overlay` / overlay calls for arbitrary text/caption composition** — that cascades quality loss and can introduce lip-sync drift. Use `add_captions` for captions and a single compose/local pass for bounded lower-thirds. Exception: step [5.5] deterministic digital UI overlays deliberately uses one bounded `edit_video_compose` pass plus optional exact-brand `edit_text_overlay`, followed by OCR QA, to prevent Seedance-rendered brand/UI text.
+- **Don't use local `ffmpeg concat -c copy` for final assembly unless MCP is unavailable** — the old audio-drop bug was in local concat behavior. Default to MCP `edit_concat` + `edit_audio_mix`.
 - **Don't fire SeeDance with identical params across acts** — the MCP idempotency cache hashes to the same task ID and replays old results (sometimes failures). Pass unique `seed` per act.
 - **Don't use MiniMax for the default generated bed** — it does not support `background: true` and can foreground the melody under narration.
 - **Don't manually tile the 10s Kling clip in the skill** — the MCP worker owns the local ffmpeg extension path for `duration_seconds: 60`.
@@ -1411,9 +1411,9 @@ These strings go into the SeeDance prompt (or HTML render) verbatim. Each was em
 
 ## Engine choice: seedance-only (with caveats)
 
-SeeDance (`fal-seedance-2-i2v` via `mcp__claude_ai_pika__generate_reference_video` `provider: "seedance"`) is the sole video engine. Picked over alternatives after testing:
+SeeDance (`fal-seedance-2-i2v` via `generate_reference_video` `provider: "seedance"`) is the sole video engine. Picked over alternatives after testing:
 
-- **vs Kling v3-omni**: Kling has a true `shots[]` hard-cut array (cleaner multi-shot) but rejects the `seed` parameter (cache-busting harder), and 4 × pro 1080p outputs sum >50MB and exceed the `mcp__claude_ai_pika__edit_concat` upload cap (forces local concat). Kling does have more permissive content policy for real-person photos — it's a worth keeping in mind as a fallback if SeeDance's intermittent 422 becomes a hard block.
+- **vs Kling v3-omni**: Kling has a true `shots[]` hard-cut array (cleaner multi-shot) but rejects the `seed` parameter (cache-busting harder), and 4 × pro 1080p outputs sum >50MB and exceed the `edit_concat` upload cap (forces local concat). Kling does have more permissive content policy for real-person photos — it's a worth keeping in mind as a fallback if SeeDance's intermittent 422 becomes a hard block.
 - **vs Happy Horse `happyhorse-1.0-r2v`** (Alibaba DashScope): produced clean 1080p with native lip-sync but the multi-shot prompt direction was weaker and visibly less cinematic than SeeDance.
 - **SeeDance wins because**: native `<<<voice_1>>>` lip-sync, accepts `seed` (cache-busting), permissive enough on real-person photos that 95%+ runs pass content filter, single 15s prompt with time-coded sub-shots gives enough variation for a talking-head register.
 
@@ -1457,8 +1457,8 @@ Wall-clock budget per step. Total run is ~12–18 minutes, dominated by the para
   - `consumable` → founder uses/eats/drinks; same pattern
   - `service` → no asset reveal; environment + dialogue only
 - Music: target ~60s instrumental — call `generate_music` with `provider: "kling-audio"`, `mode: "text_to_audio"`, `background: true`, and `duration_seconds: 60`. Keep `prompt` <= 200 chars and include "soft instrumental background bed", "no vocals", and "leave room for narration". Retry once if under 55s, then stop and surface instead of accepting a short bed.
-- 5s end card via `mcp__claude_ai_pika__render_html_animation` — author inline HTML per step [9], inline brand-kit fonts as base64. Sources brand from `state.brand` (set in step [4.5]) → real logo, real palette, real fonts.
-- **Captions via `mcp__claude_ai_pika__add_captions`.** Use server-side word-level caption burn-in by default. Font choices are the tool-supported set (`inter`, `bebas-neue`, `noto-cjk`); use brand accent colors for highlight/outline instead of local custom font drawtext.
-- **Lower-third fallback.** Off by default. If `state.lower_third = true`, render a 5s branded pill bottom-left via `mcp__claude_ai_pika__render_html_animation(format:"mov")`; the final overlay onto the body uses `mcp__claude_ai_pika__edit_video_compose`, or one local ffmpeg pass only if MCP compose is unavailable.
-- **Final assembly via MCP.** Use `mcp__claude_ai_pika__edit_concat` for body + end card, then `mcp__claude_ai_pika__edit_audio_mix` for music. Local concat/mix is a fallback, not the canonical path.
+- 5s end card via `render_html_animation` — author inline HTML per step [9], inline brand-kit fonts as base64. Sources brand from `state.brand` (set in step [4.5]) → real logo, real palette, real fonts.
+- **Captions via `add_captions`.** Use server-side word-level caption burn-in by default. Font choices are the tool-supported set (`inter`, `bebas-neue`, `noto-cjk`); use brand accent colors for highlight/outline instead of local custom font drawtext.
+- **Lower-third fallback.** Off by default. If `state.lower_third = true`, render a 5s branded pill bottom-left via `render_html_animation(format:"mov")`; the final overlay onto the body uses `edit_video_compose`, or one local ffmpeg pass only if MCP compose is unavailable.
+- **Final assembly via MCP.** Use `edit_concat` for body + end card, then `edit_audio_mix` for music. Local concat/mix is a fallback, not the canonical path.
 - Provider: `seedance` only. Reference tokens are `@Image1` / `@Image2` / `@Image3`. Native lip-sync via `<<<voice_1>>>...<<<voice_1>>>` tokens per sub-shot. Real-person founder photos pass the content filter the vast majority of the time; intermittent 422 → re-roll with stronger stylization.

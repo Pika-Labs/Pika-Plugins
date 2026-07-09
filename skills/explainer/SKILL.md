@@ -12,7 +12,7 @@ Generate a ~60–80s URL explainer video: drive a real browser through the URL a
 
 ## Cost transparency gate
 
-Before any paid MCP call, call `mcp__claude_ai_pika__identity_balance({verbose: true})` once. Surface the current balance, recent burn rate, and remaining runway, then gate the run with this exact message:
+Before any paid MCP call, call `identity_balance({verbose: true})` once. Surface the current balance, recent burn rate, and remaining runway, then gate the run with this exact message:
 
 > Estimated cost: about 50-500 credits (~$0.50-$5.00) depending on lipsync provider, narration, captions, and preview mode. This can reach $5, so Reply `proceed` to continue or `cancel` to stop.
 
@@ -69,13 +69,13 @@ Optional: `--avatar <url>` (the presenter photo; if omitted, one is generated), 
 
 **Avatar resolution (silent — never ask the user):**
 1. If `--avatar <url>` was passed, use it.
-2. Else call `mcp__claude_ai_pika__generate_image` once with prompt `"professional presenter, friendly tech narrator, studio portrait, 1:1, natural lighting"` and use the returned URL. Do **not** ask the user "should I generate one?" — just generate silently.
+2. Else call `generate_image` once with prompt `"professional presenter, friendly tech narrator, studio portrait, 1:1, natural lighting"` and use the returned URL. Do **not** ask the user "should I generate one?" — just generate silently.
 
 Track `avatar_source` as one of `explicit`, `generated`, or `regenerated`.
 
 **Avatar suitability gate (mandatory before any lipsync spend):**
 
-Call `mcp__claude_ai_pika__analyze_media(media=<avatar>, query=<gate_query>)` once on the resolved avatar image before Step 4 TTS and before any `generate_lipsync` preview/full call. This is the one case where avatar analysis is required, because the avatar is the central presenter asset and a bad generated avatar can burn the whole render.
+Call `analyze_media(media=<avatar>, query=<gate_query>)` once on the resolved avatar image before Step 4 TTS and before any `generate_lipsync` preview/full call. This is the one case where avatar analysis is required, because the avatar is the central presenter asset and a bad generated avatar can burn the whole render.
 
 Gate query:
 
@@ -94,7 +94,7 @@ Is this image suitable for talking-head lipsync: a single front-facing coherent 
 
 Pass only if `is_single_front_facing_coherent_human_face == true`, `has_visible_mouth == true`, `is_faceless_or_masked == false`, `is_mascot_illustration_or_non_human == false`, and `face_suitability_score >= 75`.
 
-If the avatar fails and `avatar_source` is `explicit`, stop before paid lipsync and ask for `--avatar <real-looking-photo-url>` or permission to generate a presenter portrait. If the avatar fails and `avatar_source` is `generated`, call `mcp__claude_ai_pika__generate_image` once with prompt `"realistic professional presenter portrait, single front-facing coherent human face, visible mouth, friendly tech narrator, neutral studio background, 1:1, natural lighting"`; set `avatar_source = "regenerated"` and re-run this suitability gate on the regenerated avatar. If the regenerated avatar also fails, abort with a clear error instead of attempting lipsync.
+If the avatar fails and `avatar_source` is `explicit`, stop before paid lipsync and ask for `--avatar <real-looking-photo-url>` or permission to generate a presenter portrait. If the avatar fails and `avatar_source` is `generated`, call `generate_image` once with prompt `"realistic professional presenter portrait, single front-facing coherent human face, visible mouth, friendly tech narrator, neutral studio background, 1:1, natural lighting"`; set `avatar_source = "regenerated"` and re-run this suitability gate on the regenerated avatar. If the regenerated avatar also fails, abort with a clear error instead of attempting lipsync.
 
 Set `avatar_auto_preview_required = true` whenever `avatar_source` is `generated` or `regenerated`; otherwise false unless the user passed `--preview`.
 
@@ -276,13 +276,13 @@ If `--focus` is supplied, weave its angles into `vo_text` without mutating the s
 
 ### Step 4 — TTS
 
-Call `mcp__claude_ai_pika__generate_speech` with `provider: "minimax-tts"`, `text: <full vo_text join>`, optional `voice_id` (from `--voice` or the Step 1 default preset). Capture `result.audio_url` (the dispatcher returns audio under `audio_url`, not `url`) and `result.duration_seconds`.
+Call `generate_speech` with `provider: "minimax-tts"`, `text: <full vo_text join>`, optional `voice_id` (from `--voice` or the Step 1 default preset). Capture `result.audio_url` (the dispatcher returns audio under `audio_url`, not `url`) and `result.duration_seconds`.
 
 **Stale-voice fallback detection:** the dispatcher retries once with the default `Calm_Woman` voice on Minimax `status_code:2054` (voice id not found — typically a per-agent workspace pointer that Minimax auto-deleted after 7 days of inactivity). On retry success the response carries two extra fields beyond the documented schema (passthrough): `voice_id_requested` (the planted-but-stale id the worker tried first) and `fallback_reason: "invalid_minimax_voice_id"`. **If you see `fallback_reason == "invalid_minimax_voice_id"` in the response, surface a one-line note to the user along the lines of:** "your registered voice expired on Minimax (auto-GC'd after 7 days of inactivity); we used the system default. Re-clone via `clone_voice` if you want personalization back." The render does NOT fail — it just uses the default voice — so this is informational, not a retry trigger.
 
 **Cookie-banner audio padding (Generic-URL mode with `cookie_banner_present == true` from Step 2.6 §B):** when the Step 4 call uses the default MiniMax path, prepend MiniMax's pause marker `<#1.5#>` to the `text:` argument **before** calling `generate_speech`. MiniMax's `speech-2.8-hd` honors `<#N#>` as N-second silence; the returned `audio_url` and `duration_seconds` include the 1.5s lead-in natively. If Step 4 uses `provider="elevenlabs"`, skip the MiniMax marker and use the fallback audio-mix padding path below. This aligns the audio with the screen recording's cookie-dismissal +1.5s offset applied in Step 4.5.
 
-**Fallback** (only if smoke-test shows the marker is ignored on this voice): call `generate_speech` normally, then `mcp__claude_ai_pika__edit_audio_mix` to overlay the result onto a 1.5s silent base at offset 1.5s. **Then call `mcp__claude_ai_pika__analyze_media(url=<padded_audio_url>)` to probe the padded duration and rebind `duration_seconds = result.duration_seconds`** before Step 4.5 consumes it. `analyze_media` is the **single authoritative duration probe** — do not rely on `edit_audio_mix`'s return payload (its duration field is not contractually guaranteed).
+**Fallback** (only if smoke-test shows the marker is ignored on this voice): call `generate_speech` normally, then `edit_audio_mix` to overlay the result onto a 1.5s silent base at offset 1.5s. **Then call `analyze_media(url=<padded_audio_url>)` to probe the padded duration and rebind `duration_seconds = result.duration_seconds`** before Step 4.5 consumes it. `analyze_media` is the **single authoritative duration probe** — do not rely on `edit_audio_mix`'s return payload (its duration field is not contractually guaranteed).
 
 ### Step 4.5 — Audio length verification + beat-sheet rescale
 
@@ -318,8 +318,8 @@ Skip Step 5 only when the user did not pass `--preview` **and** `avatar_auto_pre
 
 If `--preview` was supplied or `avatar_auto_preview_required == true`:
 
-1. `mcp__claude_ai_pika__generate_speech` with `provider: "minimax-tts"`, optional `voice_id`, and `text: "Hi, I'm your presenter. Let's explore this repo together."` → `preview_audio_url`.
-2. `mcp__claude_ai_pika__generate_lipsync` with `provider: <resolved_lipsync_provider>` (defaults to `pika`; honor `--lipsync-provider kling` if supplied), `image: <avatar>`, `audio: preview_audio_url` → `preview_lipsync_url` (bare lipsync, ~3s). Use the same provider here as Step 9 will use for the full audio — the preview's job is to confirm the avatar+voice+provider combo before the long-pole render.
+1. `generate_speech` with `provider: "minimax-tts"`, optional `voice_id`, and `text: "Hi, I'm your presenter. Let's explore this repo together."` → `preview_audio_url`.
+2. `generate_lipsync` with `provider: <resolved_lipsync_provider>` (defaults to `pika`; honor `--lipsync-provider kling` if supplied), `image: <avatar>`, `audio: preview_audio_url` → `preview_lipsync_url` (bare lipsync, ~3s). Use the same provider here as Step 9 will use for the full audio — the preview's job is to confirm the avatar+voice+provider combo before the long-pole render.
 3. Present to the user verbatim:
 
    > Preview ready: `<preview_lipsync_url>`
@@ -339,7 +339,7 @@ For each beat in order, emit one entry:
 
 **Do NOT prepend an intro scroll-through** before the authored beats. The lipsync audio is timed from `t=0` of the beat sheet; a prepended intro shifts the screen recording forward by ~3 s while leaving the audio un-shifted, causing audio/video desync. The capture_website recording begins at `t=0` with beat 0's URL already loaded, so the first authored beat is the visual orientation point.
 
-Call `mcp__claude_ai_pika__capture_website`:
+Call `capture_website`:
 
 - `url: <beat 0's action.url>`
 - `timed_actions: <the N-element list built above>` (one entry per beat)
@@ -375,7 +375,7 @@ Use the same `prepend_count` mapping described above so prepended setup actions 
 
 ### Step 7 — Browser chrome
 
-`mcp__claude_ai_pika__edit_browser_frame`:
+`edit_browser_frame`:
 
 - `video_url: <Step 6 video_url>`
 - `url: (live_url if GitHub-mode and survived Step 2.5 else input_url, truncated to 65 chars)`
@@ -435,11 +435,11 @@ For each entry in `action_bboxes`:
 
 This guarantees every non-intro, long-enough beat gets a zoom — precise when bbox capture worked, default-positioned otherwise. Avoids the "flat video for the whole runtime" failure mode.
 
-If `len(zoom_keyframes) > 0`, call `mcp__claude_ai_pika__edit_animate_zoom` with `video_url: framed_url, zoom_keyframes`. Returns `zoomed_url`. Otherwise (no qualifying beats — should be rare given Step 3's 65-80s constraint) skip and use `framed_url` as `zoomed_url`.
+If `len(zoom_keyframes) > 0`, call `edit_animate_zoom` with `video_url: framed_url, zoom_keyframes`. Returns `zoomed_url`. Otherwise (no qualifying beats — should be rare given Step 3's 65-80s constraint) skip and use `framed_url` as `zoomed_url`.
 
 ### Step 9 — Lipsync the full audio
 
-`mcp__claude_ai_pika__generate_lipsync`:
+`generate_lipsync`:
 
 - `provider: <resolved_lipsync_provider>` — **default: `pika`** (parrot a2v). Honor `--lipsync-provider kling` if explicitly passed.
 - `image: <avatar>`
@@ -453,7 +453,7 @@ If `len(zoom_keyframes) > 0`, call `mcp__claude_ai_pika__edit_animate_zoom` with
 | **`pika`** (default) | ~2–5 min | Slightly more dramatic, naturalistic | Default for most runs — fast iteration, watchable output, ~10× faster than kling |
 | `kling` (opt-in) | ~5–30 min | Minimal, face-centered, presenter-style | High-stakes renders where the avatar must read like a polished presenter; tolerate the long pole |
 
-Server-side-await covers the call inline; if the response shape is `{task_id, status: "queued"}`, poll `mcp__claude_ai_pika__task_status` in a tight loop (no sleep) until the status reaches a terminal state (`completed`, `failed`, or `cancelled`). On `completed`, capture `lipsync_url`. On `failed` / `cancelled`, fall back to the **other** provider (kling ↔ pika) per the failover note below.
+Server-side-await covers the call inline; if the response shape is `{task_id, status: "queued"}`, poll `task_status` in a tight loop (no sleep) until the status reaches a terminal state (`completed`, `failed`, or `cancelled`). On `completed`, capture `lipsync_url`. On `failed` / `cancelled`, fall back to the **other** provider (kling ↔ pika) per the failover note below.
 
 **Failover:**
 - If `pika` fails (rare — parrot a2v is robust at typical explainer audio lengths) → retry once with `provider: "kling"`.
@@ -468,9 +468,9 @@ For the canonical "polished presenter" feel of the reference output, pass `--lip
 
 **Face-coherence gate (mandatory before PiP compositing):**
 
-After capturing `lipsync_url`, sample the raw lipsync video before Step 10. Call `mcp__claude_ai_pika__extract_frame(video_url=<lipsync_url>, at_times=[1.0, audio_duration_seconds * 0.5, max(1.0, audio_duration_seconds - 1.0)])` to get start / mid / end frames. In batch mode, capture `frame_urls = extract_result.urls` and ignore the legacy single `url` field except as a fallback when `urls` is absent. Because `analyze_media.media` accepts a single URL string, make one `analyze_media` call per frame URL; do not pass an array.
+After capturing `lipsync_url`, sample the raw lipsync video before Step 10. Call `extract_frame(video_url=<lipsync_url>, at_times=[1.0, audio_duration_seconds * 0.5, max(1.0, audio_duration_seconds - 1.0)])` to get start / mid / end frames. In batch mode, capture `frame_urls = extract_result.urls` and ignore the legacy single `url` field except as a fallback when `urls` is absent. Because `analyze_media.media` accepts a single URL string, make one `analyze_media` call per frame URL; do not pass an array.
 
-For each `frame_url`, call `mcp__claude_ai_pika__analyze_media(media=<frame_url>, query=<single_frame_gate_query>)` with this query:
+For each `frame_url`, call `analyze_media(media=<frame_url>, query=<single_frame_gate_query>)` with this query:
 
 ```
 Return JSON only: {
@@ -490,7 +490,7 @@ If the gate fails on the first provider, retry once with the other provider (`pi
 
 ### Step 10 — PiP composite
 
-`mcp__claude_ai_pika__edit_pip`:
+`edit_pip`:
 
 - `main_video_url: <zoomed_url>`
 - `overlay_video_url: <lipsync_url>`
@@ -512,7 +512,7 @@ Choose caption placement before calling the tool:
 - Default `position: "bottom"` (`caption_position = "bottom"`) for ordinary explainer pages.
 - Use `position: "top"` (`caption_position = "top"`) when the current beat plan or captured page shows important hero text, headline, value-prop, CTA, or code in the lower third where the classic bottom bar would cover it.
 
-Call `mcp__claude_ai_pika__add_captions(video_url=<final_url>, style="classic", caption_mode: "manual", subtitle_text: <caption_script_text>, position: <caption_position>)`. Manual mode spreads the corrected narration text over the detected duration and prevents proper-noun drift. Capture the result as `captioned_url`.
+Call `add_captions(video_url=<final_url>, style="classic", caption_mode: "manual", subtitle_text: <caption_script_text>, position: <caption_position>)`. Manual mode spreads the corrected narration text over the detected duration and prevents proper-noun drift. Capture the result as `captioned_url`.
 
 Skip this step only if the user passed `--no-captions` (parsed in Step 1) — the default is captions on. (Note: `/pika:podcast` does **not** burn captions — narration in an explainer is more transcription-friendly than fast two-host dialogue.)
 
@@ -522,7 +522,7 @@ If `bbox_warning` was set in Step 6, emit it immediately before the final URL so
 
 ## Post-flight quality gate
 
-Before declaring success, call `mcp__claude_ai_pika__analyze_media` on `captioned_url` or `final_url` and ask for a structured verdict:
+Before declaring success, call `analyze_media` on `captioned_url` or `final_url` and ask for a structured verdict:
 
 ```
 Return JSON only: {
@@ -582,7 +582,7 @@ Typical wall-clock is 5-10 minutes with Pika lipsync, or 10-30+ minutes with Kli
 - **Kling avatar mode and prompt are available.** To enable polished-presenter mode, pass `--lipsync-provider kling` and the Step 9 call should add `mode: "pro"` plus a prompt like `"talking head, face centered, mouth syncs to audio, minimal head movement, professional presenter"`. This is the quality lever for reducing dramatic head motion in the lipsync.
 - **No caller-controlled white-frame trim on the screen recording.** `capture_website` has internal trim heuristics but doesn't expose them to the caller. Visible as a brief white flash at the start of the explainer when the page is still loading. The 800ms `wait` action at `at_s: 0.0` mitigates this somewhat by giving the page time to paint, but doesn't trim already-recorded white frames. Worker enhancement.
 - **No `networkidle` wait on per-beat navigation.** `capture_website` settles to `domcontentloaded` plus the bbox-capture branch's 600 ms post-action settle (server-side, when `bbox_selector` is set), but SPA blob pages whose final render happens after `domcontentloaded` can still get bbox'd against unmounted code blocks. Worker enhancement: expose a `wait_until` knob on `timed_actions[].navigate`.
-- **No per-step output-size verification gates.** A robust file-size check would verify TTS ≥ 50KB, preview ≥ 100KB, screen ≥ 200KB, lipsync ≥ 500KB, and final ≥ 1MB after each step. The MCP path returns URLs only; verifying file size would require an extra `mcp__claude_ai_pika__analyze_media` call per step (~30s overhead each). Worth adding once user-side latency budget allows it. For now, a downstream-failure cascade (e.g. zero-byte TTS → silent lipsync → blank composite) only surfaces at Step 11.
+- **No per-step output-size verification gates.** A robust file-size check would verify TTS ≥ 50KB, preview ≥ 100KB, screen ≥ 200KB, lipsync ≥ 500KB, and final ≥ 1MB after each step. The MCP path returns URLs only; verifying file size would require an extra `analyze_media` call per step (~30s overhead each). Worth adding once user-side latency budget allows it. For now, a downstream-failure cascade (e.g. zero-byte TTS → silent lipsync → blank composite) only surfaces at Step 11.
 - **`text_content` bbox capture not implemented.** `capture_website` v1 returns `action_bboxes` only for steps with a CSS `selector`. `text_content`-only steps produce no entry. Prefer CSS selectors in `zoom_target` for guaranteed zoom coverage.
 - **Beat-sheet wording is non-deterministic.** Running the same input twice produces different vo_text and different zoom positions. Visual *kind* is the contract, not pixel-exact reproduction.
 - **Generic-URL mode quality varies by site.** Modern indie / SaaS landing pages with semantic markup (`<h1>` + clear `<section>` + named class hooks) work well. Big-name corporate sites (apple.com, microsoft.com, amazon.com) hit several known limits: (a) **bot detection** — the page may serve a degraded version under headless Chrome, or a captcha; Step 2.6 §A aborts on these but the heuristics aren't exhaustive; (b) **obfuscated class names** — `tile-headline` instead of `hero-title` defeats generic selectors; Step 2.6 §C's WebFetch DOM scan helps but isn't perfect; (c) **scroll-triggered animations don't play** — IntersectionObserver-driven hero reveals fire on real user scrolls, not Playwright's `scrollIntoView`; the recorded frame may be a static placeholder; (d) **lazy-loaded images** — picture/source elements with `loading="lazy"` may not have resolved by the 600ms-or-2500ms settle window; the bbox lands on a transparent placeholder. Workarounds: prefer simpler / smaller marketing pages for launch demos, always pass `--focus "the X feature"` to anchor beat selection, accept that big-name sites need a follow-up server PR (cookie-banner click retry + `wait_until=networkidle` + animation-trigger via `IntersectionObserver` polyfill).

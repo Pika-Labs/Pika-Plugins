@@ -12,16 +12,16 @@ description: >
   video without changing the person", "put me on a beach", "make this video at
   night", "/fix-my-look".
 required-capabilities:
-  - mcp__plugin_pika_pika__upload_asset
-  - mcp__plugin_pika_pika__normalize_video
-  - mcp__plugin_pika_pika__estimate_cost
-  - mcp__plugin_pika_pika__generate_image_edit
-  - mcp__plugin_pika_pika__generate_reference_video
-  - mcp__plugin_pika_pika__edit_concat
-  - mcp__plugin_pika_pika__extract_audio_from_video
-  - mcp__plugin_pika_pika__edit_audio_replace
-  - mcp__plugin_pika_pika__edit_lipsync
-  - mcp__plugin_pika_pika__task_status
+  - upload_asset
+  - normalize_video
+  - estimate_cost
+  - generate_image_edit
+  - generate_reference_video
+  - edit_concat
+  - extract_audio_from_video
+  - edit_audio_replace
+  - edit_lipsync
+  - task_status
 ---
 
 # fix-my-look
@@ -29,7 +29,7 @@ required-capabilities:
 Edit the source's first usable frame with `gpt-image-2` from the user's prompt,
 then propagate that look across the clip with `kling` reference-video while
 locking the original face, motion and audio via the original video + audio as
-references. All prep happens in one `mcp__plugin_pika_pika__normalize_video`
+references. All prep happens in one `normalize_video`
 call for short clips, or one normalize call per segment for longer clips. The
 output ratio uses the normalized clip's closest supported output ratio; this
 skill does NOT reframe the source video.
@@ -51,16 +51,14 @@ Working dir: `~/Downloads/fix-my-look/<run-id>/`.
 
 ### Step 0 — Cost, timer and task IDs
 
-Use the `mcp__plugin_pika_pika__*` names below as the canonical plugin
-namespace. If the host exposes the same tools under a local namespace such as
-`mcp__pika-mcp__*` or `mcp__pika-prod__*`, map by tool suffix and keep the same
-arguments.
+Every tool named below is a Pika MCP tool, written by its bare name. Call it
+under whatever prefix your session exposes for the Pika MCP.
 
 Start a timer when the source and change prompt are known. Before paid
-generation, call `mcp__plugin_pika_pika__estimate_cost` for the planned
-`mcp__plugin_pika_pika__generate_image_edit`,
-`mcp__plugin_pika_pika__generate_reference_video`, any multi-segment
-`mcp__plugin_pika_pika__edit_concat`, and any optional audio/lipsync repair
+generation, call `estimate_cost` for the planned
+`generate_image_edit`,
+`generate_reference_video`, any multi-segment
+`edit_concat`, and any optional audio/lipsync repair
 call. If cost is not surfaced by the host, say
 `Cost not surfaced by this harness` in the final report instead of guessing.
 When any tool returns a
@@ -69,15 +67,15 @@ hand-type long JWT-style task IDs.
 
 ### Step 1 — Prepare the clip
 
-Local file? `mcp__plugin_pika_pika__upload_asset` it first; an HTTPS media URL
+Local file? `upload_asset` it first; an HTTPS media URL
 passes directly. Decide the source windows before normalizing: use one 14.8s
 window for sources <=15s, and split longer sources into ordered 14.8s windows.
 Call
-`mcp__plugin_pika_pika__normalize_video(video_url=<source>, start_s=<offset>, max_duration_s=14.8, extract_audio=true, extract_face_frame=true)`
+`normalize_video(video_url=<source>, start_s=<offset>, max_duration_s=14.8, extract_audio=true, extract_face_frame=true)`
 once per window. Use the first window's `face_frame_url` for the edited still;
 use each window's `video_url` as that segment's motion/identity reference. For
 multi-window clips, also call
-`mcp__plugin_pika_pika__extract_audio_from_video(video_url=<source>)` so the
+`extract_audio_from_video(video_url=<source>)` so the
 final merged output can be restored to one continuous source audio track.
 
 Wire the result into the rest: `face_frame_url` is the Step 2 edit target;
@@ -95,16 +93,16 @@ faces camera.
 
 Reference-video providers can reject oversized reference assets. If the
 normalize result or the downstream provider error shows a normalized video is
-over the provider limit, retry `mcp__plugin_pika_pika__normalize_video` once
+over the provider limit, retry `normalize_video` once
 with `crf=28` and the same `start_s`, `max_duration_s`, `extract_audio`, and
 `extract_face_frame` values. If the reference is still too large, stop before
 another paid video attempt and report that
-`mcp__plugin_pika_pika__normalize_video` needs a worker-side 1080-edge /
+`normalize_video` needs a worker-side 1080-edge /
 reference-size cap. Do not patch this with local shell media commands.
 
 ### Step 2 — Edit the frame with gpt-image-2 (the "change" stage)
 
-`mcp__plugin_pika_pika__generate_image_edit` with `provider="gpt-image-2"`,
+`generate_image_edit` with `provider="gpt-image-2"`,
 `aspect_ratio=<aspect_ratio>`, `resolution="2K"`,
 `images=[<face_frame_url>]`, `quality="high"`, prompt:
 
@@ -134,7 +132,7 @@ and re-render?" Do NOT call video generation until approved. For tweaks, re-run 
 
 ### Step 4 — Propagate via Kling reference-video
 
-For each normalized segment, call `mcp__plugin_pika_pika__generate_reference_video`
+For each normalized segment, call `generate_reference_video`
 with `provider="kling"`, `reference_videos=[<segment video_url>]`,
 `reference_images=[<edited_frame_url>]`, `aspect_ratio=<aspect_ratio>`,
 `duration=<segment duration>`, `sound=false`, `video_keep_sounds=[true]`,
@@ -157,9 +155,9 @@ combination with `error:1201 sound on is not supported with video input`; use
 `sound=false` plus `video_keep_sounds=[true]` to keep the source video's audio.
 
 If the source was split into multiple windows, call
-`mcp__plugin_pika_pika__edit_concat(video_urls=[<segment outputs in order>])`.
+`edit_concat(video_urls=[<segment outputs in order>])`.
 After concat, run
-`mcp__plugin_pika_pika__edit_audio_replace(video_url=<concat_url>, audio_url=<full_source_audio_url>, duration_policy="video")`
+`edit_audio_replace(video_url=<concat_url>, audio_url=<full_source_audio_url>, duration_policy="video")`
 when the merged output audio is missing, drifted, or discontinuous.
 
 Only try Seedance if the user explicitly asks for it, or if Kling fails and a
@@ -167,7 +165,7 @@ second provider attempt is useful. Use the same segmenting rule and record the
 provider error plainly if Seedance rejects the input or drops speech/action.
 
 Async handling: if any call returns a `{task_id, status}` envelope, poll
-`mcp__plugin_pika_pika__task_status({task_id})` in a tight loop until terminal.
+`task_status({task_id})` in a tight loop until terminal.
 
 ### Step 5 — Audio, duration and identity QA
 
@@ -189,8 +187,8 @@ Before reporting success, verify the generated video against the source:
 If the video is visually acceptable but speech audio is missing, incomplete, or
 drifted, offer one paid repair pass:
 
-1. `mcp__plugin_pika_pika__edit_audio_replace(video_url=<generated_video_url>, audio_url=<full_source_audio_url or segment_audio_url>, duration_policy="video")`
-2. `mcp__plugin_pika_pika__edit_lipsync(video_url=<audio_restored_url>, audio_url=<full_source_audio_url or segment_audio_url>, variant="v2-pro")`
+1. `edit_audio_replace(video_url=<generated_video_url>, audio_url=<full_source_audio_url or segment_audio_url>, duration_policy="video")`
+2. `edit_lipsync(video_url=<audio_restored_url>, audio_url=<full_source_audio_url or segment_audio_url>, variant="v2-pro")`
 
 If the model froze the mouth near the end, do not keep escalating to `sync-3`
 automatically; lip-sync cannot reliably recover a face track with no mouth motion.
@@ -211,8 +209,8 @@ time, QA notes, and follow-up issue.
 | Output looks like the original (no change) | Edited image too similar, OR you passed the raw frame not the edited output | Re-run Step 2 with a more dramatic prompt; confirm the edited frame URL. |
 | Output aspect doesn't match source | Source aspect not in {16:9, 9:16, 1:1, 4:3, 3:4} | Step 1 returns `aspect_ratio`, or `closest_aspect_ratio` on older worker payloads; use it as the closest supported output label and ask the user for exotic aspects. |
 | Provider rejects the normalized video as too large | normalize output can remain too large for 4K/iPhone sources | Retry normalize once with `crf=28`; if still too large, stop and file worker follow-up for a 1080-edge / reference-size cap. |
-| Long source only returns the first short window | The caller normalized once with `max_duration_s=14.8` and skipped segmenting | Split into 14.8s windows, generate each segment, then `mcp__plugin_pika_pika__edit_concat` in order and restore full source audio if needed. |
-| Speaking clip loses sound, drops words, or freezes mouth at the tail | Provider regenerated speech/audio instead of preserving the source, or the face track has no mouth motion to drive | Mark as not pass. Offer one `mcp__plugin_pika_pika__edit_audio_replace` + `mcp__plugin_pika_pika__edit_lipsync` repair pass; if tail mouth motion is frozen, offer trim/regenerate instead. |
+| Long source only returns the first short window | The caller normalized once with `max_duration_s=14.8` and skipped segmenting | Split into 14.8s windows, generate each segment, then `edit_concat` in order and restore full source audio if needed. |
+| Speaking clip loses sound, drops words, or freezes mouth at the tail | Provider regenerated speech/audio instead of preserving the source, or the face track has no mouth motion to drive | Mark as not pass. Offer one `edit_audio_replace` + `edit_lipsync` repair pass; if tail mouth motion is frozen, offer trim/regenerate instead. |
 | Approved frame fix disappears in the video | Provider propagation reintroduced the original artifact | Re-render from a stronger approved frame or mark provider propagation caveat; do not claim the frame correction shipped. |
 | Kling rejects with `error:1201 sound on is not supported with video input` | `sound=true` was passed with a video reference | Retry the Kling call with `sound=false` and `video_keep_sounds=[true]`; do not use `reference_audio` for Kling video input. |
 | Kling output is shorter than the normalized source | Provider returned a shorter render, or the caller accidentally passed a trimmed reference | Do not mark pass. Compare output duration to the normalized source, then regenerate that segment or ask the user for a shorter window. |

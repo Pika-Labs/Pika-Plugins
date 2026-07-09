@@ -20,7 +20,7 @@ pika MCP available in the host. Tool name prefix varies by mount point — use w
 
 ## Cost transparency gate
 
-Before any paid MCP call, call `mcp__claude_ai_pika__identity_balance({verbose: true})` once. Surface the current balance, recent burn rate, and remaining runway, then gate the run with this exact message:
+Before any paid MCP call, call `identity_balance({verbose: true})` once. Surface the current balance, recent burn rate, and remaining runway, then gate the run with this exact message:
 
 > Estimated cost: about 1,500-3,500 credits (~$15-$35) for the GPT-image-2 Jumbotron still, one or two Kling v3-omni pro 15s renders (includes one Step 2 corrective retry with a changed payload), and post-flight analyze_media QA. This exceeds $5, so Reply `proceed` to continue or `cancel` to stop.
 
@@ -41,11 +41,11 @@ Prompt and still-check wording iteration is maximum 2 passes before Step 1. Afte
 
 When any long-running generation call returns a `task_id` with or without an initial status, including `{task_id}`, `{task_id, status: "queued"}`, or an initial `queued`, `running`, or `processing` status, record the task id and start time immediately.
 
-- Call `mcp__claude_ai_pika__task_status({task_id})` in a tight loop until terminal (`completed | failed | cancelled`). No manual sleep and no Bash polling; the worker holds each status call open.
+- Call `task_status({task_id})` in a tight loop until terminal (`completed | failed | cancelled`). No manual sleep and no Bash polling; the worker holds each status call open.
 - Emit ONE visible progress line every 60s while status is `queued`, `running`, or `processing`: `Seedance i2v queued for {N}m {S}s... still processing`. Replace the provider/stage label when polling GPT-image-2 or Kling tasks.
 - On `completed`, unwrap the returned result URL and continue.
 - On `failed` or `cancelled`, surface failure to the user with `task_id`, status, and the last status message.
-- After 15 min total from the original submit, call `mcp__claude_ai_pika__task_cancel({task_id})` if the task is still non-terminal, then surface failure to the user. If cancel reports the task is already terminal, call status once more and report that terminal result.
+- After 15 min total from the original submit, call `task_cancel({task_id})` if the task is still non-terminal, then surface failure to the user. If cancel reports the task is already terminal, call status once more and report that terminal result.
 - Do not submit a duplicate request while the original task is still `queued`, `running`, or `processing`.
 
 ## Stage 0 — Intake
@@ -62,7 +62,7 @@ If one photo is already present, ask only for the missing photo. Running before 
 - **Subject A reference photo** *(required)* — local path or https URL. Save as `state.subject_a_url`.
 - **Subject B reference photo** *(required)* — local path or https URL. Save as `state.subject_b_url`.
 
-For each: if already an `https://…` URL, use it as-is. If local path → `mcp__claude_ai_pika__upload_asset` → PUT bytes to `presigned_url` → use `public_url`. On Claude Desktop, pasted inline images don't reach MCP — ask once for a URL or a `.zip` attachment instead (this is the one allowed clarifier; once both URLs are in, only the cost gate remains).
+For each: if already an `https://…` URL, use it as-is. If local path → `upload_asset` → PUT bytes to `presigned_url` → use `public_url`. On Claude Desktop, pasted inline images don't reach MCP — ask once for a URL or a `.zip` attachment instead (this is the one allowed clarifier; once both URLs are in, only the cost gate remains).
 
 Either subject can be in any visual style — photoreal human, 3D rendered character, designer toy, illustrated avatar, sculpted figurine, etc. The recipe preserves whatever style the reference uses; do not redraw in a different style. **No names are used anywhere** — the Kiss Cam graphic does not have a chyron with names. Just two subjects caught on the Jumbotron.
 
@@ -197,7 +197,7 @@ One-line summary: *"Kiss Cam moment at MSG — 15s, 16:9, 1080p, Kling v3-omni, 
 
 ## Post-flight quality gate
 
-Before declaring success, call `mcp__claude_ai_pika__analyze_media` on `state.kisscam_video_url` and ask for a structured verdict:
+Before declaring success, call `analyze_media` on `state.kisscam_video_url` and ask for a structured verdict:
 
 ```
 Return JSON only: {

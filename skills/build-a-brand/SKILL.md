@@ -12,12 +12,14 @@ description: >
   "build-a-brand".
 argument-hint: <idea-or-url-or-reference-brands> [photos=<paths-or-urls>] [refresh=<existing-brand>] [--quick] [--full] [--config <path>]
 required-capabilities:
-  - mcp__claude_ai_pika__generate_image
-  - mcp__claude_ai_pika__task_status
-  - mcp__claude_ai_pika__identity_balance
+  - generate_image
+  - task_status
+  - identity_balance
 ---
 
 # Build a Brand
+
+> Tools below are **Pika MCP** tools, named bare — call each under whatever prefix your session exposes for the Pika MCP.
 
 Take any input — an idea, a website, a list of reference brands, product photos, or an existing brand to refresh — and produce a usable brand identity.
 
@@ -43,7 +45,7 @@ Do not use a cloud PDF renderer or upload PDFs by default. Save quick PDFs, boar
 
 ## Cost transparency gate
 
-Before any paid MCP call, call `mcp__claude_ai_pika__identity_balance({verbose: true})` once. Surface the current balance, recent burn rate, and remaining runway, then gate the selected depth with this exact message:
+Before any paid MCP call, call `identity_balance({verbose: true})` once. Surface the current balance, recent burn rate, and remaining runway, then gate the selected depth with this exact message:
 
 > Estimated cost: about 100-300 credits (~$1-$3) for quick brand, or about 900-1,500 credits (~$9-$15) for full brand book. These ranges cover gpt-image-2 symbol / mood / touchpoint generation plus one targeted regeneration for failed image QA. Quick brand is usually below $5; full brand book exceeds $5, so Reply `proceed` to continue or `cancel` to stop.
 
@@ -148,7 +150,7 @@ Do not present 2-3 directions or 3 identity options in quick mode. Pick one stro
 
 Create one coherent identity system:
 
-- Logo concept: wordmark + standalone symbol/mark + lockup plan. For a new symbol, use `mcp__claude_ai_pika__generate_image` with `provider="gpt-image-2"` and ship the approved symbol as transparent PNG sizes, not SVG. Wordmark and lockup assets may be SVG because the wordmark is converted from real font text to outlined paths.
+- Logo concept: wordmark + standalone symbol/mark + lockup plan. For a new symbol, use `generate_image` with `provider="gpt-image-2"` and ship the approved symbol as transparent PNG sizes, not SVG. Wordmark and lockup assets may be SVG because the wordmark is converted from real font text to outlined paths.
 - Palette: 4 core colors with roles and hex values.
 - Typography: one characterful display font plus one practical body font, with Google Fonts URLs when available.
 - Voice: 3 tone principles, 3 sample lines, and 5 forbidden words/phrases.
@@ -283,7 +285,7 @@ Build a single 3-page PDF (one page per board, 1200×850 each) and save it to `~
 
 **Each option must include:**
 - **Wordmark** in the brand's display font — use the user's existing wordmark if they have one they like; propose a new one if they need a logo or don't like their current one. A new wordmark must have custom letter treatment: adjusted spacing, ligature, cut, terminal, case, underline, or other ownable detail. It is not just a Google Font typed in a color.
-- **Symbol/mark** — a standalone graphic that lives without the wordmark. Use the user's existing symbol if they have one they like; propose a new one otherwise. Even if the user keeps their wordmark, propose a symbol if they don't have one — favicons and app icons need a non-typographic mark. For new symbols, generate a transparent PNG via `mcp__claude_ai_pika__generate_image` with `provider="gpt-image-2"`. Ask for a clean isolated mark on transparent background, no baked-in letters, no watermark, no mockup, centered in a square. Do not trace the generated symbol to SVG; export PNG sizes from the approved master. Must work at 16×16 AND 512×512.
+- **Symbol/mark** — a standalone graphic that lives without the wordmark. Use the user's existing symbol if they have one they like; propose a new one otherwise. Even if the user keeps their wordmark, propose a symbol if they don't have one — favicons and app icons need a non-typographic mark. For new symbols, generate a transparent PNG via `generate_image` with `provider="gpt-image-2"`. Ask for a clean isolated mark on transparent background, no baked-in letters, no watermark, no mockup, centered in a square. Do not trace the generated symbol to SVG; export PNG sizes from the approved master. Must work at 16×16 AND 512×512.
 - **Seal / badge** — if the option uses a seal, stamp, badge, or monogram, it must be readable and ownable at small and medium sizes. It cannot be a generic circular font lockup, clip-art crest, or low-contrast decorative filler.
 - Tagline (8 words max)
 - Voice sample with visible "VOICE" label (one quoted sentence, 14 words max)
@@ -703,7 +705,7 @@ Do not retry more than once. This is a transient outage, not a brand-direction p
 
 ### Recovering from upstream 4xx / moderation_blocked
 
-If `mcp__claude_ai_pika__generate_image` with `provider="gpt-image-2"` returns an upstream 4xx or `moderation_blocked`:
+If `generate_image` with `provider="gpt-image-2"` returns an upstream 4xx or `moderation_blocked`:
 1. Do NOT retry the same prompt; moderation and most 4xx validation failures are deterministic.
 2. If the failed asset is a generated symbol or lifestyle image, try a fallback provider once only when the brief can survive it: `seedream` for high-resolution brand imagery, or an inline SVG mark for simple geometric symbols.
 3. If the fallback provider also fails or would materially change the brand direction, surface to the user: "Image provider declined this brand-image prompt. Try a less recognizable reference, remove real publication/celebrity cues, or approve an SVG/simple-mark alternative."
@@ -727,7 +729,7 @@ Each async MCP call returns either an inline result or `{task_id, status}` for p
 - gpt-image-2 high quality: 3 min per call
 - Seedream image generation: 3 min per call
 
-Use whichever is earlier: the provider's ceiling x 1.5 or any skill-specific hard polling cap. If `mcp__claude_ai_pika__task_status` returns `status: "processing"` or `status: "queued"` past that earlier limit, call `mcp__claude_ai_pika__task_cancel({task_id})` and surface: "Provider taking unusually long; aborting. Try again."
+Use whichever is earlier: the provider's ceiling x 1.5 or any skill-specific hard polling cap. If `task_status` returns `status: "processing"` or `status: "queued"` past that earlier limit, call `task_cancel({task_id})` and surface: "Provider taking unusually long; aborting. Try again."
 
 | Symptom | Cause | Fix |
 |---|---|---|

@@ -29,7 +29,7 @@ argument-hint: <url> [avatar_url=<url>] [provider=seedance|kling] [aspect_ratio=
 
 ## Cost transparency gate
 
-Before any paid MCP call, call `mcp__claude_ai_pika__identity_balance({verbose: true})` once. Surface the current balance, recent burn rate, and remaining runway, then gate the run with this exact message:
+Before any paid MCP call, call `identity_balance({verbose: true})` once. Surface the current balance, recent burn rate, and remaining runway, then gate the run with this exact message:
 
 > Estimated cost: about 4,000 credits (~$40) for a typical Seedance UGC ad with fallback/retry budget. This exceeds $5, so Reply `proceed` to continue or `cancel` to stop.
 
@@ -62,11 +62,11 @@ Script and prompt iteration is maximum 2 passes. After the max 2 passes, ship wh
 
 When any long-running generation or edit call returns a `task_id` with or without an initial status, including `{task_id}`, `{task_id, status: "queued"}`, or an initial `queued`, `running`, or `processing` status, record the task id and start time immediately.
 
-- Call `mcp__claude_ai_pika__task_status({task_id})` in a tight loop until terminal (`completed | failed | cancelled`). No manual sleep and no Bash polling; the worker holds each status call open.
+- Call `task_status({task_id})` in a tight loop until terminal (`completed | failed | cancelled`). No manual sleep and no Bash polling; the worker holds each status call open.
 - Emit ONE visible progress line every 60s while status is `queued`, `running`, or `processing`: `Seedance i2v queued for {N}m {S}s... still processing`. Replace the provider/stage label when polling Kling, GPT-image-2, caption, or edit tasks.
 - On `completed`, unwrap the returned result URL and continue.
 - On `failed` or `cancelled`, surface failure to the user with `task_id`, status, and the last status message.
-- After 15 min total from the original submit, call `mcp__claude_ai_pika__task_cancel({task_id})` if the task is still non-terminal, then surface failure to the user. If cancel reports the task is already terminal, call status once more and report that terminal result.
+- After 15 min total from the original submit, call `task_cancel({task_id})` if the task is still non-terminal, then surface failure to the user. If cancel reports the task is already terminal, call status once more and report that terminal result.
 - Do not submit a duplicate request while the original task is still `queued`, `running`, or `processing`.
 - Async polling budget: one active task with one 15 min polling window. After the polling cap is exhausted, cancel the task and surface failure instead of submitting another paid render unless a later step explicitly allows a separate capped retry after the original task is terminal.
 
@@ -122,9 +122,9 @@ Every numeric spec claim (`W`, `mAh`, `%`, minutes, ports, price, dimensions, co
 
 ### 2.5 Avatar-type probe for creator portraits
 
-Run this probe before Step 7 and before any paid `mcp__claude_ai_pika__generate_reference_video` call. It applies to caller-supplied `avatar_url`, the built-in fallback, or any creator portrait chosen as `@Image1`. The built-in fallback is already a non-IP stylized creator, but still document its source in the final summary.
+Run this probe before Step 7 and before any paid `generate_reference_video` call. It applies to caller-supplied `avatar_url`, the built-in fallback, or any creator portrait chosen as `@Image1`. The built-in fallback is already a non-IP stylized creator, but still document its source in the final summary.
 
-Call `mcp__claude_ai_pika__analyze_media` once:
+Call `analyze_media` once:
 
 ```
 query: "Classify this image for paid video generation. Is it a photograph of a real human face, an AI-generated realistic portrait, a stylized / illustrated character, or a recognizable trademarked / copyrighted character such as Batman, Pikachu, or Mickey Mouse? Return strict JSON only: { \"avatar_type\": \"real_human\" | \"ai_realistic\" | \"stylized_illustrated\" | \"recognized_ip\", \"recognized_character\": string | null, \"moderation_risk\": \"low\" | \"medium\" | \"high\", \"recommendation\": \"proceed\" | \"warn\" | \"reject\" }. Use null for `recognized_character` when no specific character is recognized; never write \"none\", \"unknown\", or explanatory prose in that field."
@@ -290,10 +290,10 @@ Rules:
 - Choose `overlay_font_color` for contrast against the generated frame, not brand aesthetics. If the screenshot/product surface is light or unknown, use `#111111`; use `#ffffff` only on clearly dark footage. Post-flight OCR must be able to read the overlay.
 - Do not use this step for captions or per-word subtitles; Step 9 handles captions with one `add_captions` call.
 
-Call `mcp__claude_ai_pika__edit_text_overlay` once for the brand name:
+Call `edit_text_overlay` once for the brand name:
 
 ```
-mcp__claude_ai_pika__edit_text_overlay(
+edit_text_overlay(
   video_url: video_url,
   text: brand_overlay_text,
   position: "top_left",
@@ -304,10 +304,10 @@ mcp__claude_ai_pika__edit_text_overlay(
 )
 ```
 
-Save the returned URL as `brand_guarded_url`. If `grounded_spec_overlay_text` is non-empty, call `mcp__claude_ai_pika__edit_text_overlay` once more on `brand_guarded_url`:
+Save the returned URL as `brand_guarded_url`. If `grounded_spec_overlay_text` is non-empty, call `edit_text_overlay` once more on `brand_guarded_url`:
 
 ```
-mcp__claude_ai_pika__edit_text_overlay(
+edit_text_overlay(
   video_url: brand_guarded_url,
   text: grounded_spec_overlay_text,
   position: "top_right",
@@ -318,18 +318,18 @@ mcp__claude_ai_pika__edit_text_overlay(
 )
 ```
 
-Save that returned URL as `guarded_video_url`. If no spec overlay is needed, set `guarded_video_url = brand_guarded_url`. If either overlay call returns `{ task_id }`, poll `mcp__claude_ai_pika__task_status` using the long-running task contract. If the deterministic overlay fails, stop and surface the failure instead of delivering a video whose only readable brand/spec text depends on Seedance.
+Save that returned URL as `guarded_video_url`. If no spec overlay is needed, set `guarded_video_url = brand_guarded_url`. If either overlay call returns `{ task_id }`, poll `task_status` using the long-running task contract. If the deterministic overlay fails, stop and surface the failure instead of delivering a video whose only readable brand/spec text depends on Seedance.
 
 Run frame-level OCR on the overlay window before captions. Video-level analysis can miss short-lived top-corner overlays, so extract one frame while both overlays should be visible:
 
 ```
-mcp__claude_ai_pika__extract_frame(
+extract_frame(
   video_url: guarded_video_url,
   time_s: grounded_spec_overlay_text ? 7 : 1
 )
 # Save returned url as overlay_qa_frame_url
 
-mcp__claude_ai_pika__analyze_media(
+analyze_media(
   media: overlay_qa_frame_url,
   query: "Expected brand text: ${brand_overlay_text}
 Expected spec text: ${grounded_spec_overlay_text}
@@ -357,7 +357,7 @@ Capture the returned URL → `final_url`.
 
 Use optional `variants=9:16,16:9,1:1` when the user wants vertical short-form, landscape, and square feed outputs from the same UGC ad. `variants` overrides `aspect_ratio` to native `9:16`; `aspect_ratio=3:4` is single-output only and must not be combined with variants. If the user requests `variants` with `aspect_ratio=3:4`, use the `9:16` native variant flow and state that `3:4` applies only to single-output runs.
 
-Call `mcp__claude_ai_pika__generate_reference_video` once for the native `9:16` ad, then run Step 8 deterministic overlays once to produce `guarded_video_url`. Do not re-run product fetch, avatar analysis, screenshot capture, avatar cartoonization, Seedance/Kling generation, deterministic overlays, or any other expensive provider call for extra variants.
+Call `generate_reference_video` once for the native `9:16` ad, then run Step 8 deterministic overlays once to produce `guarded_video_url`. Do not re-run product fetch, avatar analysis, screenshot capture, avatar cartoonization, Seedance/Kling generation, deterministic overlays, or any other expensive provider call for extra variants.
 
 Do not run the single-output `add_captions` call from step 9. Build raw `variant_sources` first, then build a flat `variant_urls` object:
 
@@ -370,10 +370,10 @@ Do not run the single-output `add_captions` call from step 9. Build raw `variant
 ```
 
 - For `9:16`, set `variant_sources["9:16"] = guarded_video_url`.
-- For `16:9` and `1:1`, call `mcp__claude_ai_pika__edit_reframe(video_url=guarded_video_url, target_aspect="<aspect>", fill_mode="blur")` and save each returned URL into `variant_sources`. Blur fill preserves the full native vertical ad over a blurred background instead of cutting off the creator or captions.
+- For `16:9` and `1:1`, call `edit_reframe(video_url=guarded_video_url, target_aspect="<aspect>", fill_mode="blur")` and save each returned URL into `variant_sources`. Blur fill preserves the full native vertical ad over a blurred background instead of cutting off the creator or captions.
 - If `captions=true`, caption after reframe: run `add_captions` on each `variant_sources` value so burned captions are positioned for that aspect, then save those captioned URLs into `variant_urls`. If `captions=false`, save the uncaptioned native and reframed URLs directly into `variant_urls`.
 - Set `final_url = variant_urls["9:16"]` so the primary deliverable matches the native requested variant.
-- Treat `mcp__claude_ai_pika__edit_reframe` and per-variant caption burn as the cheap final composite / reframe stage. If a reframe fails, return the successful variant URLs plus the failed aspect and tool error; do not resubmit the expensive generation.
+- Treat `edit_reframe` and per-variant caption burn as the cheap final composite / reframe stage. If a reframe fails, return the successful variant URLs plus the failed aspect and tool error; do not resubmit the expensive generation.
 
 > **Heads up — variants use blur fill.** `16:9` and `1:1` keep the full native `9:16` ad visible over a blurred background. Keep the creator, product, and captions centered for readability, but do not describe these outputs as cropped variants.
 
@@ -383,7 +383,7 @@ Return `final_url` on one line, plus a one-line summary: which category ran, whe
 
 ## Post-flight quality gate
 
-Before declaring success, call `mcp__claude_ai_pika__analyze_media` on `final_url` when captions were burned, or on `guarded_video_url` when `captions=false`, and ask for a structured verdict. If `variants` was requested, run the same gate on each `variant_urls` value and key any warning by aspect ratio.
+Before declaring success, call `analyze_media` on `final_url` when captions were burned, or on `guarded_video_url` when `captions=false`, and ask for a structured verdict. If `variants` was requested, run the same gate on each `variant_urls` value and key any warning by aspect ratio.
 
 Before calling `analyze_media`, substitute concrete expectations into the query: include exact `brand_name`, exact `product_name`, and the actual `claims_allowlist` values as a JSON array. Do not leave placeholders for the model to infer.
 

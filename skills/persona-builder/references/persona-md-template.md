@@ -55,7 +55,7 @@ Be specific about what's amplified, what's filtered, and why.]
 
 **Who's already winning at your size:**
 
-Use the verified-live path only if each handle/count was checked during this run via `mcp__plugin_pika_pika__scrape_social` or another live supported source:
+Use the verified-live path only if each handle/count was checked during this run via `scrape_social` or another live supported source:
 - **@[verified handle]** ([verified follower tier/count]) — [one sentence on what makes them work]
 - **@[verified handle]** ([verified follower tier/count]) — [one sentence]
 - **@[verified handle]** ([verified follower tier/count]) — [one sentence]

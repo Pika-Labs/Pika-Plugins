@@ -18,7 +18,7 @@ Fixed-recipe skill — the prompts below are calibrated. Substitute the username
 
 ## Cost transparency gate
 
-Before any paid MCP call, call `mcp__claude_ai_pika__identity_balance({verbose: true})` once. Surface the current balance, recent burn rate, and remaining runway, then gate the run with this exact message:
+Before any paid MCP call, call `identity_balance({verbose: true})` once. Surface the current balance, recent burn rate, and remaining runway, then gate the run with this exact message:
 
 > Estimated cost: about 3,000-5,500 credits (~$30-$55) for the GPT-image-2 broadcast still, one or two Kling v3-omni pro 15s renders (includes one Step 2 corrective retry with a changed payload), and post-flight analyze_media QA. This exceeds $5, so Reply `proceed` to continue or `cancel` to stop.
 
@@ -59,9 +59,9 @@ After both answers are in, run the Cost transparency gate, then echo one short c
 
 ### Stage 0.5 — Avatar-type probe for the reference image
 
-Before any paid `mcp__claude_ai_pika__generate_image_edit` or `mcp__claude_ai_pika__generate_reference_video` call, run this Avatar-type probe on `state.reference_image_url`. The baseball-trend recipe turns the subject into a fake broadcast guest, so IP-derived avatars and celebrity/public-figure references are especially likely to fail moderation.
+Before any paid `generate_image_edit` or `generate_reference_video` call, run this Avatar-type probe on `state.reference_image_url`. The baseball-trend recipe turns the subject into a fake broadcast guest, so IP-derived avatars and celebrity/public-figure references are especially likely to fail moderation.
 
-Call `mcp__claude_ai_pika__analyze_media` once:
+Call `analyze_media` once:
 
 ```
 query: "Classify this image for paid video generation. Is it a photograph of a real human face, an AI-generated realistic portrait, a stylized / illustrated character, or a recognizable trademarked / copyrighted character such as Batman, Pikachu, or Mickey Mouse? Return strict JSON only: { \"avatar_type\": \"real_human\" | \"ai_realistic\" | \"stylized_illustrated\" | \"recognized_ip\", \"recognized_character\": string | null, \"moderation_risk\": \"low\" | \"medium\" | \"high\", \"recommendation\": \"proceed\" | \"warn\" | \"reject\" }. Use null for `recognized_character` when no specific character is recognized; never write \"none\", \"unknown\", or explanatory prose in that field."
@@ -81,18 +81,18 @@ Two Pika MCP stages, sequential. Primary engines are locked: `gpt-image-2` for t
 
 When any long-running generation call returns a `task_id` with or without an initial status, including `{task_id}`, `{task_id, status: "queued"}`, or an initial `queued`, `running`, or `processing` status, record the task id and start time immediately.
 
-- Call `mcp__claude_ai_pika__task_status({task_id})` in a tight loop until terminal (`completed | failed | cancelled`). No manual sleep and no Bash polling; the worker holds each status call open.
+- Call `task_status({task_id})` in a tight loop until terminal (`completed | failed | cancelled`). No manual sleep and no Bash polling; the worker holds each status call open.
 - Emit ONE visible progress line every 60s while status is `queued`, `running`, or `processing`: `Seedance i2v queued for {N}m {S}s... still processing`. Replace the provider/stage label when polling GPT-image-2 or Kling tasks.
 - On `completed`, unwrap the returned result URL and continue.
 - On `failed` or `cancelled`, surface failure to the user with `task_id`, status, and the last status message.
-- After 15 min total from the original submit, call `mcp__claude_ai_pika__task_cancel({task_id})` if the task is still non-terminal, then surface failure to the user. If cancel reports the task is already terminal, call status once more and report that terminal result.
+- After 15 min total from the original submit, call `task_cancel({task_id})` if the task is still non-terminal, then surface failure to the user. If cancel reports the task is already terminal, call status once more and report that terminal result.
 - Do not submit a duplicate request while the original task is still `queued`, `running`, or `processing`.
 
 ### Step 1 — Broadcast still (`generate_image_edit`)
 
 The chyron + scorebug get baked into the still at frame 0 (load-bearing — when Kling is asked to "pop in" the chyron mid-clip it appears at second 4–5 with a visible flash and breaks the trend; baking it into the first frame makes Kling treat it as pixel-locked burned-in UI).
 
-Call `mcp__claude_ai_pika__generate_image_edit` with:
+Call `generate_image_edit` with:
 
 - `provider`: `gpt-image-2`
 - `images`: `[state.reference_image_url]`
@@ -131,7 +131,7 @@ Retry budget: Step 1 still generation gets at most 3 total attempts, including t
 
 `image_types: ["first_frame"]` locks `state.broadcast_still_url` as Kling's literal frame 0, keeping the chyron + scorebug pixel-static for the full 15s.
 
-Call `mcp__claude_ai_pika__generate_reference_video` with:
+Call `generate_reference_video` with:
 
 - `provider`: `kling`
 - `kling_model`: `kling-v3-omni`
@@ -190,7 +190,7 @@ One-line summary: *"Behind-home-plate cutaway for {username} — 15s, 16:9, 1080
 
 ## Post-flight quality gate
 
-Before declaring success, call `mcp__claude_ai_pika__analyze_media` on `state.broadcast_video_url` and ask for a structured verdict:
+Before declaring success, call `analyze_media` on `state.broadcast_video_url` and ask for a structured verdict:
 
 ```
 Return JSON only: {

@@ -14,30 +14,32 @@ description: >-
   "content-director".
 argument-hint: "<instagram-or-tiktok-handle> [talking|pov|dance|duet]"
 required-capabilities:
-  - mcp__plugin_pika_pika__analyze_media
-  - mcp__plugin_pika_pika__capture_website
-  - mcp__plugin_pika_pika__create_teleprompter_handoff
-  - mcp__plugin_pika_pika__add_captions
-  - mcp__plugin_pika_pika__edit_audio_replace
-  - mcp__plugin_pika_pika__edit_audio_mix
-  - mcp__plugin_pika_pika__edit_audio_stitch
-  - mcp__plugin_pika_pika__edit_audio_trim
-  - mcp__plugin_pika_pika__edit_concat
-  - mcp__plugin_pika_pika__edit_reframe
-  - mcp__plugin_pika_pika__edit_split_screen
-  - mcp__plugin_pika_pika__edit_trim
-  - mcp__plugin_pika_pika__edit_transcode
-  - mcp__plugin_pika_pika__edit_video_upscale
-  - mcp__plugin_pika_pika__extract_audio_from_video
-  - mcp__plugin_pika_pika__generate_reference_video
-  - mcp__plugin_pika_pika__probe_media
-  - mcp__plugin_pika_pika__render_html_animation
-  - mcp__plugin_pika_pika__scrape_social
-  - mcp__plugin_pika_pika__task_status
-  - mcp__plugin_pika_pika__transcribe_audio
+  - analyze_media
+  - capture_website
+  - create_teleprompter_handoff
+  - add_captions
+  - edit_audio_replace
+  - edit_audio_mix
+  - edit_audio_stitch
+  - edit_audio_trim
+  - edit_concat
+  - edit_reframe
+  - edit_split_screen
+  - edit_trim
+  - edit_transcode
+  - edit_video_upscale
+  - extract_audio_from_video
+  - generate_reference_video
+  - probe_media
+  - render_html_animation
+  - scrape_social
+  - task_status
+  - transcribe_audio
 ---
 
 # Content Director — Bundle (format router)
+
+> Tools below are **Pika MCP** tools, named bare — call each under whatever prefix your session exposes for the Pika MCP.
 
 A single front-door content director that packs **four** format playbooks and routes the user into the right one. Each format lives as a reference file under `formats/` — once the format is locked, **read that file and follow it verbatim**; the front door itself only resolves the format:
 
@@ -50,7 +52,7 @@ A single front-door content director that packs **four** format playbooks and ro
 
 **This skill ONLY bundles these four.** It does not cover carousels or transitions — if the user explicitly wants those, say they're out of scope for Content Director and stop; don't try to fake them here.
 
-**Teleprompter handoff (talking + duet only).** Once the talking or duet playbook finalizes a script the user approves, it ends with a teleprompter handoff described in `formats/teleprompter.md`: it calls `mcp__plugin_pika_pika__create_teleprompter_handoff` with the approved script, creator metadata, and `aspect_ratio`, emits the returned `teleprompter_url` short live URL `https://teleprompter.pika.bot/r?t=...`, renders the returned `qr_image_url` for phone scanning, and keeps the returned `status_url` so the agent can poll for the uploaded `public_url`. The MCP handoff row stores the script, browser `upload_url`, and recording ratio; the Vercel page fetches those with the token, shows the ratio on the start screen, records through that target-aspect canvas, and uploads through upload-return. It falls back to Share/Save if upload fails. Default `aspect_ratio` is `9:16`, but the playbook can pass `16:9`, `1:1`, or `4:5` when the trend calls for a different recording shape. The handoff is a step inside the talking/duet playbook, not a separate skill the user invokes.
+**Teleprompter handoff (talking + duet only).** Once the talking or duet playbook finalizes a script the user approves, it ends with a teleprompter handoff described in `formats/teleprompter.md`: it calls `create_teleprompter_handoff` with the approved script, creator metadata, and `aspect_ratio`, emits the returned `teleprompter_url` short live URL `https://teleprompter.pika.bot/r?t=...`, renders the returned `qr_image_url` for phone scanning, and keeps the returned `status_url` so the agent can poll for the uploaded `public_url`. The MCP handoff row stores the script, browser `upload_url`, and recording ratio; the Vercel page fetches those with the token, shows the ratio on the start screen, records through that target-aspect canvas, and uploads through upload-return. It falls back to Share/Save if upload fails. Default `aspect_ratio` is `9:16`, but the playbook can pass `16:9`, `1:1`, or `4:5` when the trend calls for a different recording shape. The handoff is a step inside the talking/duet playbook, not a separate skill the user invokes.
 
 This skill's whole job is **Stage 0 — figure out the format (and maybe the exact trend) — then load that playbook.** Everything after is the format playbook's pipeline, run verbatim. Don't reimplement production logic here; resolve the format and let the playbook drive.
 
@@ -90,7 +92,7 @@ Once a reply arrives:
 
 ### Step 0b — Recommend a format from their profile
 
-Scrape the profile **once** (`mcp__plugin_pika_pika__scrape_social` on `state.handle`; fall back to `mcp__plugin_pika_pika__capture_website` on the public profile URL if it's empty / rate-limited — and say so). Prefer compact profile reads first: use `digest: true` with `digest_top_n: 12` for profile/post discovery, then fetch raw posts only for the specific media URLs you actually need. Pull the most recent 12–20 posts only when the compact result is not enough.
+Scrape the profile **once** (`scrape_social` on `state.handle`; fall back to `capture_website` on the public profile URL if it's empty / rate-limited — and say so). Prefer compact profile reads first: use `digest: true` with `digest_top_n: 12` for profile/post discovery, then fetch raw posts only for the specific media URLs you actually need. Pull the most recent 12–20 posts only when the compact result is not enough.
 
 **Identity-confirmation gate before profiling.** Before you synthesize `state.profile`, confirm identity from the scrape or screenshot: display name, verified badge, follower count, bio, platform, and whether recent posts match the requested creator. Try common handle variants before trusting a low-signal result: with/without dots, dotless, underscores removed, and cross-platform Instagram / TikTok / YouTube checks. Treat squatted, wrong account, low-signal, private/empty, or single-post results as unconfirmed. When unconfirmed, stop and ask **"Is this you?"** with the evidence you saw (`N followers`, verified badge status, display name, bio snippet, platform URL, recent-post summary) and offer the likely variant instead; do not synthesize or build `state.profile` before identity is confirmed. Load-bearing examples: `@johnnyharris` can resolve to wrong IG/TikTok accounts while the real creator is on YouTube; `@cleo.abram` should trigger a dotless `@cleoabram` variant check.
 
@@ -118,7 +120,7 @@ Use each format's own research method and gate:
 - **dance** — a currently-viral dance with a concrete, openable reference-clip URL whose choreography we can copy.
 - **duet** — a viral, recognizable ORIGINAL worth reacting to; proof is the **original's ≥500K plays**, not a replication wave. See the duet reaction model.
 
-Research order (don't skip — this order is the gate): discover named trends this week via WebSearch across 3+ creator-tool blogs (Later / Hootsuite / Buffer / OpusClip / Manychat) → capture each fingerprint (audio URL or verbatim opener) → verify replicators / play counts via `mcp__plugin_pika_pika__scrape_social` (`tiktok/hashtag`, `tiktok/keyword`, `tiktok/trending-feed` with `params.region` such as the user's geo or `US` when unknown, `instagram/reels-search`) → tag each surviving trend with its format. Drop anything that can't show the receipts. **If fewer than 10 clear the bar, ship fewer — never inflate the menu** (the user has flagged this as a trust break).
+Research order (don't skip — this order is the gate): discover named trends this week via WebSearch across 3+ creator-tool blogs (Later / Hootsuite / Buffer / OpusClip / Manychat) → capture each fingerprint (audio URL or verbatim opener) → verify replicators / play counts via `scrape_social` (`tiktok/hashtag`, `tiktok/keyword`, `tiktok/trending-feed` with `params.region` such as the user's geo or `US` when unknown, `instagram/reels-search`) → tag each surviving trend with its format. Drop anything that can't show the receipts. **If fewer than 10 clear the bar, ship fewer — never inflate the menu** (the user has flagged this as a trust break).
 
 Card format:
 
@@ -153,29 +155,29 @@ Once `state.format` is known, **read the matching playbook file and follow it ve
 
 Because this registered skill loads the format playbooks instead of registering separate slash skills, its `required-capabilities` frontmatter declares the union of MCP tools those playbooks may invoke:
 
-- `mcp__plugin_pika_pika__scrape_social`
-- `mcp__plugin_pika_pika__task_status`
-- `mcp__plugin_pika_pika__capture_website`
-- `mcp__plugin_pika_pika__transcribe_audio`
-- `mcp__plugin_pika_pika__analyze_media`
-- `mcp__plugin_pika_pika__create_teleprompter_handoff`
-- `mcp__plugin_pika_pika__probe_media`
-- `mcp__plugin_pika_pika__edit_trim`
-- `mcp__plugin_pika_pika__edit_concat`
-- `mcp__plugin_pika_pika__edit_reframe`
-- `mcp__plugin_pika_pika__edit_transcode`
-- `mcp__plugin_pika_pika__edit_video_upscale`
-- `mcp__plugin_pika_pika__edit_audio_replace`
-- `mcp__plugin_pika_pika__edit_audio_mix`
-- `mcp__plugin_pika_pika__edit_audio_stitch`
-- `mcp__plugin_pika_pika__edit_audio_trim`
-- `mcp__plugin_pika_pika__edit_split_screen`
-- `mcp__plugin_pika_pika__add_captions`
-- `mcp__plugin_pika_pika__extract_audio_from_video`
-- `mcp__plugin_pika_pika__generate_reference_video`
-- `mcp__plugin_pika_pika__render_html_animation`
+- `scrape_social`
+- `task_status`
+- `capture_website`
+- `transcribe_audio`
+- `analyze_media`
+- `create_teleprompter_handoff`
+- `probe_media`
+- `edit_trim`
+- `edit_concat`
+- `edit_reframe`
+- `edit_transcode`
+- `edit_video_upscale`
+- `edit_audio_replace`
+- `edit_audio_mix`
+- `edit_audio_stitch`
+- `edit_audio_trim`
+- `edit_split_screen`
+- `add_captions`
+- `extract_audio_from_video`
+- `generate_reference_video`
+- `render_html_animation`
 
-Any loaded playbook MCP worker can return `{task_id, status}` instead of an inline URL/result when the server budget expires or a render runs in the background. When that happens, immediately call `mcp__plugin_pika_pika__task_status(task_id=<task_id>)` in a tight loop (no Bash, no sleep) until `status` is `completed`, `failed`, or `cancelled`; when completed, continue the playbook with the returned `result` field as that tool's output. Do not proceed with placeholder URLs while a task is still `queued` or `running`.
+Any loaded playbook MCP worker can return `{task_id, status}` instead of an inline URL/result when the server budget expires or a render runs in the background. When that happens, immediately call `task_status(task_id=<task_id>)` in a tight loop (no Bash, no sleep) until `status` is `completed`, `failed`, or `cancelled`; when completed, continue the playbook with the returned `result` field as that tool's output. Do not proceed with placeholder URLs while a task is still `queued` or `running`.
 
 Read the file from the skill directory, carry `state.handle` and `state.brief` into it, and run its pipeline.
 

@@ -152,7 +152,7 @@ GPT renders atmosphere: rooms, weather, light, settings, types of objects, publi
 
 ## HTML/CSS composite assembly
 
-Build mood-board composites as deterministic HTML/CSS and render with `mcp__plugin_pika_pika__html_to_png`; do not ask gpt-image-2 to render a mood-board grid.
+Build mood-board composites as deterministic HTML/CSS and render with `html_to_png`; do not ask gpt-image-2 to render a mood-board grid.
 
 **Title-banded board:**
 - Canvas: about 1920×1224 PNG (1920×1080 tile area + 120-144px header band).

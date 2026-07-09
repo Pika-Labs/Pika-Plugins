@@ -22,7 +22,7 @@ user had to copy the script into a phone teleprompter app, set up framing, fight
 speed, and remember to send the result back.
 
 The handoff replaces that step with a one-tap short link. The agent calls
-`mcp__plugin_pika_pika__create_teleprompter_handoff` and sends the returned URL:
+`create_teleprompter_handoff` and sends the returned URL:
 
 ```
 https://teleprompter.pika.bot/r?t=...
@@ -39,7 +39,7 @@ manually.
 
 ### Upload-return flow
 
-The canonical playbook handoff uses `mcp__plugin_pika_pika__create_teleprompter_handoff`. **Do NOT pass raw `upload_asset` presigned URLs** to the browser:
+The canonical playbook handoff uses `create_teleprompter_handoff`. **Do NOT pass raw `upload_asset` presigned URLs** to the browser:
 short-lived presigned URLs can expire during a realistic recording session (open link → adjust
 speed → 2-3 takes → preview → upload), and they put a storage bearer URL in front of the user before
 the user is ready to upload.
@@ -87,7 +87,7 @@ step:
 
 1. Create the teleprompter handoff:
    ```python
-   handoff = mcp__plugin_pika_pika__create_teleprompter_handoff(
+   handoff = create_teleprompter_handoff(
        script=state.script_text,
        handle=state.handle,
        trend=state.pick.name,

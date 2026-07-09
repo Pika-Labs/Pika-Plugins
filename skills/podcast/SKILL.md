@@ -29,7 +29,7 @@ argument-hint: <url-or-topic> [bg_img=] [host_a_img=] [host_b_img=] [voice_a=] [
 
 ## Cost transparency gate
 
-Before any paid MCP call, call `mcp__claude_ai_pika__identity_balance({verbose: true})` once. Surface the current balance, recent burn rate, and remaining runway, then gate the run with this exact message:
+Before any paid MCP call, call `identity_balance({verbose: true})` once. Surface the current balance, recent burn rate, and remaining runway, then gate the run with this exact message:
 
 > Estimated cost: about 6,000-9,000 credits (~$60-$90) for four Kling v3-omni pro 15s acts, optional missing-asset image generation, one act corrective retry, concat, and post-flight analyze_media QA. This exceeds $5, so Reply `proceed` to continue or `cancel` to stop.
 
@@ -71,11 +71,11 @@ If the user names a real public figure without attaching anything, do NOT auto-g
 
 When any long-running generation or edit call returns a `task_id` with or without an initial status, including `{task_id}`, `{task_id, status: "queued"}`, or an initial `queued`, `running`, or `processing` status, record the task id and start time immediately.
 
-- Call `mcp__claude_ai_pika__task_status({task_id})` in a tight loop until terminal (`completed | failed | cancelled`). No manual sleep and no Bash polling; the worker holds each status call open.
+- Call `task_status({task_id})` in a tight loop until terminal (`completed | failed | cancelled`). No manual sleep and no Bash polling; the worker holds each status call open.
 - Emit ONE visible progress line every 60s while status is `queued`, `running`, or `processing`: `Seedance i2v queued for {N}m {S}s... still processing`. Replace the provider/stage label when polling Kling, image generation, clone voice, or concat tasks.
 - On `completed`, unwrap the returned result URL and continue.
 - On `failed` or `cancelled`, surface failure to the user with `task_id`, status, and the last status message.
-- After 15 min total from the original submit, call `mcp__claude_ai_pika__task_cancel({task_id})` if the task is still non-terminal, then surface failure to the user. If cancel reports the task is already terminal, call status once more and report that terminal result.
+- After 15 min total from the original submit, call `task_cancel({task_id})` if the task is still non-terminal, then surface failure to the user. If cancel reports the task is already terminal, call status once more and report that terminal result.
 - Do not submit a duplicate request while the original task is still `queued`, `running`, or `processing`.
 
 ## Steps
@@ -205,7 +205,7 @@ Return the final video URL and a one-sentence verdict. **Do not call `add_captio
 
 ## Post-flight quality gate
 
-Before declaring success, call `mcp__claude_ai_pika__analyze_media` on the final video URL and ask for a structured verdict:
+Before declaring success, call `analyze_media` on the final video URL and ask for a structured verdict:
 
 ```
 Return JSON only: {
@@ -298,7 +298,7 @@ If the captured page is visibly only above-the-fold navigation with no article/c
 
 ### `upload_asset` network / auth failure
 
-If `mcp__claude_ai_pika__upload_asset` fails while converting local host refs, voice samples, or source media to hosted URLs, do not continue with local filesystem paths. Retry once only for the 5xx or 429 classes above. For `auth_error`, unsupported MIME, network failure, or repeated upload failure, ask for a hosted URL or a supported replacement file.
+If `upload_asset` fails while converting local host refs, voice samples, or source media to hosted URLs, do not continue with local filesystem paths. Retry once only for the 5xx or 429 classes above. For `auth_error`, unsupported MIME, network failure, or repeated upload failure, ask for a hosted URL or a supported replacement file.
 
 ### Long-running `task_status` exceeding ceiling
 
@@ -307,7 +307,7 @@ Each async MCP call returns either an inline result or `{task_id, status}` for p
 - Voice clone: 5 min per call
 - Edit/concat: 5 min per call
 
-Use whichever is earlier: the provider's ceiling x 1.5 or any skill-specific hard polling cap, including the 15 min total cap in the Long-running task_status polling contract above. If `mcp__claude_ai_pika__task_status` returns `status: "processing"` or `status: "queued"` past that earlier limit, call `mcp__claude_ai_pika__task_cancel({task_id})` and surface: "Provider taking unusually long; aborting. Try again."
+Use whichever is earlier: the provider's ceiling x 1.5 or any skill-specific hard polling cap, including the 15 min total cap in the Long-running task_status polling contract above. If `task_status` returns `status: "processing"` or `status: "queued"` past that earlier limit, call `task_cancel({task_id})` and surface: "Provider taking unusually long; aborting. Try again."
 
 ## Examples
 

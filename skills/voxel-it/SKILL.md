@@ -16,12 +16,14 @@ description: >
   background", "voxel food", "minecraft my photo", "put me in minecraft but keep me
   real", "loot tags on my food", "minecraft everything but the person", "/voxel-it".
 required-capabilities:
-  - mcp__plugin_pika_pika__upload_asset
-  - mcp__plugin_pika_pika__generate_image_edit
-  - mcp__plugin_pika_pika__remove_background
+  - upload_asset
+  - generate_image_edit
+  - remove_background
 ---
 
 # voxel-it
+
+> Tools below are **Pika MCP** tools, named bare — call each under whatever prefix your session exposes for the Pika MCP.
 
 One skill, one engine: turn a photo into a Minecraft screenshot where the
 **human stays photoreal** and the rest of the frame becomes **voxel blocks**,
@@ -179,14 +181,14 @@ Working dir: `<project>/voxel-it/<run-id>/` — each run its own folder.
 
 ### Step 2 — Upload to Pika CDN
 
-`mcp__plugin_pika_pika__upload_asset({filename, mime_type, size_bytes, sha256})`
+`upload_asset({filename, mime_type, size_bytes, sha256})`
 → PUT the bytes to `presigned_url` with the **exact** `content_type` from the
 response (`curl -X PUT -H "content-type: <type>" --upload-file <file>
 "<presigned_url>"`, expect `HTTP 200`) → use the returned `public_url`.
 
 ### Step 3 — Run the edit (branch on the Step 0 mode)
 
-`mcp__plugin_pika_pika__generate_image_edit` with `provider="gpt-image-2"`,
+`generate_image_edit` with `provider="gpt-image-2"`,
 `quality="high"`, `output_format="png"`, `background=true` (poll), the CDN URL in
 `images`, and `aspect_ratio: "auto"` — the worker measures the
 reference and matches its orientation, so you never hand-pick or recompute the
@@ -354,7 +356,7 @@ free, no regen) and re-view. Stills only.
 | Cropped vs source | Pass `aspect_ratio: "auto"` — the worker matches the reference's orientation. |
 | Face drifted | Expected (maskless recipe). Advanced fix below. |
 
-**Advanced — guaranteed identity (off-recipe).** `mcp__plugin_pika_pika__remove_background` (`mode="portrait"`)
+**Advanced — guaranteed identity (off-recipe).** `remove_background` (`mode="portrait"`)
 on the source → use the alpha as the gpt-image-2 `mask` (transparent=repaint,
 opaque=keep) so only the targeted region converts and the person's pixels are
 never touched. Off the @rohxit7 path; use only when a face must be byte-perfect.

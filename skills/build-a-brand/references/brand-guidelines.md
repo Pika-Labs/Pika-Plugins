@@ -829,7 +829,7 @@ Each brand board must answer: *what would this brand's actual hero page look lik
 Every brand board page must include ALL of the following. The layout differentiation rule above does NOT mean cutting content — visually distinct layouts must still fit ALL the text. If a layout doesn't have room for the content, redesign the layout, don't drop content.
 
 - Brand wordmark (set in the brand's display font)
-- **A standalone logo symbol/mark — generated as a transparent PNG via `mcp__claude_ai_pika__generate_image` with `provider="gpt-image-2"` when new. Do not trace the generated symbol to SVG and do not claim it is vector. NOT just typography.** The symbol must work as a favicon, app icon, social avatar, and exported asset on transparent background at 1024×1024+.
+- **A standalone logo symbol/mark — generated as a transparent PNG via `generate_image` with `provider="gpt-image-2"` when new. Do not trace the generated symbol to SVG and do not claim it is vector. NOT just typography.** The symbol must work as a favicon, app icon, social avatar, and exported asset on transparent background at 1024×1024+.
 - **A distinctive wordmark and any seal/badge treatment — custom letter spacing, ligature/cut/terminal detail, stamp geometry, or other ownable touch. Not just a Google Font in a circle, not a generic monogram seal, and not decorative filler.**
 - Tagline
 - Voice sample (one sentence in brand voice, quoted, with a "VOICE" label)

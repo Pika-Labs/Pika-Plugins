@@ -9,18 +9,18 @@ description: >-
   "content-director pov".
 argument-hint: <instagram-or-tiktok-handle>
 required-capabilities:
-  - mcp__plugin_pika_pika__analyze_media
-  - mcp__plugin_pika_pika__scrape_social
-  - mcp__plugin_pika_pika__capture_website
-  - mcp__plugin_pika_pika__probe_media
-  - mcp__plugin_pika_pika__extract_audio_from_video
-  - mcp__plugin_pika_pika__edit_trim
-  - mcp__plugin_pika_pika__edit_reframe
-  - mcp__plugin_pika_pika__edit_concat
-  - mcp__plugin_pika_pika__edit_audio_replace
-  - mcp__plugin_pika_pika__edit_transcode
-  - mcp__plugin_pika_pika__add_captions
-  - mcp__plugin_pika_pika__task_status
+  - analyze_media
+  - scrape_social
+  - capture_website
+  - probe_media
+  - extract_audio_from_video
+  - edit_trim
+  - edit_reframe
+  - edit_concat
+  - edit_audio_replace
+  - edit_transcode
+  - add_captions
+  - task_status
 ---
 
 # Content Director — POV
@@ -29,7 +29,7 @@ A POV-specialist content director. The user gives you their IG or TikTok handle;
 
 The deliverable per trend is always: **script-as-captions in their voice + scene-by-scene shot list with exact filming directions + timed caption layout + final edited mp4 with trending sound + captions burned in the IG Reels safe zone**. The user films; you write and edit.
 
-**Long-running MCP tools:** If any MCP call returns `{task_id, status}` instead of an inline URL/result, immediately call `mcp__plugin_pika_pika__task_status(task_id=<task_id>)` in a tight loop (no Bash, no sleep) until `status` is `completed`, `failed`, or `cancelled`. Continue with the returned `result` only after completion.
+**Long-running MCP tools:** If any MCP call returns `{task_id, status}` instead of an inline URL/result, immediately call `task_status(task_id=<task_id>)` in a tight loop (no Bash, no sleep) until `status` is `completed`, `failed`, or `cancelled`. Continue with the returned `result` only after completion.
 
 This playbook is the POV-focused sibling of the Content Director front door, `formats/dance.md`, and `formats/talking.md`. If the user wants a multi-format menu, route to `content-director`. If they want AI-generated dance trends from a photo, route to `content-director dance`. If they want talking-to-camera trends (storytime, hot-take, "things nobody tells you" — anything where the user speaks audibly to the lens), route to `content-director talking`.
 
@@ -92,9 +92,9 @@ Once a handle arrives, save it as the working handle and continue. Trend count d
 
 Once you have the handle, scrape immediately — the handle IS consent.
 
-1. **Scrape the profile** — `mcp__plugin_pika_pika__scrape_social` on the handle. Pull the most recent 12–20 posts. Capture: captions, hashtags, post types (reel / carousel / static), recurring locations, recurring people, view counts, music choices.
+1. **Scrape the profile** — `scrape_social` on the handle. Pull the most recent 12–20 posts. Capture: captions, hashtags, post types (reel / carousel / static), recurring locations, recurring people, view counts, music choices.
 
-2. **Fallback if scrape_social returns empty / rate-limited** — `mcp__plugin_pika_pika__capture_website` on `https://www.tiktok.com/@{handle}` or `https://www.instagram.com/{handle}/` for at least the bio + grid screenshot. Tell the user the analysis is grid-only.
+2. **Fallback if scrape_social returns empty / rate-limited** — `capture_website` on `https://www.tiktok.com/@{handle}` or `https://www.instagram.com/{handle}/` for at least the bio + grid screenshot. Tell the user the analysis is grid-only.
 
 3. **Identity-confirmation gate before profiling** — confirm the scrape or screenshot is the intended creator before you synthesize the profile. Cross-check display name, verified badge, follower count, bio, platform, and whether recent posts match the user's expected creator. Try common handle variants first: with/without dots, dotless, underscores removed, and cross-platform Instagram / TikTok / YouTube checks. Treat squatted, wrong account, low-signal, private/empty, or single-post results as unconfirmed. When unconfirmed, stop and ask **"Is this you?"** with the evidence you saw (`N followers`, verified badge status, display name, bio snippet, platform URL, recent-post summary) and offer the likely variant; do not synthesize the Creator Profile before identity is confirmed. When identity is confirmed, set `state.identity_confirmed = true`.
 
@@ -117,13 +117,13 @@ Search broadly across topics — pre-filtering trends to the user's niche or vib
 
 Run two parallel passes — silent POV / situational only:
 
-1. **Niche-fit POV trends** — `mcp__plugin_pika_pika__scrape_social` against the user's niche:
+1. **Niche-fit POV trends** — `scrape_social` against the user's niche:
    - `tiktok / keyword` — `"POV {niche-keyword}"`, `"tell me you're a {niche-role}"`, `"things only {niche-people} do"`, `"when you {niche-action}"`
    - `tiktok / hashtag` — `#POV{nicheTag}`, `#{nicheTag}life`, `#{nicheTag}tok`
    - `instagram / reels-search` — same shapes
    - `WebSearch` only to *discover trend names* (creator-tool blogs: Later / Hootsuite / Opus.pro / Buffer / Dash Social weekly recaps). Translate each named trend into a concrete reference-clip URL via scrape_social.
 
-2. **Broad-viral POV trends** — `mcp__plugin_pika_pika__scrape_social`:
+2. **Broad-viral POV trends** — `scrape_social`:
    - `tiktok / trending-feed` with `params.region` (user's geo when known, otherwise `US`) — filter for silent-POV / caption-driven content
    - `tiktok / popular-hashtags` — pull current POV-themed tags (`#POV`, `#fyp`, `#relatable`)
    - `instagram / hashtag` + `reels-search` for the same trends
@@ -227,21 +227,21 @@ After delivering the production package, ask the user to film and upload their c
 When the clips arrive:
 
 1. **Finalize manifest** — build `state.clip_manifest[]` in shot-list order with `{clip_id, url, planned_duration_s, beat_label}` for every uploaded clip or manually attached fallback. If the user sends one combined take, use one manifest entry; if they send multiple takes, map each to the matching shot-list beat. If ordering is ambiguous, ask before editing. Do not continue to Stage 6 until every clip has a stable `clip_id` and URL.
-2. **Probe each clip** — iterate `state.clip_manifest[]` and call `mcp__plugin_pika_pika__probe_media` on each `url` to confirm orientation (portrait), resolution (≥1080×1920), duration, framerate.
+2. **Probe each clip** — iterate `state.clip_manifest[]` and call `probe_media` on each `url` to confirm orientation (portrait), resolution (≥1080×1920), duration, framerate.
 3. **Sanity-check against the shot list** — verify each shot was captured. If a clip is unusable (wrong orientation, blurry, missing the action), call it out and ask for a reshoot of *only that shot* — don't re-shoot the whole sequence.
-4. **Fetch the trending audio** — call `mcp__plugin_pika_pika__scrape_social` on the reference clip (`tiktok / video` or `instagram / post`) with `rehost: true`; pass the returned durable video URL to `mcp__plugin_pika_pika__extract_audio_from_video` and save the returned audio URL as `state.audio_track`.
+4. **Fetch the trending audio** — call `scrape_social` on the reference clip (`tiktok / video` or `instagram / post`) with `rehost: true`; pass the returned durable video URL to `extract_audio_from_video` and save the returned audio URL as `state.audio_track`.
 
 ## Stage 6 — Edit pipeline
 
 The edit is mechanical once the clips and audio are in hand:
 
-1. **Trim each clip** to its beat (`mcp__plugin_pika_pika__edit_trim`) — iterate `state.clip_manifest[]` in order, match the duration prescribed in the shot list, and save the returned URL as `trimmed_url` on the same manifest entry.
-2. **Normalize each clip to portrait** — call `mcp__plugin_pika_pika__edit_reframe` on each manifest entry's `trimmed_url` with `target_aspect="9:16"` and `fill_mode="crop"` for normal POV shots; use `fill_mode="pad"` only when preserving the full frame matters more than filling the screen. Save the returned URL as `normalized_url` on the same manifest entry. This locks the geometry before concat, audio replacement, and 1080×1920 caption margins.
-3. **Concatenate clips in order when needed** — collect manifest `normalized_url` values in order. If there is only one `normalized_url`, skip `mcp__plugin_pika_pika__edit_concat` and set `state.concat_url` to that single normalized URL because the concat tool requires at least two inputs. If there are two or more normalized URLs, call `mcp__plugin_pika_pika__edit_concat` and save the returned URL as `state.concat_url`. Use no transitions unless the trend uses them (most POV trends are hard cuts).
-4. **Lock duration, then replace audio with the trending sound** — call `mcp__plugin_pika_pika__probe_media` on `state.concat_url` and `state.audio_track`, saving `state.concat_duration_s` and `state.audio_duration_s`. If `state.concat_duration_s > state.audio_duration_s`, shorten the visual with `mcp__plugin_pika_pika__edit_trim(video_url=state.concat_url, start_s=0, end_s=state.audio_duration_s)` so the video does not run past the usable sound, save that result as `state.visual_locked_url`, and set `state.visual_locked_duration_s=state.audio_duration_s`; otherwise set `state.visual_locked_url=state.concat_url` and `state.visual_locked_duration_s=state.concat_duration_s`. Then call `mcp__plugin_pika_pika__edit_audio_replace(video_url=state.visual_locked_url, audio_url=state.audio_track, duration_policy="video")` at full volume and save the returned URL as `state.audio_locked_url`. Use `duration_policy="video"` only when the audio tail can be trimmed to the already-locked visual. If the hook lands late, adjust upstream clip trims before replacing audio. The trending sound IS the soundtrack; the user's on-set audio gets dropped entirely.
-5. **Burn captions with `mcp__plugin_pika_pika__add_captions` as the final media step** — use `caption_mode="manual"` and the timed rows from Stage 4c, adjusted after any trim changes made in steps 1-4. Before each caption pass, cap rows to `state.visual_locked_duration_s`: drop any row whose start timestamp is at or beyond `state.visual_locked_duration_s`, and clamp each remaining row's end timestamp to `state.visual_locked_duration_s`. `add_captions` has one global position per call, so run one pass per caption position layer:
-   - **Top opener layer**: when Stage 4c includes a top hook/title, call `mcp__plugin_pika_pika__add_captions(video_url=state.audio_locked_url, caption_mode="manual", subtitles=state.top_caption_rows, style="reels-clean", position="top", margin_v=380, font_color="white", outline_color="black", outline_width=4)`; save the returned URL as `state.latest_captioned_url`. `state.top_caption_rows` must be `[{start_s, end_s, text}]`.
-   - **Bottom narrative/payoff layer**: call `mcp__plugin_pika_pika__add_captions(video_url=state.latest_captioned_url, caption_mode="manual", subtitles=state.bottom_caption_rows, style="reels-clean", position="bottom", margin_v=665, font_color="white", outline_color="black", outline_width=4)` after the top pass, or the same call with `video_url=state.audio_locked_url` when there was no top layer; save the returned URL as `state.latest_captioned_url`. `state.bottom_caption_rows` must be `[{start_s, end_s, text}]`.
+1. **Trim each clip** to its beat (`edit_trim`) — iterate `state.clip_manifest[]` in order, match the duration prescribed in the shot list, and save the returned URL as `trimmed_url` on the same manifest entry.
+2. **Normalize each clip to portrait** — call `edit_reframe` on each manifest entry's `trimmed_url` with `target_aspect="9:16"` and `fill_mode="crop"` for normal POV shots; use `fill_mode="pad"` only when preserving the full frame matters more than filling the screen. Save the returned URL as `normalized_url` on the same manifest entry. This locks the geometry before concat, audio replacement, and 1080×1920 caption margins.
+3. **Concatenate clips in order when needed** — collect manifest `normalized_url` values in order. If there is only one `normalized_url`, skip `edit_concat` and set `state.concat_url` to that single normalized URL because the concat tool requires at least two inputs. If there are two or more normalized URLs, call `edit_concat` and save the returned URL as `state.concat_url`. Use no transitions unless the trend uses them (most POV trends are hard cuts).
+4. **Lock duration, then replace audio with the trending sound** — call `probe_media` on `state.concat_url` and `state.audio_track`, saving `state.concat_duration_s` and `state.audio_duration_s`. If `state.concat_duration_s > state.audio_duration_s`, shorten the visual with `edit_trim(video_url=state.concat_url, start_s=0, end_s=state.audio_duration_s)` so the video does not run past the usable sound, save that result as `state.visual_locked_url`, and set `state.visual_locked_duration_s=state.audio_duration_s`; otherwise set `state.visual_locked_url=state.concat_url` and `state.visual_locked_duration_s=state.concat_duration_s`. Then call `edit_audio_replace(video_url=state.visual_locked_url, audio_url=state.audio_track, duration_policy="video")` at full volume and save the returned URL as `state.audio_locked_url`. Use `duration_policy="video"` only when the audio tail can be trimmed to the already-locked visual. If the hook lands late, adjust upstream clip trims before replacing audio. The trending sound IS the soundtrack; the user's on-set audio gets dropped entirely.
+5. **Burn captions with `add_captions` as the final media step** — use `caption_mode="manual"` and the timed rows from Stage 4c, adjusted after any trim changes made in steps 1-4. Before each caption pass, cap rows to `state.visual_locked_duration_s`: drop any row whose start timestamp is at or beyond `state.visual_locked_duration_s`, and clamp each remaining row's end timestamp to `state.visual_locked_duration_s`. `add_captions` has one global position per call, so run one pass per caption position layer:
+   - **Top opener layer**: when Stage 4c includes a top hook/title, call `add_captions(video_url=state.audio_locked_url, caption_mode="manual", subtitles=state.top_caption_rows, style="reels-clean", position="top", margin_v=380, font_color="white", outline_color="black", outline_width=4)`; save the returned URL as `state.latest_captioned_url`. `state.top_caption_rows` must be `[{start_s, end_s, text}]`.
+   - **Bottom narrative/payoff layer**: call `add_captions(video_url=state.latest_captioned_url, caption_mode="manual", subtitles=state.bottom_caption_rows, style="reels-clean", position="bottom", margin_v=665, font_color="white", outline_color="black", outline_width=4)` after the top pass, or the same call with `video_url=state.audio_locked_url` when there was no top layer; save the returned URL as `state.latest_captioned_url`. `state.bottom_caption_rows` must be `[{start_s, end_s, text}]`.
    - If all captions share one zone, use a single pass for that zone. Do not run any trim/reframe/concat/audio step after captions; if timing changes, rebuild Stage 4c rows and re-run the caption phase.
 6. **Final output** — read the returned `url` from the last caption call and save it as `state.final_url`. Keep a version label in agent state (`{user_slug}_{trend_slug}_v{N}`) so the next render never overwrites the previous deliverable.
 
@@ -251,7 +251,7 @@ The edit is mechanical once the clips and audio are in hand:
 
 **2. Audio-sync gate** — does the punchline caption land on the audio's punchline beat? Does the hook caption land before the audio's first hook? If beats don't align, retime captions OR re-trim clips to shift the timing.
 
-**3. Orientation gate** — same as `formats/dance.md`. Verify pixel orientation with `mcp__plugin_pika_pika__probe_media` after the final edit. If the result is not portrait, re-run the relevant MCP reframe/transcode step or request a corrected upload.
+**3. Orientation gate** — same as `formats/dance.md`. Verify pixel orientation with `probe_media` after the final edit. If the result is not portrait, re-run the relevant MCP reframe/transcode step or request a corrected upload.
 
 **4. Phone-cameo gate** — if any of the user's clips show a phone on screen (very common in POV trends about scrolling / texting / using an app), confirm it's a current-gen iPhone (15 Pro / 16 / Air). If the user filmed with an old or non-iPhone visible, ask them to reshoot or compose so the phone isn't visible. See the phone-cameo gate.
 
@@ -282,12 +282,12 @@ Every value below is empirically validated — changing any of them without re-v
 |---|---|---|
 | Stage 2 finds < 10 fingerprinted trends | Niche too narrow OR audio space fragmented | Drop niche-fit count to 2, pad with broad-viral. Tell user explicitly what's underrepresented |
 | Candidate trend has only 1-2 same-template replicators | Vibe cluster, not a real trend | Drop the card; replace with one that has 3+. Never pad — see the trend fingerprint gate |
-| Clip pixels rotated despite portrait metadata | iPhone orientation flag drift | Re-run the normalization step through `mcp__plugin_pika_pika__edit_transcode` or reframe with the correct aspect before concat |
+| Clip pixels rotated despite portrait metadata | iPhone orientation flag drift | Re-run the normalization step through `edit_transcode` or reframe with the correct aspect before concat |
 | Decorative emoji renders inconsistently | Burned-caption font support varies by platform/glyph | Drop emoji from burned caption; user adds in post description |
-| `mcp__plugin_pika_pika__analyze_media` reports caption hits y < 270 | Wrong caption position or margin | Re-run the affected caption layer with `position="bottom"`/`margin_v≈665`, or `position="top"`/`margin_v≈380` only when the top zone is intentionally clear |
-| `mcp__plugin_pika_pika__analyze_media` reports caption overlaps subject's face | Bottom safe zone collides with the subject in this footage | Try a lower `margin_v`, or split the caption into top-and-bottom beats per the caption safe-zone guidance |
+| `analyze_media` reports caption hits y < 270 | Wrong caption position or margin | Re-run the affected caption layer with `position="bottom"`/`margin_v≈665`, or `position="top"`/`margin_v≈380` only when the top zone is intentionally clear |
+| `analyze_media` reports caption overlaps subject's face | Bottom safe zone collides with the subject in this footage | Try a lower `margin_v`, or split the caption into top-and-bottom beats per the caption safe-zone guidance |
 | audio_replace output silent | Apple preview URL expired (short TTL) | Re-search music; grab fresh `preview_m4a_url` and re-run audio_replace |
-| Final video duration mismatches audio | Visual duration was not locked before audio replacement | Probe `state.concat_url` and `state.audio_track`; if `state.concat_duration_s > state.audio_duration_s`, trim with `mcp__plugin_pika_pika__edit_trim(video_url=state.concat_url, start_s=0, end_s=state.audio_duration_s)` before `mcp__plugin_pika_pika__edit_audio_replace`. If the audio hook has not landed by video-end, shorten upstream clips so the drop hits inside the locked duration. |
+| Final video duration mismatches audio | Visual duration was not locked before audio replacement | Probe `state.concat_url` and `state.audio_track`; if `state.concat_duration_s > state.audio_duration_s`, trim with `edit_trim(video_url=state.concat_url, start_s=0, end_s=state.audio_duration_s)` before `edit_audio_replace`. If the audio hook has not landed by video-end, shorten upstream clips so the drop hits inside the locked duration. |
 | User's wardrobe changes between shots (continuity break) | Footage filmed across sessions | Hard cuts mask the break in most before/after trends — flag it to the user, ship if they accept, otherwise ask for a re-shoot of the mismatched shot only |
 | Phone visible in user's clip is non-iPhone or old iPhone | Filmed without checking the phone-cameo gate | Ask for a re-shoot composing the phone out of frame, OR a re-shoot with a current iPhone (15 Pro / 16 / Air) |
 
@@ -299,7 +299,7 @@ Every value below is empirically validated — changing any of them without re-v
 - **Don't film for the user.** This playbook writes the plan and runs the edit. The user films their own footage. No AI-generated footage for POV trends — the authenticity is the format.
 - **Don't write vibey shot lists.** Every shot must be filmable with explicit camera position, distance, framing, action, and look direction. "Vibe shot in kitchen" is useless. "Stand 3 feet from counter, phone leaned against toaster at eye level, hold mug, look at steam then deadpan to lens" is filmable.
 - **Don't burn captions outside the IG Reels safe zone.** Always content-aware, always inside y=270 to y=1475 for 1080×1920, with ~80px margin from left/right edges. See the caption safe-zone guidance.
-- **Don't chain arbitrary text overlays for captions or edit after captions.** Use `mcp__plugin_pika_pika__add_captions` with `reels-clean`, 4px black outline, and safe-zone placement. If Stage 4c uses both a top opener and bottom narrative/payoff captions, run one caption pass per position layer and keep the caption phase last.
+- **Don't chain arbitrary text overlays for captions or edit after captions.** Use `add_captions` with `reels-clean`, 4px black outline, and safe-zone placement. If Stage 4c uses both a top opener and bottom narrative/payoff captions, run one caption pass per position layer and keep the caption phase last.
 - **Don't put ongoing captions at the very top.** User has flagged that top placement hides the subject's face. Bottom-of-safe-zone (visual y≈1255) is the validated default for ongoing narration/payoff rows. Top placement is only for a short opening hook/title when Stage 4c confirms the subject's face is clear.
 - **Don't drop the trending audio.** For POV/situational trends the sound is the trend — the algorithm fingerprint-matches on audio. Substituting a different track (even a similar one) lands the post outside the trend's algorithmic rail and the reach falls off a cliff. Replace on-set audio with the trend's exact sound at full volume.
 - **Don't burn the user's on-set audio under the trending sound.** Most POV trends are silent-acted; on-set audio is filler. Replace, don't mix.

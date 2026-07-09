@@ -112,11 +112,11 @@ is the same. The token expires with the MCP handoff/upload-return session.
 
 Source lives in `formats/teleprompter.html`. To redeploy:
 
-1. `mcp__plugin_pika_pika__upload_asset` with `filename: teleprompter.pdf`,
+1. `upload_asset` with `filename: teleprompter.pdf`,
    `mime_type: application/pdf` (HTML isn't allow-listed by upload_asset; PDF mime is accepted
    and the bytes are served as text/html when web_publish republishes them at `index.html`).
 2. PUT the HTML bytes to the returned `presigned_url`.
-3. `mcp__plugin_pika_pika__web_publish` with `slug: pika-teleprompter`,
+3. `web_publish` with `slug: pika-teleprompter`,
    `files: [{path: "index.html", source_url: <public_url from step 1>}]`.
 4. Verify with `curl -sI https://teleprompter.pika.bot/` — content-type should be
    `text/html`.
