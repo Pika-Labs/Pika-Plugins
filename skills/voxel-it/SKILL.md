@@ -140,8 +140,10 @@ Working dir: `<project>/voxel-it/<run-id>/` — each run its own folder.
 
 - **HTTPS URL?** Use it directly.
 - **Local file?** Upload (Step 2). Convert HEIC: `sips -s format jpeg in.HEIC
-  --out out.jpg`. iPhone photos often have **no EXIF orientation** but sideways
-  pixels — view first, rotate upright with `sips -r 90` (CW) before uploading.
+  --out out.jpg` — this strips the EXIF orientation flag, so the JPEG can land
+  on its side. **View it**; only if it's sideways, rotate upright with `sips -r
+  90` or `sips -r 270` (whichever way it's tilted), then view again to confirm.
+  The model bakes the reference pixels as-is, so it must be upright before upload.
 - **Chat-pasted image?** Not reliably on disk. If the user names a file (e.g. a
   Desktop screenshot — macOS uses a narrow no-break space U+202F before AM/PM, so
   match via a glob), copy it. Otherwise extract from the session transcript:
@@ -186,8 +188,9 @@ response (`curl -X PUT -H "content-type: <type>" --upload-file <file>
 
 `mcp__plugin_pika_pika__generate_image_edit` with `provider="gpt-image-2"`,
 `quality="high"`, `output_format="png"`, `background=true` (poll), the CDN URL in
-`images`, and `aspect_ratio` matched to source orientation (9:16 / 3:4 /
-4:3 / 1:1). Fill the COLOR GRADING mood line from your read of the photo.
+`images`, and `aspect_ratio: "auto"` — the worker measures the
+reference and matches its orientation, so you never hand-pick or recompute the
+ratio. Fill the COLOR GRADING mood line from your read of the photo.
 
 **Pick the prompt block for the mode you committed to in Step 0.**
 
@@ -330,14 +333,15 @@ in object-only / object+background, but stay real in background-only.
 
 Download to `<run-dir>/voxel-it-<subject>.png`, show it, `open` in Finder
 (no analyze_media re-check — just look). PNG only unless asked. **Rotation check:**
-gpt-image-2 occasionally returns a portrait edit rotated 90° — if sky/ceiling
-isn't up, `sips -r 270 file.png --out file.png` (free, no regen). Stills only.
+gpt-image-2 occasionally returns an edit rotated 90° — if sky/ceiling isn't up,
+rotate it back with `sips -r 90` or `sips -r 270` (whichever lands it upright,
+free, no regen) and re-view. Stills only.
 
 ## Tips & failure modes
 
 | Symptom | Fix |
 |---|---|
-| Output rotated 90° | `sips -r 270 file.png --out file.png` (free, no regen). |
+| Output rotated 90° | Rotate back `sips -r 90` / `sips -r 270` — whichever lands upright (free, no regen). |
 | Person got blockified | Re-assert the KEEP clause; for groups name every person. |
 | World barely voxelized | You're on nano-banana-pro — switch to gpt-image-2. |
 | Person looks pasted | Make sure the COLOR GRADING block + mood line are present — that's the unifier. |
@@ -347,7 +351,7 @@ isn't up, `sips -r 270 file.png --out file.png` (free, no regen). Stills only.
 | Tags messy / overlapping / on the face | "keep labels non-overlapping, just above each item, never over a face"; re-roll. |
 | Tags appeared but shouldn't have | You're in background-only (no tags) — drop the label clause. |
 | Day-for-night flip | Name the night mood explicitly in COLOR GRADING. |
-| Cropped vs source | Match `aspect_ratio` to source orientation. |
+| Cropped vs source | Pass `aspect_ratio: "auto"` — the worker matches the reference's orientation. |
 | Face drifted | Expected (maskless recipe). Advanced fix below. |
 
 **Advanced — guaranteed identity (off-recipe).** `mcp__plugin_pika_pika__remove_background` (`mode="portrait"`)
