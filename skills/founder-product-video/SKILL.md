@@ -1,6 +1,7 @@
 ---
 name: founder-product-video
 description: >-
+  Use when the user asks for founder product video or a task matching the examples below.
   Generate a 65-second founder-style product video from a product URL + user-supplied imagery.
   Output is a 16:9 1080p MP4 — 4 × 15s SeeDance acts of a talking founder + 5s branded end card +
   background music. The user's actual product screenshots are composited onto product reveal shots
@@ -1439,6 +1440,7 @@ Wall-clock budget per step. Total run is ~12–18 minutes, dominated by the para
 | [9] render end card | 60–120s | |
 | [10] edit_concat + edit_audio_mix | 30–90s | server-side normalized concat and music mix |
 | **Total** | **12–18 minutes** | |
+
 
 ## Defaults
 

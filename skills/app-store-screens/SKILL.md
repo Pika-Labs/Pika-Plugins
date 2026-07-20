@@ -1,6 +1,7 @@
 ---
 name: app-store-screens
 description: >
+  Use when the user asks for app store screens or a task matching the examples below.
   Generate 5–6 App Store screenshots in a given brand's aesthetic from a `brand.md`, raw
   product screenshots, or a public App Store listing fetched through Pika MCP. Story-driven
   (hook → value → features → proof → close), splashy, on-brand.
@@ -516,6 +517,7 @@ Typical run time is 10-25 minutes, depending on how much user confirmation is ne
 | Image generation | 2-8 min | Only for backgrounds or reference-driven hero imagery |
 | HTML composite + render | 5-10 min | Six 1290x2796 PNGs plus contact sheet |
 | QA revisions | variable | Copy tweaks are cheap; new imagery is slower |
+
 
 ## Failure Modes
 

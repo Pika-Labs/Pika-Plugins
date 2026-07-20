@@ -1,6 +1,7 @@
 ---
 name: app-sizzle
 description: >
+  Use when the user asks for app sizzle or a task matching the examples below.
   Generate cinematic 1080p iOS app teaser videos from real App Store screenshots,
   with a GPT-image-2 enhancement pass on each selected screen before generation.
   Output is a beat-driven cinematic teaser built from GPT-enhanced screenshots,
@@ -569,6 +570,7 @@ Typical run time is 4-8 minutes. All pre-generation stages before the first paid
 | Seedance generation | 3-5 min | Generated-audio moderation recovery adds one silent probe plus one same-seed sound replay |
 | Kling fallback | 5-15 min | Capacity wait or worker handoff may temporarily show `queued`; follow the Kling queued/handoff recovery runbook |
 | Download verification | <30s | Local sanity check before delivery |
+
 
 ## Engine Choice: Seedance Primary, Kling Fallback
 

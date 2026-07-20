@@ -1,6 +1,7 @@
 ---
 name: content-director
 description: >-
+  Use when the user asks for content director or a task matching the examples below.
   All-in-one content director that bundles FOUR format specialists — talking-to-camera,
   silent POV, dance, and stitch/duet — behind a single front door. Ingests the user's
   Instagram or TikTok handle, then in Stage 0 asks which KIND of trend they want to make

@@ -1,6 +1,7 @@
 ---
 name: ugc-ads
 description: >-
+  Use when the user asks for ugc ads or a task matching the examples below.
   Multi-cut jump-cut UGC product ad — HOOK + 3 JUMP CUTs + OUTRO, 15s, 9:16
   vertical (3:4 optional, seedance only), POV first-person talking-head selfie,
   every beat has spoken dialogue with native lip-sync, 5-act narrative arc
@@ -46,6 +47,7 @@ Typical end-to-end run: **6–12 minutes**. Breakdown:
 - Step 9 (captions): single `add_captions` call, ~30s–5 min (transcribe + burn in one shot)
 
 If the run exceeds 15 min without progress, something is wrong — inspect the tool-reported generation status and error message.
+
 
 ## Pre-generation wall-clock guard
 

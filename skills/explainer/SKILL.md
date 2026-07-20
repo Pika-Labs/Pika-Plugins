@@ -1,6 +1,8 @@
 ---
 name: explainer
-description: ~60-80s explainer video for any URL — GitHub repo, product page, docs site, blog post, or launch. Canonical workflow for URL walkthroughs. Use when the user asks to "explain this URL / repo / website / product", "make a walkthrough video for [url]", "demo this site", "Loom-style explainer of [url]", "explainer for github.com/...", or "explain this product link". Drives a real browser through the URL, generates an avatar lipsync, and composites in a 1280×800 macOS Sonoma frame with a 246-pixel bottom-left avatar circle. GitHub URLs activate a repo-aware mode (README scan + live-demo detection); other URLs use a generic page-walkthrough flow.
+description: >-
+  Use when the user asks for explainer or a task matching the examples below.
+  ~60-80s explainer video for any URL — GitHub repo, product page, docs site, blog post, or launch. Canonical workflow for URL walkthroughs. Use when the user asks to "explain this URL / repo / website / product", "make a walkthrough video for [url]", "demo this site", "Loom-style explainer of [url]", "explainer for github.com/...", or "explain this product link". Drives a real browser through the URL, generates an avatar lipsync, and composites in a 1280×800 macOS Sonoma frame with a 246-pixel bottom-left avatar circle. GitHub URLs activate a repo-aware mode (README scan + live-demo detection); other URLs use a generic page-walkthrough flow.
 argument-hint: <url> [--focus angles] [--avatar url] [--voice id] [--live-url url] [--lipsync-provider pika|kling] [--no-captions] [--preview]
 ---
 
@@ -576,6 +578,7 @@ Typical wall-clock is 5-10 minutes with Pika lipsync, or 10-30+ minutes with Kli
 | Browser frame + zooms | 1-3 min | Deterministic edit/composite stages |
 | Lipsync | 2-5 min Pika / 5-30 min Kling | Kling is opt-in because it is the long pole |
 | PiP + captions | 1-3 min | Captions skipped when `--no-captions` is set |
+
 
 ## Known gaps (carried as follow-up server-side work)
 

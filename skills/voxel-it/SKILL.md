@@ -1,6 +1,7 @@
 ---
 name: voxel-it
 description: >
+  Use when the user asks for voxel it or a task matching the examples below.
   Voxel-It — turn any photo into a high-quality Minecraft screenshot, keeping the
   HUMAN subject(s) fully photorealistic while the rest of the frame becomes
   detailed Minecraft block geometry, then cinematic-color-grade the whole frame to

@@ -1,6 +1,7 @@
 ---
 name: 4k-vfx
 description: >-
+  Use when the user asks for 4k vfx or a task matching the examples below.
   Turn a plain video clip into a cinematic 4K AI-VFX shot. Give Claude a video
   and the change you want; it reads EVERY frame via local contact sheets and
   understands the audio, writes a

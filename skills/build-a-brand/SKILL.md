@@ -1,6 +1,7 @@
 ---
 name: build-a-brand
 description: >
+  Use when the user asks for build a brand or a task matching the examples below.
   Build a practical brand identity from any input — an idea, an existing website, a list of
   reference brands, product photos, or "I want to rebrand X". Default to a fast quick-brand
   path for founder-kit users, and offer the full 14-16-page guidelines as an opt-in upgrade. Use
@@ -687,6 +688,7 @@ If a run takes around 2 hours again, do not guess where the time went. Use this 
 Total full target: ~25–45 min wall-clock excluding user response time. Recent field feedback saw ~2 hours end to end for a paid creator tutorial recording; treat that as the baseline symptom to beat, not as an acceptable target.
 
 ---
+
 
 ## Failure modes
 

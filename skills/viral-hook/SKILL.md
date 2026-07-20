@@ -1,6 +1,7 @@
 ---
 name: viral-hook
 description: >-
+  Use when the user asks for viral hook or a task matching the examples below.
   Prepend a 4s viral hook + optional designed title to a user's video, then hard-cut into
   the real clip. An attention-grabbing event erupts into the user's OWN scene; the title is
   rendered in-scene by Seedance. One MCP call does the whole render. Requires Pika MCP.

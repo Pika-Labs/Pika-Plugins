@@ -1,6 +1,7 @@
 ---
 name: kiss-cam
 description: >-
+  Use when the user asks for kiss cam or a task matching the examples below.
   Generate a viral fake "in-arena Kiss Cam moment" of any two subjects — a
   fan-filmed phone shot of the MSG Jumbotron with retro Kiss Cam graphic +
   scoreboard, plus a 15s Kling v3-omni clip with PA-announcer commentary and
@@ -221,6 +222,7 @@ Check that both faces stay consistent with their references, the kiss action com
 - **Total wall-clock per take:** ~4–6 minutes
 
 If a re-roll is needed at Step 1 the budget restarts there; at Step 2 only the video stage repeats.
+
 
 ## Load-bearing phrases (keep verbatim)
 

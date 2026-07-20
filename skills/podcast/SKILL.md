@@ -1,6 +1,7 @@
 ---
 name: podcast
 description: >-
+  Use when the user asks for podcast or a task matching the examples below.
   Two-host podcast video for any URL or free-form topic — 1 minute, 4 acts × ~15s,
   native multi-shot dialogue, optional voice cloning for Host A. Use when the user
   asks to "make a podcast", "podcast about [thing]", "podcast review of [url]",
@@ -257,6 +258,7 @@ If the user or execution harness has a tight budget below 32 min, warn upfront t
 | URL/topic parse + script | 1-3 min | URL mode depends on page fetch quality |
 | Four Kling acts | 24-32 min | 4 × ~8 min sequential Kling Omni calls; dominant cost |
 | Concat + return | 30-90s | Final URL only; captions skipped by default |
+
 
 ## Failure modes
 

@@ -1,6 +1,7 @@
 ---
 name: persona-builder
 description: >
+  Use when the user asks for persona builder or a task matching the examples below.
   Whip a person into a more marketable shape online. Read their socials and the way they
   talk, then deliver real talk about where the money is, what's holding them back, and what
   to fix — then ship the designed multi-page Influencer Persona PDF + a persona.md folder kit
@@ -601,6 +602,7 @@ Tell the user the rough total up front.
 | Step 5 (package kit) | 2–4 min | File assembly + README |
 
 Total: ~30–60 min wall-clock excluding user response time.
+
 
 ## Load-bearing phrases
 

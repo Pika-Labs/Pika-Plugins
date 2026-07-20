@@ -1,6 +1,7 @@
 ---
 name: anime-soccer
 description: >-
+  Use when the user asks for anime soccer or a task matching the examples below.
   Put the USER into a ~45s Japanese-anime football short as the hero — from their
   photo + their favorite team + the opponent. Anime-fies the user's face into a
   consistent character sheet, designs a dramatic 3-act match (come on → equalizer

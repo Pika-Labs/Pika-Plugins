@@ -1,6 +1,7 @@
 ---
 name: gameday
 description: >-
+  Use when the user asks for gameday or a task matching the examples below.
   Put a fan into the game. The user uploads one photo of themselves and names
   their favorite team; generate a 6-photo matchday-superfan carousel — six
   separate images of that same person at the game in their team's kit. Triggers:

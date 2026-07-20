@@ -1,6 +1,7 @@
 ---
 name: language-swap
 description: >
+  Use when the user asks for language swap or a task matching the examples below.
   Translate and dub a video into another language. One worker call preserves each speaker's
   voice, translates the speech, and returns a fully A/V-synced video. Lipsync ON by default.
   Use when the user says "translate this video", "dub this in <language>",
@@ -19,7 +20,6 @@ required-capabilities:
   - add_captions
 ---
 
-<!-- source-of-truth: pika-claude-plugin/skills/language-swap -->
 
 # /pika:language-swap
 
@@ -175,7 +175,3 @@ Reply with `final_video_url` + the translated transcript (from `dub_transcript_s
 | Lipsync step fails | `edit_lipsync` errors (no clear face track, provider 4xx) | Fall back through `variant` tiers (v2-pro → sync-3 → v2); if all fail, return the dubbed video without lip-matching and tell the user | Audio-replaced video, no lip-match |
 | Captions wrong language | Step 3 auto-transcription mis-detects language | Pass explicit `language` tag; if `dub_subtitles` exists, use `caption_mode="manual"` with it instead of auto | Manual `subtitles[]` |
 | Bilingual source row unavailable | User asked for bilingual subtitles but `source_subtitles` is absent | Use target-language captions and explain the source transcript was unavailable | Target-language captions only |
-
-## Compatibility
-
-Primary target: Claude Code. Uses standard MCP tools only. Works on Codex / Cursor / Claude Desktop.

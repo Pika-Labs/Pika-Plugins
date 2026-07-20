@@ -1,6 +1,7 @@
 ---
 name: vfx
 description: >-
+  Use when the user asks for vfx or a task matching the examples below.
   Turn a plain video clip into a cinematic AI-VFX shot at 1080p by default
   (or 4K / 720p on request). Give Claude a video and the change you want; it
   reads EVERY frame via local contact sheets and understands the audio,

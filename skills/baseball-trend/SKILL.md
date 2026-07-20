@@ -1,6 +1,7 @@
 ---
 name: baseball-trend
 description: >
+  Use when the user asks for baseball trend or a task matching the examples below.
   Viral fake "ESPN behind-home-plate broadcast cutaway" of a user — broadcast-style still
   + 15s Kling-omni clip with native two-announcer commentary that names the user. Fixed
   trend: Yankees vs Red Sox ALCS Game 3 at Fenway Park, premium seats, scorebug + chyron
@@ -241,6 +242,7 @@ Typical run time is 4-7 minutes:
 | Broadcast still | 60-120s | Re-roll before video if the chyron or scorebug is wrong, capped by the Step 1 retry budget |
 | Kling video | 3-5 min | One 15s pro render with native commentary |
 | Delivery check | <30s | Verify final URL and obvious identity/chyron continuity |
+
 
 ## Failure modes
 

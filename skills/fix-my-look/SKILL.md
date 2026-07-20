@@ -1,6 +1,7 @@
 ---
 name: fix-my-look
 description: >
+  Use when the user asks for fix my look or a task matching the examples below.
   Change ANYTHING inside a video — background, scene, lighting, outfit, weather,
   mood — from a free-form prompt, while keeping the EXACT original facial
   identity, motion, speech, audio AND closest supported output ratio. Edits the

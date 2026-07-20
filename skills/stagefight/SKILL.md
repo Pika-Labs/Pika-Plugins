@@ -1,6 +1,7 @@
 ---
 name: stagefight
 description: >-
+  Use when the user asks for stagefight or a task matching the examples below.
   Generate a viral "fan-filmed staged fight" clip — POV phone footage of two
   costumed performers having a choreographed cosplay battle on an elaborate
   themed stage at a live outdoor event, with a believable live-stage effect
